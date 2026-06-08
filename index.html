@@ -1072,7 +1072,7 @@ function renderToday(){
 
   const grid2=div({class:'grid2',style:{marginBottom:'12px'}});
   grid2.appendChild(selField('Sleep',sleep,[{v:'great',l:'Solid 8+'},{v:'ok',l:'6-7hr OK'},{v:'poor',l:'Poor / broken'}],v=>{sleep=v;updateDecision();}));
-  grid2.appendChild(selField('Yesterday RPE',rpe,[{v:'0',l:'0 - Rest'},{v:'1',l:'1-2 Very easy'},{v:'3',l:'3 Moderate'},{v:'4',l:'4 Hard'},{v:'5',l:'5 Maximal'}],v=>{rpe=v;updateDecision();}));
+  grid2.appendChild(selField('Yesterday RPE',rpe,[{v:'0',l:'0 - Rest'},{v:'1',l:'1 - Active recovery'},{v:'2',l:'2 - Very easy'},{v:'3',l:'3 - Easy'},{v:'4',l:'4 - Moderate'},{v:'5',l:'5 - Comfortably hard'},{v:'6',l:'6 - Hard'},{v:'7',l:'7 - Very hard'},{v:'8',l:'8 - Race effort'},{v:'9',l:'9 - Near maximal'},{v:'10',l:'10 - Maximal'}],v=>{rpe=v;updateDecision();}));
   grid2.appendChild(selField('Legs',legs,[{v:'5',l:'5 Fresh'},{v:'4',l:'4 Good'},{v:'3',l:'3 OK'},{v:'2',l:'2 Heavy'},{v:'1',l:'1 Wrecked'}],v=>{legs=v;updateDecision();}));
   grid2.appendChild(selField('Mood',mood,[{v:'5',l:'5 Sharp'},{v:'4',l:'4 Good'},{v:'3',l:'3 OK'},{v:'2',l:'2 Stressed'},{v:'1',l:'1 Flat'}],v=>{mood=v;updateDecision();}));
   wrap.appendChild(grid2);
@@ -1172,7 +1172,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
 
   const rGrid=div({class:'grid2',style:{marginBottom:'12px'}});
   rGrid.appendChild(selField('Performance',perf,[{v:'5',l:'5 Exceeded'},{v:'4',l:'4 Solid'},{v:'3',l:'3 Met plan'},{v:'2',l:'2 Below'},{v:'1',l:'1 Poor'}],v=>perf=v));
-  rGrid.appendChild(selField('RPE',exec,[{v:'5',l:'5 Max'},{v:'4',l:'4 Hard'},{v:'3',l:'3 Moderate'},{v:'2',l:'2 Easy'},{v:'1',l:'1 Very easy'}],v=>exec=v));
+  rGrid.appendChild(selField('RPE',exec,[{v:'0',l:'0 - Rest'},{v:'1',l:'1 - Active recovery'},{v:'2',l:'2 - Very easy'},{v:'3',l:'3 - Easy'},{v:'4',l:'4 - Moderate'},{v:'5',l:'5 - Comfortably hard'},{v:'6',l:'6 - Hard'},{v:'7',l:'7 - Very hard'},{v:'8',l:'8 - Race effort'},{v:'9',l:'9 - Near maximal'},{v:'10',l:'10 - Maximal'}],v=>exec=v));
   sheet.appendChild(rGrid);
 
   const noteWrap=div({style:{marginBottom:'14px'}});
@@ -1634,63 +1634,234 @@ function renderPlan(){
 // ============================================================
 // TREND TAB
 // ============================================================
+// ============================================================
+// LOAD / TSS HELPERS
+// ============================================================
+// Vert density multiplier: kicks in above 30m/km, caps at 3x
+function vertMultiplier(km, vert){
+  if(!km||km<=0) return 1;
+  const ratio=vert/km;
+  return Math.min(3.0, 1 + Math.max(0,(ratio-30)/70));
+}
+
+// Training Stress Score proxy for a single activity
+// RPE (0-10) x hrs x vertMultiplier
+function activityTSS(act){
+  const rpe=parseFloat(act.exec||0);
+  const hrs=parseFloat(act.actualHrs||0);
+  const km=parseFloat(act.actualKm||0);
+  const vert=parseFloat(act.actualVert||0);
+  return rpe * hrs * vertMultiplier(km, vert);
+}
+
+// Total TSS for a calendar date string
+function dateTSS(dateStr){
+  const plan=getPlan();
+  const d=new Date(dateStr+'T12:00:00');
+  const diffDays=Math.floor((d-getBlockMonday())/86400000);
+  if(diffDays<0) return 0;
+  const wIdx=Math.floor(diffDays/7);
+  const dow=d.getDay();
+  if(!plan[wIdx]) return 0;
+  const dIdx=plan[wIdx].days.findIndex(s=>dowIndex(s.day)===dow);
+  if(dIdx<0) return 0;
+  return getDayActivities(wIdx,dIdx)
+    .filter(a=>a.completed)
+    .reduce((sum,a)=>sum+activityTSS(a),0);
+}
+
+// ATL: exponentially weighted 7-day load (k=0.87)
+// CTL: exponentially weighted 28-day load (k=0.97)
+function computeATLCTL(days){
+  // days: array of {date, tss} sorted oldest first
+  let atl=0, ctl=0;
+  const kAtl=0.87, kCtl=0.97;
+  days.forEach(({tss})=>{
+    atl = atl*kAtl + tss*(1-kAtl);
+    ctl = ctl*kCtl + tss*(1-kCtl);
+  });
+  return {atl,ctl,ratio:ctl>0?atl/ctl:null};
+}
+
+// ============================================================
+// ============================================================
+// TREND TAB
+// ============================================================
 function renderTrend(){
   const wrap=div({});
-  const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14);
-  const decisions=entries.map(([,e])=>e.decision).filter(Boolean);
-  const backOff=decisions.filter(d=>d==='BACK OFF').length;
-  const modify=decisions.filter(d=>d==='MODIFY').length;
-  const hard=decisions.filter(d=>d==='GO HARD').length;
   const DC={'GO HARD':'#00ff87','AS PLANNED':'#b8ff4f','MODIFY':'#ffd166','BACK OFF':'#ff6b6b'};
-  const DH={'GO HARD':52,'AS PLANNED':40,'MODIFY':26,'BACK OFF':14};
+  let extRange=14;
 
-  // 7-day bars
-  const barWrap=div({style:{marginBottom:'24px'}});
-  barWrap.appendChild(div({class:'section-title'},'7-Day Pattern'));
-  const bars=div({style:{display:'flex',gap:'6px',alignItems:'flex-end',height:'64px'}});
-  const now=new Date();
-  for(let i=6;i>=0;i--){
-    const d=new Date(now); d.setDate(now.getDate()-i);
-    const key=localDateStr(d);
-    const entry=LOG[key];
-    const dc=entry?.decision?(DC[entry.decision]||'#333'):'#1a1a2e';
-    const dh=entry?.decision?(DH[entry.decision]||8):8;
-    const isToday=key===today();
-    const col=div({style:{flex:'1',display:'flex',flexDirection:'column',alignItems:'center',gap:'4px'}});
-    col.appendChild(div({style:{width:'100%',height:dh+'px',background:dc,borderRadius:'3px',minHeight:'8px'}}));
-    col.appendChild(span({style:{fontSize:'9px',color:isToday?'#e0e0ff':'#333'}},['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()]));
-    bars.appendChild(col);
+  function buildDays(n){
+    const now=new Date(), out=[];
+    for(let i=n-1;i>=0;i--){
+      const d=new Date(now); d.setDate(now.getDate()-i);
+      const ds=localDateStr(d);
+      const le=LOG[ds]||{};
+      out.push({ds,d,dayLabel:['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()],
+        isToday:ds===today(),isWeekStart:d.getDay()===1,
+        tss:dateTSS(ds),decision:le.decision||null,hrv:le.hrv||null});
+    }
+    return out;
   }
-  barWrap.appendChild(bars);
-  wrap.appendChild(barWrap);
 
-  // Block signal
-  let sig=null;
-  if(decisions.length>=5){
-    if(backOff>=3) sig={text:'OVERREACH RISK',color:'#ff6b6b',detail:backOff+' back-off days in 14. Consider a down week.'};
-    else if(modify+backOff>=5) sig={text:'FATIGUE ACCUMULATING',color:'#ffd166',detail:'Persistent amber/red. Load may be outpacing recovery.'};
-    else if(hard>=4&&backOff===0) sig={text:'WINDOW TO PUSH',color:'#00ff87',detail:'Consistent green. Adaptation happening - safe to load.'};
-    else sig={text:'LOAD BALANCED',color:'#b8ff4f',detail:'No dominant pattern. Continue as periodised.'};
-  }
-  const sigCard=card([],{marginBottom:'20px'});
-  sigCard.appendChild(div({class:'section-title'},'14-Day Block Signal'));
-  if(sig){
-    sigCard.appendChild(div({style:{fontSize:'16px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.08em',color:sig.color}},sig.text));
-    sigCard.appendChild(div({style:{fontSize:'11px',color:'#777',marginTop:'4px'}},sig.detail));
-  } else {
-    sigCard.appendChild(div({style:{fontSize:'11px',color:'#333'}},'Log 5+ days to unlock.'));
-  }
-  wrap.appendChild(sigCard);
+  function buildChart(days,loadH,readyH,compact){
+    const maxTSS=Math.max(...days.map(d=>d.tss),0.1);
+    const gap=compact?2:4;
+    const wrap2=div({style:{marginBottom:'4px'}});
+    const chart=div({style:{display:'flex',gap:gap+'px',alignItems:'stretch'}});
 
-  // Weekly summary
+    days.forEach(day=>{
+      const col=div({style:{flex:'1',display:'flex',flexDirection:'column',minWidth:'0'}});
+
+      // Load bar (up)
+      const lc=div({style:{height:loadH+'px',display:'flex',flexDirection:'column',justifyContent:'flex-end'}});
+      if(day.tss>0){
+        const bh=Math.max(2,Math.round((day.tss/maxTSS)*loadH));
+        // Get dominant activity type colour
+        const pd=new Date(day.ds+'T12:00:00');
+        const diffD=Math.floor((pd-getBlockMonday())/86400000);
+        const wI=Math.max(0,Math.floor(diffD/7));
+        const plan=getPlan();
+        const dI=plan[wI]?.days.findIndex(s=>dowIndex(s.day)===pd.getDay())??-1;
+        const acts=dI>=0?getDayActivities(wI,dI).filter(a=>a.completed):[];
+        let topColor='#60a5fa';
+        if(acts.length){const top=acts.reduce((a,b)=>activityTSS(a)>=activityTSS(b)?a:b);topColor=TC[top.type||'easy']||'#60a5fa';}
+        lc.appendChild(div({style:{width:'100%',height:bh+'px',background:topColor,borderRadius:'2px 2px 0 0',opacity:'0.85'}}));
+      }
+      col.appendChild(lc);
+
+      // Centre divider
+      col.appendChild(div({style:{height:'1px',background:day.isWeekStart?'#2a2a4a':'#111',flexShrink:'0'}}));
+
+      // Readiness bar (down)
+      const rc=div({style:{height:readyH+'px',display:'flex',flexDirection:'column',justifyContent:'flex-start'}});
+      if(day.decision){
+        const dc=DC[day.decision]||'#333';
+        const rmap={'GO HARD':readyH,'AS PLANNED':Math.round(readyH*0.75),'MODIFY':Math.round(readyH*0.5),'BACK OFF':Math.round(readyH*0.25)};
+        rc.appendChild(div({style:{width:'100%',height:(rmap[day.decision]||4)+'px',background:dc,borderRadius:'0 0 2px 2px',opacity:'0.9'}}));
+      } else {
+        rc.appendChild(div({style:{width:'100%',height:'2px',background:'#1a1a2e',marginTop:'2px'}}));
+      }
+      col.appendChild(rc);
+
+      // Day label
+      if(!compact){
+        col.appendChild(span({style:{fontSize:'8px',color:day.isToday?'#e0e0ff':day.isWeekStart?'#444':'#252535',textAlign:'center',paddingTop:'2px',display:'block'}},day.dayLabel));
+      }
+      chart.appendChild(col);
+    });
+
+    wrap2.appendChild(chart);
+    if(!compact){
+      const leg=div({style:{display:'flex',justifyContent:'space-between',marginTop:'4px'}});
+      leg.appendChild(span({style:{fontSize:'8px',color:'#333'}},'\u25b2 Load (RPE\u00d7hrs\u00d7vert)'));
+      leg.appendChild(span({style:{fontSize:'8px',color:'#333'}},'\u25bc Readiness'));
+      wrap2.appendChild(leg);
+    }
+    return wrap2;
+  }
+
+  // 7-day rolling
+  const days7=buildDays(7);
+  const maxTSS7=Math.max(...days7.map(d=>d.tss),0.1);
+  const roll7=card([],{marginBottom:'14px'});
+  roll7.appendChild(div({class:'section-title',style:{marginBottom:'8px'}},'7-Day Load & Readiness'));
+  roll7.appendChild(buildChart(days7,44,26,false));
+  const peak7=days7.reduce((a,b)=>b.tss>a.tss?b:a,{tss:0,ds:''});
+  if(peak7.tss>0.1){
+    const ptl=div({style:{display:'flex',justifyContent:'space-between',marginTop:'6px'}});
+    ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Peak: '+peak7.ds.slice(5).replace('-',' ')+' · '+peak7.tss.toFixed(1)+' TSS'));
+    const wkTSS=days7.reduce((s,d)=>s+d.tss,0);
+    ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Week total: '+wkTSS.toFixed(1)+' TSS'));
+    roll7.appendChild(ptl);
+  }
+  wrap.appendChild(roll7);
+
+  // Extended view
+  const extCard=card([],{marginBottom:'14px'});
+  const extHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
+  extHdr.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'Extended View'));
+  const tRow=div({style:{display:'flex',gap:'4px'}});
+  const extBody=div({});
+
+  function rebuildExt(){
+    extBody.innerHTML='';
+    const daysExt=buildDays(extRange);
+    extBody.appendChild(buildChart(daysExt,32,20,extRange>=20));
+
+    // Week labels under chart
+    const wlRow=div({style:{display:'flex',gap:'0',marginTop:'1px'}});
+    const nowRef=new Date();
+    for(let i=extRange-1;i>=0;i--){
+      const dd=new Date(nowRef); dd.setDate(nowRef.getDate()-i);
+      const cell=div({style:{flex:'1',textAlign:'center'}});
+      if(dd.getDay()===1&&i<extRange-1) cell.appendChild(span({style:{fontSize:'7px',color:'#333'}},fmtDate(dd)));
+      wlRow.appendChild(cell);
+    }
+    extBody.appendChild(wlRow);
+
+    // ATL:CTL
+    const allD=buildDays(Math.max(extRange,28));
+    const {atl,ctl,ratio}=computeATLCTL(allD.map(d=>({date:d.ds,tss:d.tss})));
+    const nLogged=allD.filter(d=>d.tss>0).length;
+    const atlBox=div({style:{marginTop:'10px',padding:'10px',background:'#0a0a18',border:'1px solid #1a1a2e',borderRadius:'6px'}});
+    if(nLogged<7){
+      atlBox.appendChild(span({style:{fontSize:'10px',color:'#333'}},'ATL:CTL — log 7+ sessions to unlock ('+nLogged+' so far)'));
+    } else {
+      const rc=!ratio?'#555':ratio>1.3?'#ff6b6b':ratio<0.8?'#74b9ff':'#00ff87';
+      const rl=!ratio?'--':ratio>1.5?'Overreaching':ratio>1.3?'High load':ratio<0.8?'Underloading':'Optimal';
+      const ah=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'5px'}});
+      ah.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em'}},'ATL:CTL'));
+      ah.appendChild(span({style:{fontSize:'20px',fontFamily:"'Bebas Neue',cursive",color:rc}},ratio?ratio.toFixed(2):'--'));
+      atlBox.appendChild(ah);
+      atlBox.appendChild(div({style:{fontSize:'10px',color:rc,marginBottom:'5px'}},rl));
+      const ad=div({style:{display:'flex',gap:'14px',marginBottom:'4px'}});
+      ad.appendChild(span({style:{fontSize:'9px',color:'#444'}},'ATL 7d: '+atl.toFixed(1)));
+      ad.appendChild(span({style:{fontSize:'9px',color:'#444'}},'CTL 28d: '+ctl.toFixed(1)));
+      atlBox.appendChild(ad);
+      if(ratio){
+        atlBox.appendChild(div({style:{fontSize:'9px',color:'#333',lineHeight:'1.6'}},
+          ratio>1.3?'Acute load well above chronic baseline. Prioritise recovery.':
+          ratio<0.8?'Training below chronic baseline. Safe to add load if feeling good.':
+          'Load and recovery in balance.'));
+      }
+    }
+    extBody.appendChild(atlBox);
+  }
+
+  [14,30].forEach((n,idx)=>{
+    const b=btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',
+      background:extRange===n?'#1a1a3a':'#0a0a18',
+      border:'1px solid '+(extRange===n?'#3a3a6a':'#1a1a2e'),
+      color:extRange===n?'#e0e0ff':'#444'},
+      onclick:()=>{
+        extRange=n;
+        tRow.querySelectorAll('button').forEach((b2,i2)=>{
+          const nn=[14,30][i2];
+          b2.style.background=nn===n?'#1a1a3a':'#0a0a18';
+          b2.style.borderColor=nn===n?'#3a3a6a':'#1a1a2e';
+          b2.style.color=nn===n?'#e0e0ff':'#444';
+        });
+        rebuildExt();
+      }},n+'d');
+    tRow.appendChild(b);
+  });
+  extHdr.appendChild(tRow);
+  extCard.appendChild(extHdr);
+  extCard.appendChild(extBody);
+  rebuildExt();
+  wrap.appendChild(extCard);
+
+  // Coach summary
   const wIdx=curWeek()-1;
   const plan=getPlan();
-  const weekRunLogs=(plan[wIdx]?.days||[]).map((_,dIdx)=>getDayActivities(wIdx,dIdx).filter(a=>a.completed)).flat();
   const target=TARGETS[wIdx];
   const wAct=(plan[wIdx]?.days||[]).reduce((acc,_,dIdx)=>{const t=getDayTotals(wIdx,dIdx);acc.km+=t.km;acc.vert+=t.vert;acc.hrs+=t.hrs;return acc;},{km:0,vert:0,hrs:0});
   const doneDays=(plan[wIdx]?.days||[]).filter((_,dIdx)=>isDayDone(wIdx,dIdx)).length;
+  const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14);
 
-  const summCard=card([],{marginBottom:'20px'});
+  const summCard=card([],{marginBottom:'14px'});
   summCard.appendChild(div({class:'section-title'},'Week '+curWeek()+' Coach Summary'));
   const summText=div({style:{fontSize:'12px',color:'#aaa',lineHeight:'1.7',marginBottom:'10px'}},doneDays===0?'Log sessions first.':'Ready to generate.');
   summCard.appendChild(summText);
@@ -1701,12 +1872,14 @@ function renderTrend(){
       const s=getSession(wIdx,dIdx);
       const acts=getDayActivities(wIdx,dIdx).filter(a=>a.completed);
       if(!acts.length) return s.day+' '+(s.label||'Rest')+': NOT DONE';
-      return acts.map(a=>s.day+' '+a.label+': '+(a.actualKm||'?')+'km / '+(a.actualVert||'?')+'m / '+(a.actualHrs||'?')+'hr | Perf:'+(a.perf||'?')+' RPE:'+(a.exec||'?')+' | "'+(a.note||'')+'"').join('\n');
+      return acts.map(a=>s.day+' '+a.label+': '+(a.actualKm||'?')+'km / '+(a.actualVert||'?')+'m / '+(a.actualHrs||'?')+'hr | Perf:'+(a.perf||'?')+' RPE:'+(a.exec||'?')+' TSS:'+activityTSS(a).toFixed(1)).join('\n');
     }).join('\n');
     const readinessSummary=entries.slice(-7).map(([date,e])=>date+': HRV '+(e.hrv||'?')+' RHR '+(e.rhr||'?')+' -> '+(e.decision||'?')).join('\n');
-    const ctx='Week '+curWeek()+' of '+plan.length+' ('+target?.type+') - '+daysToRace()+' days to race\nTarget: '+target?.km+'km / '+target?.vert+'m / '+target?.hrs+'hr\nActual: '+wAct.km.toFixed(1)+'km / '+wAct.vert+'m / '+wAct.hrs.toFixed(1)+'hr ('+doneDays+'/'+(plan[wIdx]?.days.length)+' days done)\n\nSessions:\n'+sessSummaries+'\n\nReadiness:\n'+readinessSummary;
-    try{const s=await aiCall('You are an experienced ultra trail running coach giving a weekly training debrief. Be direct and analytical. Cover: (1) volume vs target — was the week under/over/on target and what does that mean, (2) quality of key sessions based on performance ratings and RPE, (3) load trend — using the readiness data and RPE scores, identify any fatigue accumulation or under-recovery patterns across the week, (4) one specific focus for next week. 4-6 sentences. No fluff.',ctx);
-      summText.textContent=s.startsWith('Error:')?s:s;
+    const allD2=buildDays(28); const {atl,ctl,ratio}=computeATLCTL(allD2.map(d=>({date:d.ds,tss:d.tss})));
+    const ctx='Week '+curWeek()+' of '+plan.length+' ('+target?.type+') - '+(daysToRace()||'?')+' days to next race\nTarget: '+target?.km+'km/'+target?.vert+'m/'+target?.hrs+'hr\nActual: '+wAct.km.toFixed(1)+'km/'+wAct.vert+'m/'+wAct.hrs.toFixed(1)+'hr ('+doneDays+'/'+(plan[wIdx]?.days.length)+' days)\nATL:'+atl.toFixed(1)+' CTL:'+ctl.toFixed(1)+' Ratio:'+(ratio?ratio.toFixed(2):'n/a')+'\n\nSessions:\n'+sessSummaries+'\n\nReadiness:\n'+readinessSummary;
+    try{
+      const s=await aiCall('You are an experienced ultra trail running coach. Weekly debrief: (1) volume vs target, (2) key session quality via performance/RPE/TSS, (3) load trend using ATL:CTL and readiness data - call out fatigue accumulation or under-recovery, (4) one specific focus next week. 4-6 sentences, no fluff.',ctx);
+      summText.textContent=s;
     }catch(e){summText.textContent='Error: '+e.message;}
     summBtn.textContent='REGENERATE'; summBtn.disabled=false;
   }},doneDays===0?'Log sessions first':'Get Week Summary');
@@ -1729,7 +1902,6 @@ function renderTrend(){
   return wrap;
 }
 
-// ============================================================
 // SETTINGS TAB
 // ============================================================
 function renderSettings(){
