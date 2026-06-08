@@ -12,7 +12,8 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{background:#07071a;color:#e0e0ff;font-family:'JetBrains Mono',monospace;min-height:100vh;font-size:13px;}
 input,select,textarea,button{font-family:'JetBrains Mono',monospace;font-size:12px;}
-input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;}
+input[type=date].inp{font-size:12px;padding:7px 8px;height:36px;-webkit-appearance:none;appearance:none;min-width:0;width:100%;}
+input[type=date]::-webkit-date-and-time-value{text-align:left;}
 input[type=number]{-moz-appearance:textfield;}
 select option{background:#0e0e1f;}
 ::-webkit-scrollbar{width:3px;}
@@ -92,6 +93,7 @@ const DEF_CFG = {
     {name:'UTMB 2026',              date:'2026-08-28', dist:'171km'},
   ],
   countTypes:DEFAULT_COUNT_TYPES,
+  aiProxyUrl:'',
 };
 
 // BASE_PLAN: empty day slots. Sessions only populate from TP iCal import or manual edits.
@@ -537,23 +539,25 @@ function applyICSToEdits(icsText){
 // ============================================================
 // AI
 // ============================================================
+// AI calls go through a proxy URL (set in settings) to avoid exposing API key
+// Set CFG.aiProxyUrl to a Cloudflare Worker or similar endpoint
 async function aiCall(system, userMsg){
+  const proxyUrl=CFG.aiProxyUrl||'';
+  if(!proxyUrl){
+    return 'Coach summary requires a proxy URL. See Settings → AI Coach Setup for instructions.';
+  }
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
+    const r=await fetch(proxyUrl,{
       method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system,messages:[{role:'user',content:userMsg}]})
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({system,message:userMsg})
     });
     if(!r.ok){
       const err=await r.json().catch(()=>({}));
-      throw new Error(err?.error?.message||'HTTP '+r.status);
+      throw new Error(err?.error||err?.message||'HTTP '+r.status);
     }
     const d=await r.json();
-    return d.content?.find(b=>b.type==='text')?.text||'No response.';
+    return d.text||d.content||d.response||'No response.';
   }catch(e){
     return 'Error: '+e.message;
   }
@@ -1021,30 +1025,34 @@ function renderToday(){
     // Update rings
     ringsRow.innerHTML='';
     ringsRow.appendChild(ring(rScore,'#60a5fa','Physical'));
+    ringsRow.appendChild(ring(combined,dec?.color||'#333','Combined',88));
     ringsRow.appendChild(ring(sScore,'#c084fc','Subjective'));
-    ringsRow.appendChild(ring(combined,dec?.color||'#333','Combined',84));
   }
 
   wrap.appendChild(decBanner);
   wrap.appendChild(ringsRow);
   updateDecision();
 
-  // Pre-populate RPE from yesterday's logged session if not already saved today
+  // Pre-populate RPE from yesterday's activity RPE if not already saved today
   if(!saved.rpe){
     const yd=new Date(); yd.setDate(yd.getDate()-1);
     const ydStr=localDateStr(yd);
     // Check yesterday's daily log first
     if(LOG[ydStr]?.rpe) rpe=LOG[ydStr].rpe;
     else {
-      // Fall back to yesterday's run log perf rating as a proxy
+      // Use yesterday's activity RPE (exec field) — highest RPE across all activities
       const ydDow=yd.getDay();
       const ydPlan=getPlan();
       const ydWIdx=Math.max(0,Math.floor((yd-getBlockMonday())/(7*86400000)));
       if(ydPlan[ydWIdx]){
         const ydDIdx=ydPlan[ydWIdx].days.findIndex(d=>dowIndex(d.day)===ydDow);
         if(ydDIdx>=0){
-          const ydRun=getRunLog(ydWIdx,ydDIdx);
-          if(ydRun?.perf) rpe=ydRun.perf;
+          const ydActs=getDayActivities(ydWIdx,ydDIdx).filter(a=>a.completed);
+          if(ydActs.length){
+            // Use highest RPE across all activities that day
+            const maxRPE=ydActs.reduce((max,a)=>Math.max(max,parseInt(a.exec||0)),0);
+            if(maxRPE>0) rpe=String(maxRPE);
+          }
         }
       }
     }
@@ -1164,7 +1172,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
 
   const rGrid=div({class:'grid2',style:{marginBottom:'12px'}});
   rGrid.appendChild(selField('Performance',perf,[{v:'5',l:'5 Exceeded'},{v:'4',l:'4 Solid'},{v:'3',l:'3 Met plan'},{v:'2',l:'2 Below'},{v:'1',l:'1 Poor'}],v=>perf=v));
-  rGrid.appendChild(selField('Execution',exec,[{v:'5',l:'5 Perfect'},{v:'4',l:'4 Good'},{v:'3',l:'3 OK'},{v:'2',l:'2 Struggled'},{v:'1',l:'1 Fell apart'}],v=>exec=v));
+  rGrid.appendChild(selField('RPE',exec,[{v:'5',l:'5 Max'},{v:'4',l:'4 Hard'},{v:'3',l:'3 Moderate'},{v:'2',l:'2 Easy'},{v:'1',l:'1 Very easy'}],v=>exec=v));
   sheet.appendChild(rGrid);
 
   const noteWrap=div({style:{marginBottom:'14px'}});
@@ -1554,7 +1562,7 @@ function renderPlan(){
             if(act.actualKm) actData.appendChild(span({style:{fontSize:'10px',color:'#00ff87'}},act.actualKm+'km'));
             if(act.actualVert) actData.appendChild(span({style:{fontSize:'10px',color:'#00ff87'}},act.actualVert+'m'));
             if(act.actualHrs) actData.appendChild(span({style:{fontSize:'10px',color:'#00ff87'}},act.actualHrs+'hr'));
-            if(act.perf) actData.appendChild(span({style:{fontSize:'9px',color:'#555'}},'P:'+act.perf+' E:'+(act.exec||'?')));
+            if(act.perf) actData.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Perf:'+act.perf+' RPE:'+(act.exec||'?')));
             actRow.appendChild(actData);
             if(act.note) actRow.appendChild(div({style:{fontSize:'10px',color:'#555',marginTop:'4px'}},act.note));
           } else {
@@ -1693,11 +1701,11 @@ function renderTrend(){
       const s=getSession(wIdx,dIdx);
       const acts=getDayActivities(wIdx,dIdx).filter(a=>a.completed);
       if(!acts.length) return s.day+' '+(s.label||'Rest')+': NOT DONE';
-      return acts.map(a=>s.day+' '+a.label+': '+(a.actualKm||'?')+'km / '+(a.actualVert||'?')+'m / '+(a.actualHrs||'?')+'hr | P:'+(a.perf||'?')+' E:'+(a.exec||'?')+' | "'+(a.note||'')+'"').join('\n');
+      return acts.map(a=>s.day+' '+a.label+': '+(a.actualKm||'?')+'km / '+(a.actualVert||'?')+'m / '+(a.actualHrs||'?')+'hr | Perf:'+(a.perf||'?')+' RPE:'+(a.exec||'?')+' | "'+(a.note||'')+'"').join('\n');
     }).join('\n');
     const readinessSummary=entries.slice(-7).map(([date,e])=>date+': HRV '+(e.hrv||'?')+' RHR '+(e.rhr||'?')+' -> '+(e.decision||'?')).join('\n');
     const ctx='Week '+curWeek()+' of '+plan.length+' ('+target?.type+') - '+daysToRace()+' days to race\nTarget: '+target?.km+'km / '+target?.vert+'m / '+target?.hrs+'hr\nActual: '+wAct.km.toFixed(1)+'km / '+wAct.vert+'m / '+wAct.hrs.toFixed(1)+'hr ('+doneDays+'/'+(plan[wIdx]?.days.length)+' days done)\n\nSessions:\n'+sessSummaries+'\n\nReadiness:\n'+readinessSummary;
-    try{const s=await aiCall('You are an experienced ultra trail running coach giving a weekly training debrief. Be direct and analytical. Cover: (1) volume vs target — was the week under/over/on target and what does that mean, (2) quality of key sessions based on performance/execution ratings, (3) load trend — using the readiness data, identify any fatigue accumulation or under-recovery patterns across the week, (4) one specific focus for next week. 4-6 sentences. No fluff.',ctx);
+    try{const s=await aiCall('You are an experienced ultra trail running coach giving a weekly training debrief. Be direct and analytical. Cover: (1) volume vs target — was the week under/over/on target and what does that mean, (2) quality of key sessions based on performance ratings and RPE, (3) load trend — using the readiness data and RPE scores, identify any fatigue accumulation or under-recovery patterns across the week, (4) one specific focus for next week. 4-6 sentences. No fluff.',ctx);
       summText.textContent=s.startsWith('Error:')?s:s;
     }catch(e){summText.textContent='Error: '+e.message;}
     summBtn.textContent='REGENERATE'; summBtn.disabled=false;
@@ -1732,8 +1740,8 @@ function renderSettings(){
   const cfgCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'12px'});
   cfgCard.appendChild(div({class:'section-title'},'Configuration'));
 
-  // Block dates
-  const dg=div({class:'grid2'});
+  // Block dates — stacked to avoid overflow on narrow screens
+  const dg=div({style:{display:'flex',flexDirection:'column',gap:'10px'}});
   const bsI=inp({class:'inp',type:'date',value:cfgForm.blockStartStr});
   bsI.addEventListener('input',()=>{cfgForm.blockStartStr=bsI.value;updateWeeksPreview();});
   const beI=inp({class:'inp',type:'date',value:cfgForm.blockEndStr||''});
@@ -1765,27 +1773,35 @@ function renderSettings(){
     racesContainer.innerHTML='';
     const races=cfgForm.races&&cfgForm.races.length?cfgForm.races:[{name:'',date:'',dist:''}];
     races.forEach((r,i)=>{
-      const row=div({style:{display:'flex',gap:'6px',alignItems:'flex-end',marginBottom:'8px'}});
+      const raceCard=div({style:{padding:'10px',background:'#0a0a18',border:'1px solid #1c1c2e',borderRadius:'7px',marginBottom:'8px'}});
+      // Name row
       const nameI=inp({class:'inp',type:'text',value:r.name,placeholder:'Race name'});
       nameI.addEventListener('input',()=>{cfgForm.races[i].name=nameI.value;});
+      raceCard.appendChild(div({style:{marginBottom:'8px'}}),[]);
+      raceCard.querySelector('div').appendChild(lbl('Race name'));
+      raceCard.querySelector('div').appendChild(nameI);
+      // Date + dist row
+      const row2=div({style:{display:'flex',gap:'8px',alignItems:'flex-end'}});
+      const dateWrap=div({style:{flex:'1',minWidth:0}});
+      dateWrap.appendChild(lbl('Date'));
       const dateI=inp({class:'inp',type:'date',value:r.date});
       dateI.addEventListener('input',()=>{cfgForm.races[i].date=dateI.value;updateWeeksPreview();});
+      dateWrap.appendChild(dateI);
+      row2.appendChild(dateWrap);
+      const distWrap=div({style:{width:'80px',flexShrink:'0'}});
+      distWrap.appendChild(lbl('Distance'));
       const distI=inp({class:'inp',type:'text',value:r.dist||'',placeholder:'50km'});
-      distI.style.width='70px';
+      distI.style.fontSize='12px';
       distI.addEventListener('input',()=>{cfgForm.races[i].dist=distI.value;});
-      const delBtn=btn({style:{padding:'7px 9px',borderRadius:'5px',background:'#1a0a0a',border:'1px solid #2a1a1a',color:'#ff6b6b',fontSize:'11px',flexShrink:'0'},
-        onclick:()=>{cfgForm.races.splice(i,1);renderRacesEditor();}},'\u2715');
-      row.appendChild(div({style:{flex:'2',minWidth:0}}),[]);
-      row.querySelector('div').appendChild(lbl('Name'));
-      row.querySelector('div').appendChild(nameI);
-      const dateWrap=div({style:{flex:'1.5',minWidth:0}});
-      dateWrap.appendChild(lbl('Date')); dateWrap.appendChild(dateI);
-      const distWrap=div({style:{width:'70px',flexShrink:'0'}});
-      distWrap.appendChild(lbl('Dist')); distWrap.appendChild(distI);
-      row.appendChild(dateWrap); row.appendChild(distWrap); row.appendChild(delBtn);
-      racesContainer.appendChild(row);
+      distWrap.appendChild(distI);
+      row2.appendChild(distWrap);
+      const delBtn=btn({style:{padding:'6px 9px',borderRadius:'5px',background:'#1a0a0a',border:'1px solid #2a1a1a',color:'#ff6b6b',fontSize:'13px',flexShrink:'0',alignSelf:'flex-end'},
+        onclick:()=>{cfgForm.races.splice(i,1);renderRacesEditor();}},'\u00d7');
+      row2.appendChild(delBtn);
+      raceCard.appendChild(row2);
+      racesContainer.appendChild(raceCard);
     });
-    const addBtn=btn({style:{padding:'6px 12px',borderRadius:'5px',fontSize:'10px',background:'#0a0a18',border:'1px dashed #2a2a4a',color:'#555',width:'100%'},
+    const addBtn=btn({style:{padding:'8px 12px',borderRadius:'5px',fontSize:'10px',background:'#0a0a18',border:'1px dashed #2a2a4a',color:'#555',width:'100%'},
       onclick:()=>{if(!cfgForm.races)cfgForm.races=[];cfgForm.races.push({name:'',date:'',dist:''});renderRacesEditor();}},
       '+ Add race');
     racesContainer.appendChild(addBtn);
@@ -1865,7 +1881,49 @@ function renderSettings(){
   ]));
   wrap.appendChild(bkCard);
 
-  // Activity totals toggle card
+  // AI Coach setup card
+  const aiCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
+  aiCard.appendChild(div({class:'section-title'},'AI Coach Setup'));
+  aiCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},
+    'The weekly coach summary requires a free Cloudflare Worker to proxy API calls. '+
+    'Without it the summary button will prompt you to set this up.'));
+
+  // Collapsible instructions
+  const instrToggle=btn({style:{padding:'6px 12px',borderRadius:'5px',fontSize:'10px',background:'#0a0a18',border:'1px solid #2a2a4a',color:'#555',textAlign:'left'}},
+    'Setup instructions ▼');
+  const instrDiv=div({style:{display:'none',fontSize:'10px',color:'#666',lineHeight:'1.8',padding:'10px',background:'#0a0a18',borderRadius:'6px',border:'1px solid #1c1c2e'}});
+  instrDiv.innerHTML='1. Go to <b style="color:#888">workers.cloudflare.com</b> → create a free account<br>'+
+    '2. Create a new Worker, paste this code:<br>'+
+    '<pre style="font-size:9px;color:#aaa;background:#060610;padding:8px;border-radius:4px;overflow-x:auto;margin:4px 0">'+
+    'export default {\n  async fetch(req, env) {\n'+
+    '    if(req.method===\'OPTIONS\') return new Response(null,{headers:{\'Access-Control-Allow-Origin\':\'*\',\'Access-Control-Allow-Headers\':\'*\'}});\n'+
+    '    const {system,message} = await req.json();\n'+
+    '    const r = await fetch(\'https://api.anthropic.com/v1/messages\',{\n'+
+    '      method:\'POST\',\n'+
+    '      headers:{\'Content-Type\':\'application/json\',\'anthropic-version\':\'2023-06-01\',\'x-api-key\':env.ANTHROPIC_KEY},\n'+
+    '      body:JSON.stringify({model:\'claude-sonnet-4-20250514\',max_tokens:1000,system,messages:[{role:\'user\',content:message}]})\n'+
+    '    });\n'+
+    '    const d = await r.json();\n'+
+    '    return new Response(JSON.stringify({text:d.content?.[0]?.text}),{headers:{\'Content-Type\':\'application/json\',\'Access-Control-Allow-Origin\':\'*\'}});\n'+
+    '  }\n}</pre>'+
+    '3. In Worker Settings → Variables → add secret: <b style="color:#888">ANTHROPIC_KEY</b> = your Anthropic API key<br>'+
+    '4. Copy the worker URL (e.g. https://my-worker.username.workers.dev)<br>'+
+    '5. Paste it below and save';
+  instrToggle.addEventListener('click',()=>{
+    const open=instrDiv.style.display==='block';
+    instrDiv.style.display=open?'none':'block';
+    instrToggle.textContent='Setup instructions '+(open?'▼':'▲');
+  });
+  aiCard.appendChild(instrToggle);
+  aiCard.appendChild(instrDiv);
+
+  const proxyWrap=div({});
+  proxyWrap.appendChild(lbl('Worker URL'));
+  const proxyI=inp({class:'inp',type:'url',value:cfgForm.aiProxyUrl||'',placeholder:'https://my-worker.username.workers.dev'});
+  proxyI.addEventListener('input',()=>cfgForm.aiProxyUrl=proxyI.value.trim());
+  proxyWrap.appendChild(proxyI);
+  aiCard.appendChild(proxyWrap);
+  wrap.appendChild(aiCard);
   const totalsCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
   totalsCard.appendChild(div({class:'section-title'},'Daily Totals — Activity Types'));
   totalsCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},'Toggle which activity types contribute to daily km/vert/hr totals and weekly progress bars.'));
