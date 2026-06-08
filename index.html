@@ -63,125 +63,23 @@ select option{background:#0e0e1f;}
 // ============================================================
 // DATA & CONFIG
 // ============================================================
-const SK = {cfg:'utmb_cfg_v1',log:'utmb_log_v1',edits:'utmb_edits_v1',targets:'utmb_targets_v1',runs:'utmb_runs_v1'};
+const SK = {cfg:'utmb_cfg_v1',log:'utmb_log_v1',edits:'utmb_edits_v2',targets:'utmb_targets_v1',runs:'utmb_runs_v3'};
 const WTC = {RECOVERY:'#55efc4',BUILD:'#ffd166',SHARPEN:'#ff9f43',DELOAD:'#74b9ff',RACE:'#fd79a8'};
-const TC = {strength:'#7b9cff',intervals:'#ff9f43',easy:'#55efc4',long:'#a29bfe',race:'#fd79a8',rest:'#636e72'};
-const TL = {strength:'STR',intervals:'INT',easy:'EASY',long:'LONG',race:'RACE',rest:'REST'};
+const TC = {strength:'#7b9cff',intervals:'#ff9f43',easy:'#55efc4',long:'#a29bfe',race:'#fd79a8',rest:'#636e72',walk:'#a0a0a0',sauna:'#ff9f43',other:'#636e72'};
+const TL = {strength:'STR',intervals:'INT',easy:'EASY',long:'LONG',race:'RACE',rest:'REST',walk:'WALK',sauna:'SAUNA',other:'OTHER'};
 const WEEK_TYPES = ['RECOVERY','BUILD','SHARPEN','DELOAD','RACE'];
+// Types that count toward daily/weekly totals by default
+const ALL_TYPES = ['strength','intervals','easy','long','race','rest','walk','sauna','other'];
+const DEFAULT_COUNT_TYPES = ['strength','intervals','easy','long','race'];
 
-const DEF_CFG = {hrvLow:45,hrvHigh:70,rhrLow:45,rhrHigh:50,raceDateStr:'2026-08-28',blockStartStr:'2026-06-06',raceName:'UTMB 2026'};
+const DEF_CFG = {hrvLow:45,hrvHigh:70,rhrLow:45,rhrHigh:50,raceDateStr:'2026-08-28',blockStartStr:'2026-06-06',raceName:'UTMB 2026',countTypes:DEFAULT_COUNT_TYPES};
 
-const BASE_PLAN = [
-  {week:1,days:[
-    {day:'Mon',label:'Upper Body Strength',type:'strength',detail:'Bench, rows, pull-ups, shoulder press. Aerobic density - no grinding sets.',km:0,vert:0,hrs:1},
-    {day:'Tue',label:'Easy Intervals / Hill Sprints',type:'intervals',detail:'6-8x8-10 sec hill sprints. Full recovery between. HR ceiling 155.',km:10,vert:150,hrs:1},
-    {day:'Wed',label:'Single-Leg Strength + Treadmill Climb',type:'strength',detail:'Squats 80kg, single-leg landmine RDL, calf raises, tibialis. 45min treadmill 8-10%.',km:6,vert:400,hrs:1.5},
-    {day:'Thu',label:'17km Easy Trail',type:'easy',detail:'Zone 2 throughout. 135-148bpm. No heroics.',km:17,vert:300,hrs:2},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'30-40min easy. Flush the legs.',km:6,vert:50,hrs:0.5},
-    {day:'Sat',label:'Climb Session',type:'long',detail:'Up to 600m vert / 18km. Uphill hiking efficiency. Gentle downhill.',km:18,vert:600,hrs:2.5},
-    {day:'Sun',label:'Back-to-Back Long Run',type:'long',detail:'16-18km easy. Focus on hiking endurance.',km:17,vert:350,hrs:2},
-  ]},
-  {week:2,days:[
-    {day:'Mon',label:'Upper Body Strength',type:'strength',detail:'Same as Week 1. Add load only if recovery complete.',km:0,vert:0,hrs:1},
-    {day:'Tue',label:'Hill Sprints + Strides',type:'intervals',detail:'8x10 sec hill sprints. Add 4 flat strides on the way home.',km:10,vert:150,hrs:1},
-    {day:'Wed',label:'Single-Leg Strength + Treadmill Climb',type:'strength',detail:'Squat ramp to 100kg if legs are green. 60min treadmill 10%.',km:6,vert:450,hrs:1.5},
-    {day:'Thu',label:'17km Easy Trail',type:'easy',detail:'Zone 2. If peroneal region talks, cut to flat road.',km:17,vert:300,hrs:2},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'30min easy. Optional strides x4.',km:6,vert:50,hrs:0.5},
-    {day:'Sat',label:'Climb Session',type:'long',detail:'800m vert / 20km. First Blackheath horse track if peroneal is clear.',km:20,vert:800,hrs:3},
-    {day:'Sun',label:'Back-to-Back Long Run',type:'long',detail:'18-20km easy. Conversational effort throughout.',km:19,vert:400,hrs:2.5},
-  ]},
-  {week:3,days:[
-    {day:'Mon',label:'Upper Body Strength',type:'strength',detail:'Progress load. Keep density low - volume ramps this week.',km:0,vert:0,hrs:1},
-    {day:'Tue',label:'Threshold Intervals',type:'intervals',detail:'3x10min at 150-155bpm, 3min jog recovery. On trail if possible.',km:12,vert:200,hrs:1.5},
-    {day:'Wed',label:'Single-Leg Strength + Treadmill Climb',type:'strength',detail:'Squat ramp to 105kg. 60min treadmill 10-12%.',km:6,vert:500,hrs:1.5},
-    {day:'Thu',label:'17km Trail',type:'easy',detail:'Zone 2. Begin Z3 surges on uphills - 60sec then settle.',km:17,vert:350,hrs:2},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'30-40min easy.',km:6,vert:50,hrs:0.5},
-    {day:'Sat',label:'Climb Session',type:'long',detail:'1000m vert / 22km. Blackheath. Push uphill effort race-specific last 30min.',km:22,vert:1000,hrs:3},
-    {day:'Sun',label:'Back-to-Back Long Run',type:'long',detail:'20-22km. Hike climbs, run flats. Gut strategy rehearsal - 80g/hr.',km:21,vert:450,hrs:2.5},
-  ]},
-  {week:4,days:[
-    {day:'Mon',label:'Upper Body Strength',type:'strength',detail:'Maintain. No new PRs during build phase.',km:0,vert:0,hrs:1},
-    {day:'Tue',label:'Hill Reps',type:'intervals',detail:'6x3min uphill at 155-158bpm. Walk/jog down. Total 10km.',km:10,vert:250,hrs:1.5},
-    {day:'Wed',label:'Single-Leg Strength + Treadmill Climb',type:'strength',detail:'Squat ramp to 110kg. 75min treadmill - push pace last 20min.',km:6,vert:550,hrs:1.5},
-    {day:'Thu',label:'17km Trail',type:'easy',detail:'Zone 2. Add 2x20min Z3 blocks mid-run.',km:17,vert:400,hrs:2},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'Easy 30min.',km:6,vert:50,hrs:0.5},
-    {day:'Sat',label:'Climb Session',type:'long',detail:'1100m vert / 24km. Full Blackheath. One sustained 45min climb at race effort.',km:24,vert:1100,hrs:3.5},
-    {day:'Sun',label:'Back-to-Back Long Run',type:'long',detail:'22km. Fatigue resistance focus. Hike power maintained when tired.',km:22,vert:500,hrs:2.5},
-  ]},
-  {week:5,days:[
-    {day:'Mon',label:'Upper Body Strength',type:'strength',detail:'Maintenance load.',km:0,vert:0,hrs:1},
-    {day:'Tue',label:'VO2 Intervals',type:'intervals',detail:'5x4min hard uphill near ceiling. Full walk recovery. Quality over quantity.',km:10,vert:250,hrs:1.5},
-    {day:'Wed',label:'Single-Leg Strength + Treadmill Climb',type:'strength',detail:'If DOMS from Tue - drop squat to 3x4 at 100kg. 75min climb unchanged.',km:6,vert:550,hrs:1.5},
-    {day:'Thu',label:'17km Trail',type:'easy',detail:'Zone 2 + 2x25min Z3. Total vert ~400m.',km:17,vert:400,hrs:2},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'30min. Heavy legs - 20min walk instead.',km:6,vert:50,hrs:0.5},
-    {day:'Sat',label:'Climb Session',type:'long',detail:'1100m vert / 24km. Descend with control - quad loading stimulus building.',km:24,vert:1100,hrs:3.5},
-    {day:'Sun',label:'Back-to-Back Long Run',type:'long',detail:'24km easy-moderate. Gut trial - 90g/hr with CurraNZ. Note any distress.',km:24,vert:550,hrs:3},
-  ]},
-  {week:6,days:[
-    {day:'Mon',label:'Upper Body Strength',type:'strength',detail:'Full session.',km:0,vert:0,hrs:1},
-    {day:'Tue',label:'Race-Pace Sustained Effort',type:'intervals',detail:'45min continuous at race effort (148-153bpm). Flat or slight uphill.',km:12,vert:200,hrs:1.5},
-    {day:'Wed',label:'Single-Leg Strength + Treadmill Climb',type:'strength',detail:'Squat ramp to 115kg. 90min - 10% for 60min then 15% for 30min.',km:6,vert:650,hrs:2},
-    {day:'Thu',label:'17km Trail',type:'easy',detail:'Zone 2. Begin practising poles - uphill power transfer.',km:17,vert:400,hrs:2},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'30min easy.',km:6,vert:50,hrs:0.5},
-    {day:'Sat',label:'Climb Session',type:'long',detail:'1100m+ vert / 26km. Last 10km at or above race pace.',km:26,vert:1150,hrs:4},
-    {day:'Sun',label:'Back-to-Back Long Run',type:'long',detail:'24-26km. Push into moderate effort last 8km. Simulate race fatigue.',km:25,vert:600,hrs:3},
-  ]},
-  {week:7,days:[
-    {day:'Mon',label:'Upper Body Strength',type:'strength',detail:'Full session.',km:0,vert:0,hrs:1},
-    {day:'Tue',label:'Hill Reps + Strides',type:'intervals',detail:'8x3min hill reps. Hard but controlled. 4 strides flat finish.',km:12,vert:300,hrs:1.5},
-    {day:'Wed',label:'Single-Leg Strength + Treadmill Climb',type:'strength',detail:'Squat 115kg. 90min climb - 20% incline blocks introduced.',km:6,vert:700,hrs:2},
-    {day:'Thu',label:'17km Trail',type:'easy',detail:'Zone 2. Poles. Gut practice.',km:17,vert:400,hrs:2},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'30min. Legs assessment for big weekend.',km:6,vert:50,hrs:0.5},
-    {day:'Sat',label:'Climb Session - Peak Vert',type:'long',detail:'1100m+ vert / 24km. Blackheath - 2000-3000m over the day if conditions allow.',km:24,vert:1200,hrs:4},
-    {day:'Sun',label:'Back-to-Back Long Run',type:'long',detail:'26km. Highest volume weekend. Gut and nutrition fully rehearsed.',km:26,vert:650,hrs:3.5},
-  ]},
-  {week:8,days:[
-    {day:'Mon',label:'Upper Body Strength',type:'strength',detail:'Maintain load. No increases during peak.',km:0,vert:0,hrs:1},
-    {day:'Tue',label:'Sustained Threshold',type:'intervals',detail:'2x20min at 153-158bpm. 5min jog recovery.',km:12,vert:250,hrs:1.5},
-    {day:'Wed',label:'Single-Leg Strength + Treadmill Climb',type:'strength',detail:'Squat maintain 115kg. 90min climb. Race specificity is everything.',km:6,vert:700,hrs:2},
-    {day:'Thu',label:'17km Trail',type:'easy',detail:'Zone 2. Poles mandatory from here. 400m+ vert.',km:17,vert:450,hrs:2},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'Easy 30-40min.',km:6,vert:50,hrs:0.5},
-    {day:'Sat',label:'Race Simulation - Climb',type:'long',detail:'26km / 1100m vert. Final 2hrs at race effort - simulate UTMB pacing.',km:26,vert:1200,hrs:4},
-    {day:'Sun',label:'Back-to-Back Long Run',type:'long',detail:'26-28km. Extended fatigue resistance. Gut under fatigue.',km:27,vert:700,hrs:4},
-  ]},
-  {week:9,days:[
-    {day:'Mon',label:'Upper Body Strength',type:'strength',detail:'Full session.',km:0,vert:0,hrs:1},
-    {day:'Tue',label:'VO2 Work',type:'intervals',detail:'6x4min hard. Full recovery. Last big interval session.',km:12,vert:300,hrs:1.5},
-    {day:'Wed',label:'Single-Leg Strength + Treadmill Climb',type:'strength',detail:'Squat at 110kg - slight back-off. 90min climb.',km:6,vert:700,hrs:2},
-    {day:'Thu',label:'17km Trail',type:'easy',detail:'Zone 2. Poles. Race-day nutrition timing rehearsal.',km:17,vert:450,hrs:2},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'30min easy.',km:6,vert:50,hrs:0.5},
-    {day:'Sat',label:'Peak Vert Day',type:'long',detail:'1100m+ vert. Blackheath. Longest sustained uphill of the block.',km:24,vert:1300,hrs:4},
-    {day:'Sun',label:'Back-to-Back Long Run',type:'long',detail:'28km. Hold race effort for final 10km despite fatigue.',km:28,vert:750,hrs:4},
-  ]},
-  {week:10,days:[
-    {day:'Mon',label:'Upper Body Strength',type:'strength',detail:'Maintenance only. Last hard strength week.',km:0,vert:0,hrs:1},
-    {day:'Tue',label:'Race-Pace Intervals',type:'intervals',detail:'3x15min at race effort. 3min rest. Confidence session.',km:12,vert:250,hrs:1.5},
-    {day:'Wed',label:'Single-Leg Strength + Treadmill Climb',type:'strength',detail:'Squat 100-105kg. 75min climb - last big treadmill session.',km:6,vert:650,hrs:2},
-    {day:'Thu',label:'17km Trail',type:'easy',detail:'Zone 2 + uphill race surges. Poles throughout.',km:17,vert:450,hrs:2},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'Easy 30min. Big weekend ahead.',km:6,vert:50,hrs:0.5},
-    {day:'Sat',label:'UTK100 C-Race',type:'race',detail:'25km net downhill C race. Execute as long training run - first 10km conservative.',km:25,vert:500,hrs:3},
-    {day:'Sun',label:'Easy Flush Run',type:'easy',detail:'20-25km easy post-race. Legs assessment for taper entry.',km:22,vert:400,hrs:2.5},
-  ]},
-  {week:11,days:[
-    {day:'Mon',label:'Upper Body Strength - Light',type:'strength',detail:'60% load. Maintain movement patterns only.',km:0,vert:0,hrs:0.5},
-    {day:'Tue',label:'Short Sharpener',type:'intervals',detail:'4x2min at race effort. Short, sharp, no fatigue accumulation.',km:8,vert:100,hrs:1},
-    {day:'Wed',label:'Single-Leg Strength - Maintenance',type:'strength',detail:'Squat max 90kg. 45min treadmill easy.',km:4,vert:250,hrs:1},
-    {day:'Thu',label:'12km Easy Trail',type:'easy',detail:'Zone 2 only. Poles. Begin visualisation practice.',km:12,vert:200,hrs:1.5},
-    {day:'Fri',label:'Shakeout',type:'easy',detail:'25-30min easy.',km:5,vert:50,hrs:0.5},
-    {day:'Sat',label:'Moderate Climb',type:'long',detail:'600-700m vert / 18km. Easy. Last meaningful vert.',km:18,vert:650,hrs:2.5},
-    {day:'Sun',label:'Easy Long Run',type:'long',detail:'20-22km easy. Gut practice one final time.',km:21,vert:400,hrs:2.5},
-  ]},
-  {week:12,days:[
-    {day:'Mon',label:'Upper Body - Very Light',type:'strength',detail:'30min. Bodyweight or very light load. Movement only.',km:0,vert:0,hrs:0.5},
-    {day:'Tue',label:'Race-Feel Strides',type:'intervals',detail:'20min easy + 6 strides. Legs should feel snappy.',km:5,vert:50,hrs:0.5},
-    {day:'Wed',label:'Easy Movement',type:'easy',detail:'30min walk/easy jog. Gear check day.',km:4,vert:30,hrs:0.5},
-    {day:'Thu',label:'10km Easy',type:'easy',detail:'Zone 1-2. Last run before travel.',km:10,vert:100,hrs:1},
-    {day:'Fri',label:'Travel Day',type:'rest',detail:'Fly to Chamonix. Arrive Aug 26. Walk the village.',km:2,vert:0,hrs:0},
-    {day:'Sat',label:'Chamonix Shakeout',type:'easy',detail:'20-25min easy in Chamonix. Recce start area. Stay flat.',km:4,vert:80,hrs:0.5},
-    {day:'Sun',label:'Race Day',type:'race',detail:'Execute the plan. First 45km conservative. 80-85g/hr carbs. Hike all major climbs.',km:173,vert:10000,hrs:22},
-  ]},
-];
-
+// BASE_PLAN: empty day slots. Sessions only populate from TP iCal import or manual edits.
+const DAYS_OF_WEEK=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function makeEmptyWeek(wNum){
+  return {week:wNum,days:DAYS_OF_WEEK.map(day=>({day,label:'',type:'easy',detail:'',km:0,vert:0,hrs:0}))};
+}
+const BASE_PLAN=Array.from({length:12},(_,i)=>makeEmptyWeek(i+1));
 const DEF_TARGETS = [
   {week:1,type:'RECOVERY',km:75,vert:2750,hrs:10},
   {week:2,type:'RECOVERY',km:75,vert:2750,hrs:10},
@@ -224,7 +122,14 @@ function save(key, val){ S.set(key,val); }
 // ============================================================
 // HELPERS
 // ============================================================
-function today(){ return new Date().toISOString().split('T')[0]; }
+// Always use local date string to avoid UTC timezone shift (critical for AEST +10)
+function localDateStr(d){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const dy=String(d.getDate()).padStart(2,'0');
+  return y+'-'+m+'-'+dy;
+}
+function today(){ return localDateStr(new Date()); }
 
 // Find the Monday on or before a given date — this is the true week anchor
 function getBlockMonday(){
@@ -273,8 +178,16 @@ function fmtToday(){
   return days[d.getDay()]+' '+d.getDate()+' '+months[d.getMonth()]+' '+d.getFullYear();
 }
 
-// Get the actual calendar date for a plan slot (wIdx, day name)
+// Get the actual calendar date string (YYYY-MM-DD) for a plan slot — uses local time
 function slotDate(wIdx, dayName){
+  const {mon}=weekDates(wIdx);
+  const targetDow={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6}[dayName]??0;
+  const d=new Date(mon);
+  d.setDate(mon.getDate()+targetDow);
+  return localDateStr(d);
+}
+// Same but returns a Date object (for fmtDate display)
+function slotDateObj(wIdx, dayName){
   const {mon}=weekDates(wIdx);
   const targetDow={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6}[dayName]??0;
   const d=new Date(mon);
@@ -312,7 +225,42 @@ function getSession(wIdx,dIdx){
   if(!base) return null;
   return Object.assign({},base,EDITS['w'+wIdx+'-d'+dIdx]||{});
 }
-function getRunLog(wIdx,dIdx){ return RUNS['w'+wIdx+'-d'+dIdx]||null; }
+// Returns array of activities for a day (always an array, never null)
+function getDayActivities(wIdx,dIdx){
+  const v=RUNS['w'+wIdx+'-d'+dIdx];
+  if(!v) return [];
+  // Migrate legacy single-object format to array
+  if(!Array.isArray(v)) return [v];
+  return v;
+}
+// Save activities array for a day
+function saveDayActivities(wIdx,dIdx,activities){
+  RUNS['w'+wIdx+'-d'+dIdx]=activities;
+  S.set(SK.runs,RUNS);
+}
+// Compat shim — returns first completed activity (for fatigue/RPE lookups)
+function getRunLog(wIdx,dIdx){
+  const acts=getDayActivities(wIdx,dIdx);
+  return acts.find(a=>a.completed)||acts[0]||null;
+}
+// Sum km/vert/hrs across activities whose type is in CFG.countTypes
+function getDayTotals(wIdx,dIdx){
+  const countTypes=CFG.countTypes||DEFAULT_COUNT_TYPES;
+  return getDayActivities(wIdx,dIdx)
+    .filter(a=>a.completed && countTypes.includes(a.type||'easy'))
+    .reduce((acc,a)=>{
+      acc.km+=parseFloat(a.actualKm||0);
+      acc.vert+=parseFloat(a.actualVert||0);
+      acc.hrs+=parseFloat(a.actualHrs||0);
+      return acc;
+    },{km:0,vert:0,hrs:0});
+}
+// Is any activity on this day completed?
+function isDayDone(wIdx,dIdx){
+  return getDayActivities(wIdx,dIdx).some(a=>a.completed);
+}
+// Generate a unique id for a new activity
+function newActId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
 function dowIndex(day){ return {Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6,Sun:0}[day]??-1; }
 
 function scoreHRV(v){
@@ -343,7 +291,7 @@ function getFatigueLoad(){
   const plan=getPlan();
   for(let daysAgo=1;daysAgo<=7;daysAgo++){
     const d=new Date(); d.setDate(d.getDate()-daysAgo); d.setHours(0,0,0,0);
-    const dateStr=d.toISOString().split('T')[0];
+    const dateStr=localDateStr(d);
     const w=weights[daysAgo-1];
     // Check daily log RPE first
     const logEntry=LOG[dateStr];
@@ -353,8 +301,7 @@ function getFatigueLoad(){
       continue;
     }
     // Fall back to run log perf for that date
-    const diffDays=Math.floor((d-getBlockMonday())/(86400000));
-    if(diffDays>=0){
+    const diffDays=Math.floor((d-getBlockMonday())/(86400000));    if(diffDays>=0){
       const wIdx=Math.floor(diffDays/7);
       const dow=d.getDay();
       if(plan[wIdx]){
@@ -428,17 +375,35 @@ function guessTypeFromSummary(s){
   if(t.includes('strength')||t.includes('gym')||t.includes('squat')||t.includes('upper')||t.includes('lower')||t.includes('weights')) return 'strength';
   return 'easy';
 }
+function parseTPDescription(desc){
+  // Unescape literal \n sequences from iCal
+  const d = desc.replace(/\\n/g,'\n').replace(/\\,/g,',');
+  const result = {};
+
+  // Planned Time: H:MM or HH:MM
+  const pt = d.match(/Planned Time:\s*(\d+):(\d+)/);
+  if(pt) result.hrs = Math.round((parseInt(pt[1]) + parseInt(pt[2])/60) * 100) / 100;
+
+  // Distance Planned: X km
+  const dp = d.match(/Distance Planned:\s*([\d.]+)\s*km/i);
+  if(dp) result.km = parseFloat(dp[1]);
+
+  // Workout type (used for type inference)
+  const wt = d.match(/Workout type:\s*([^\n]+)/);
+  if(wt) result.workoutType = wt[1].trim();
+
+  return result;
+}
 function applyICSToEdits(icsText){
   const events=parseICS(icsText);
   if(!events.length) return {ok:false,msg:'No events found in calendar data.'};
   const plan=getPlan();
 
-  // Build date lookup using Monday-anchored slotDate()
+  // Build date lookup using Monday-anchored slotDate() - returns local date string
   const dateLookup={};
   plan.forEach((wk,wIdx)=>{
     wk.days.forEach((d,dIdx)=>{
-      const sd=slotDate(wIdx,d.day);
-      const dateStr=sd.toISOString().split('T')[0];
+      const dateStr=slotDate(wIdx,d.day);
       dateLookup[dateStr]={wIdx,dIdx};
     });
   });
@@ -462,9 +427,24 @@ function applyICSToEdits(icsText){
     const training=evs.filter(e=>!skip.some(s=>e.summary.toLowerCase().includes(s)));
     const use=training.length?training:evs;
     const label=use.map(e=>e.summary).join(' + ');
-    const detail=use.map(e=>e.description).filter(Boolean).join(' | ')||base.detail;
+    const rawDetail=use.map(e=>e.description).filter(Boolean).join(' | ')||base.detail;
     const type=guessTypeFromSummary(use[0].summary);
-    newEdits['w'+wIdx+'-d'+dIdx]={label,type,detail,km:base.km,vert:base.vert,hrs:base.hrs};
+
+    // Parse planned metrics from TP description fields
+    let km=base.km, hrs=base.hrs;
+    let totalKm=0, totalHrs=0, hasKm=false, hasHrs=false;
+    use.forEach(e=>{
+      const m=parseTPDescription(e.description||'');
+      if(m.km!=null){ totalKm+=m.km; hasKm=true; }
+      if(m.hrs!=null){ totalHrs+=m.hrs; hasHrs=true; }
+    });
+    if(hasKm) km=Math.round(totalKm*10)/10;
+    if(hasHrs) hrs=Math.round(totalHrs*100)/100;
+
+    // Auto-upgrade to long if km > 15
+    const finalType = km>15 && type==='easy' ? 'long' : type;
+
+    newEdits['w'+wIdx+'-d'+dIdx]={label, type:finalType, detail:rawDetail, km, vert:base.vert, hrs};
     matched++;
   });
   EDITS=newEdits; S.set(SK.edits,EDITS);
@@ -587,37 +567,164 @@ function selField(labelText,val,opts,cb){
 // ============================================================
 // CSV / EXPORT
 // ============================================================
+
+// Activity type key (used in legend and import validation)
+const TYPE_KEY = {
+  strength: 'Gym / weights / strength',
+  intervals: 'Speed / intervals / threshold / hill reps',
+  easy:      'Easy run / recovery / Z2',
+  long:      'Long run (auto-set if km > 15)',
+  race:      'Race or time trial',
+  rest:      'Rest / travel / off day',
+  walk:      'Walk',
+  sauna:     'Sauna / heat session',
+  other:     'Other / cross training',
+};
+
 function planToCSV(){
   const plan=getPlan();
-  const rows=['week,day,label,type,km,vert,hrs,detail'];
+
+  // Legend block at top so blank-plan users understand the format
+  const legend=[
+    '# TRAINING OS - PLAN EXPORT',
+    '# Generated: '+new Date().toLocaleString(),
+    '# Race: '+CFG.raceName+' ('+CFG.raceDateStr+')',
+    '# Block start (Monday): '+localDateStr(getBlockMonday()),
+    '#',
+    '# HOW TO USE:',
+    '# - Edit session rows below in Numbers / Excel / Google Sheets',
+    '# - Keep the header row (week,date,day,...) intact',
+    '# - Leave blank rows as-is for rest days, or fill them in',
+    '# - Import back via Settings > Plan Export / Import',
+    '#',
+    '# ACTIVITY TYPES (use exactly as shown in the "type" column):',
+    ...Object.entries(TYPE_KEY).map(([k,v])=>'#   '+k.padEnd(12)+' = '+v),
+    '#',
+    '# WEEK TYPES: RECOVERY | BUILD | SHARPEN | DELOAD | RACE',
+    '#',
+  ];
+
+  // Column header
+  const header='week,date,day,week_type,session_name,type,km,vert_m,hrs,notes';
+
+  const rows=[];
   plan.forEach((wk,wIdx)=>{
-    wk.days.forEach((_,dIdx)=>{
-      const s=getSession(wIdx,dIdx)||wk.days[dIdx];
-      rows.push([wIdx+1,s.day,'"'+s.label+'"',s.type,s.km,s.vert,s.hrs,'"'+(s.detail||'').replace(/"/g,"'")+'"'].join(','));
+    const t=TARGETS[wIdx]||{};
+    wk.days.forEach((d,dIdx)=>{
+      const s=getSession(wIdx,dIdx)||d;
+      const dateStr=slotDate(wIdx,d.day);
+      const hasContent=s.label&&s.label.trim()!=='';
+      rows.push([
+        wIdx+1,
+        dateStr,
+        d.day,
+        t.type||'BUILD',
+        '"'+(s.label||'').replace(/"/g,"'")+'"',
+        hasContent?s.type:'',
+        hasContent?(s.km||0):'',
+        hasContent?(s.vert||0):'',
+        hasContent?(s.hrs||0):'',
+        '"'+(s.detail||'').replace(/"/g,"'")+'"',
+      ].join(','));
     });
+    // Blank separator row between weeks
+    rows.push('');
   });
-  return rows.join('\n');
+
+  return [...legend, header, ...rows].join('\n');
 }
+
 function csvToEdits(csv){
   const plan=getPlan();
-  const lines=csv.trim().split('\n');
+  // Strip comment lines and blanks
+  const lines=csv.split('\n').filter(l=>l.trim()&&!l.trim().startsWith('#'));
+  if(!lines.length) return {};
+
+  // Find header row
+  const headerIdx=lines.findIndex(l=>l.toLowerCase().includes('week')&&l.toLowerCase().includes('date')&&l.toLowerCase().includes('day'));
+  const startIdx=headerIdx>=0?headerIdx+1:1;
+
   const edits={};
-  for(let i=1;i<lines.length;i++){
-    const cols=lines[i].match(/(".*?"|[^,]+)/g);
-    if(!cols||cols.length<7) continue;
-    const wk=parseInt(cols[0]), day=(cols[1]||'').trim();
-    const label=(cols[2]||'').replace(/^"|"$/g,'').trim();
-    const type=(cols[3]||'').trim();
-    const km=parseFloat(cols[4])||0, vert=parseFloat(cols[5])||0, hrs=parseFloat(cols[6])||0;
-    const detail=(cols[7]||'').replace(/^"|"$/g,'').trim();
+  let importedCount=0;
+
+  for(let i=startIdx;i<lines.length;i++){
+    const line=lines[i].trim();
+    if(!line) continue;
+
+    // Parse CSV respecting quoted fields
+    const cols=[];
+    let cur='', inQ=false;
+    for(let c=0;c<line.length;c++){
+      const ch=line[c];
+      if(ch==='"'){ inQ=!inQ; }
+      else if(ch===','&&!inQ){ cols.push(cur.trim()); cur=''; }
+      else { cur+=ch; }
+    }
+    cols.push(cur.trim());
+
+    if(cols.length<3) continue;
+
+    // Support both old format (week,day,...) and new (week,date,day,...)
+    let wk, dateStr, dayName, weekType, label, type, km, vert, hrs, detail;
+
+    const hasDate=cols[1]&&cols[1].match(/^\d{4}-\d{2}-\d{2}$/);
+    if(hasDate){
+      // New format: week,date,day,week_type,session_name,type,km,vert_m,hrs,notes
+      wk=parseInt(cols[0]);
+      dateStr=cols[1];
+      dayName=cols[2];
+      weekType=(cols[3]||'').toUpperCase();
+      label=(cols[4]||'').replace(/^"|"$/g,'').trim();
+      type=(cols[5]||'easy').trim().toLowerCase()||'easy';
+      km=parseFloat(cols[6])||0;
+      vert=parseFloat(cols[7])||0;
+      hrs=parseFloat(cols[8])||0;
+      detail=(cols[9]||'').replace(/^"|"$/g,'').trim();
+    } else {
+      // Old format: week,day,label,type,km,vert,hrs,detail
+      wk=parseInt(cols[0]);
+      dayName=cols[1];
+      label=(cols[2]||'').replace(/^"|"$/g,'').trim();
+      type=(cols[3]||'easy').trim().toLowerCase()||'easy';
+      km=parseFloat(cols[4])||0;
+      vert=parseFloat(cols[5])||0;
+      hrs=parseFloat(cols[6])||0;
+      detail=(cols[7]||'').replace(/^"|"$/g,'').trim();
+    }
+
+    if(!label) continue; // skip empty sessions
+
+    // Auto-upgrade type to long if km > 15
+    if(km>15&&type==='easy') type='long';
+
+    // Validate type
+    if(!TYPE_KEY[type]) type='easy';
+
     const wIdx=wk-1;
     if(!plan[wIdx]) continue;
-    const dIdx=plan[wIdx].days.findIndex(d=>d.day===day);
+
+    // Match by date string first (most accurate), fall back to day name
+    let dIdx=-1;
+    if(dateStr){
+      dIdx=plan[wIdx].days.findIndex((_,di)=>slotDate(wIdx,plan[wIdx].days[di].day)===dateStr);
+    }
+    if(dIdx<0) dIdx=plan[wIdx].days.findIndex(d=>d.day===dayName);
     if(dIdx<0) continue;
-    edits['w'+wIdx+'-d'+dIdx]={label,type,km,vert,hrs,detail};
+
+    // Apply week type to TARGETS if present
+    if(weekType&&WEEK_TYPES.includes(weekType)&&TARGETS[wIdx]){
+      TARGETS[wIdx]={...TARGETS[wIdx],type:weekType};
+    }
+
+    edits['w'+wIdx+'-d'+dIdx]={label,type,detail,km,vert,hrs};
+    importedCount++;
   }
-  return edits;
+
+  // Save updated targets if week types were in the CSV
+  S.set(SK.targets,TARGETS);
+  return {edits,importedCount};
 }
+
 function download(content,filename,mime){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([content],{type:mime}));
@@ -825,14 +932,14 @@ function renderToday(){
   // Pre-populate RPE from yesterday's logged session if not already saved today
   if(!saved.rpe){
     const yd=new Date(); yd.setDate(yd.getDate()-1);
-    const ydStr=yd.toISOString().split('T')[0];
+    const ydStr=localDateStr(yd);
     // Check yesterday's daily log first
     if(LOG[ydStr]?.rpe) rpe=LOG[ydStr].rpe;
     else {
       // Fall back to yesterday's run log perf rating as a proxy
       const ydDow=yd.getDay();
       const ydPlan=getPlan();
-      const ydWIdx=Math.max(0,Math.floor((yd-new Date(CFG.blockStartStr+'T00:00:00'))/(7*86400000)));
+      const ydWIdx=Math.max(0,Math.floor((yd-getBlockMonday())/(7*86400000)));
       if(ydPlan[ydWIdx]){
         const ydDIdx=ydPlan[ydWIdx].days.findIndex(d=>dowIndex(d.day)===ydDow);
         if(ydDIdx>=0){
@@ -885,50 +992,73 @@ function renderToday(){
 }
 
 // ============================================================
-// RUN MODAL
+// ACTIVITY MODAL (per-activity log within a day)
 // ============================================================
-function showRunModal(wIdx,dIdx,session,existing){
+function showActivityModal(wIdx, dIdx, aIdx, planSession){
+  const activities=getDayActivities(wIdx,dIdx);
+  const existing=activities[aIdx]||{};
   const overlay=div({class:'modal-bg',onclick:e=>{if(e.target===overlay)overlay.remove();}});
   const sheet=div({class:'modal'});
   sheet.appendChild(div({class:'modal-handle'}));
 
-  const tc=TC[session.type]||'#555';
-  const hdr=div({class:'flex',style:{marginBottom:'16px'}});
-  hdr.appendChild(span({style:{fontSize:'9px',background:tc,color:'#000',padding:'2px 6px',borderRadius:'3px',fontWeight:'700'}},TL[session.type]||'--'));
-  hdr.appendChild(span({style:{fontSize:'14px',color:'#e0e0ff',fontWeight:'700'}},session.label));
-  sheet.appendChild(hdr);
+  // Activity label + type (editable)
+  let label=existing.label||planSession?.label||'';
+  let type=existing.type||planSession?.type||'easy';
+  let akm=existing.actualKm||'';
+  let avert=existing.actualVert||'';
+  let ahrs=existing.actualHrs||'';
+  let perf=existing.perf||'';
+  let exec=existing.exec||'';
+  let note=existing.note||'';
 
-  let akm=existing?.actualKm||'', avert=existing?.actualVert||'', ahrs=existing?.actualHrs||'';
-  let perf=existing?.perf||'', exec=existing?.exec||'', note=existing?.note||'';
+  const tc=()=>TC[type]||'#555';
+
+  // Header
+  const hdrDiv=div({style:{marginBottom:'14px'}});
+  const labelI=inp({class:'inp',type:'text',value:label,placeholder:'Activity name'});
+  labelI.addEventListener('input',()=>label=labelI.value);
+  hdrDiv.appendChild(div({},[lbl('Activity name'),labelI]));
+  sheet.appendChild(hdrDiv);
+
+  // Type selector
+  const typeDiv=div({style:{marginBottom:'14px'}});
+  typeDiv.appendChild(lbl('Type'));
+  const typeBtns=div({style:{display:'flex',gap:'5px',flexWrap:'wrap'}});
+  const typeBtnEls={};
+  ALL_TYPES.forEach(t=>{
+    const b=btn({style:{padding:'5px 8px',borderRadius:'4px',fontSize:'9px',
+      background:type===t?TC[t]+'30':'#0a0a18',border:'1px solid '+(type===t?TC[t]:'#2a2a4a'),color:type===t?TC[t]:'#555'},
+      onclick:()=>{
+        type=t;
+        ALL_TYPES.forEach(tt=>{
+          const bb=typeBtnEls[tt];
+          if(bb){ bb.style.background=tt===t?TC[tt]+'30':'#0a0a18'; bb.style.borderColor=tt===t?TC[tt]:'#2a2a4a'; bb.style.color=tt===t?TC[tt]:'#555'; }
+        });
+      }},TL[t]||t.toUpperCase());
+    typeBtnEls[t]=b;
+    typeBtns.appendChild(b);
+  });
+  typeDiv.appendChild(typeBtns);
+  sheet.appendChild(typeDiv);
 
   // Planned vs actual
-  const pvA=card([
-    div({style:{display:'flex',gap:'0'}},[
-      div({style:{flex:'1',paddingRight:'12px'}},[
-        span({class:'lbl',style:{marginBottom:'6px',display:'block'}},'PLANNED'),
-        div({style:{fontSize:'12px',color:'#4a4a6a'}},[
-          div({},session.km+'km'),
-          div({},session.vert+'m'),
-          div({},session.hrs+'hr'),
-        ]),
-      ]),
-      div({style:{flex:'1',paddingLeft:'12px',borderLeft:'1px solid #1c1c2e'}},[
-        span({class:'lbl',style:{marginBottom:'6px',display:'block'}},'ACTUAL'),
-      ]),
-    ]),
-  ],{marginBottom:'14px'});
+  if(planSession?.km||planSession?.vert||planSession?.hrs){
+    sheet.appendChild(div({style:{display:'flex',gap:'14px',marginBottom:'8px',padding:'8px',background:'#0a0a18',borderRadius:'6px'}},[
+      span({style:{fontSize:'9px',color:'#333'}},'PLANNED:'),
+      span({style:{fontSize:'10px',color:'#444'}},planSession.km+'km'),
+      span({style:{fontSize:'10px',color:'#444'}},planSession.vert+'m'),
+      span({style:{fontSize:'10px',color:'#444'}},planSession.hrs+'hr'),
+    ]));
+  }
 
-  // Add actual inputs into the right column
-  const rightCol=pvA.querySelector('div>div:last-child');
-  [['km',akm,v=>akm=v,session.km],['m',avert,v=>avert=v,session.vert],['hr',ahrs,v=>ahrs=v,session.hrs]].forEach(([u,val,cb,ph])=>{
-    const row=div({style:{display:'flex',alignItems:'center',gap:'4px',marginBottom:'4px'}});
-    const i=inp({type:'number',value:val,placeholder:ph,style:{width:'56px',background:'#131325',border:'1px solid #22223a',color:'#e0e0ff',padding:'4px 6px',borderRadius:'4px',fontSize:'11px',outline:'none'}});
+  // Actual inputs
+  const actGrid=div({class:'grid3',style:{marginBottom:'12px'}});
+  [['km',akm,v=>akm=v,'km'],['m',avert,v=>avert=v,'m'],['hr',ahrs,v=>ahrs=v,'hr']].forEach(([unit,val,cb,u])=>{
+    const i=inp({type:'number',value:val,placeholder:'0',style:{background:'#0e0e1f',border:'1px solid #22223a',color:'#e0e0ff',padding:'7px 8px',borderRadius:'5px',fontSize:'13px',outline:'none',width:'100%'}});
     i.addEventListener('input',()=>cb(i.value));
-    row.appendChild(i);
-    row.appendChild(span({style:{fontSize:'10px',color:'#4a4a6a'}},u));
-    rightCol.appendChild(row);
+    actGrid.appendChild(div({},[lbl(u),i]));
   });
-  sheet.appendChild(pvA);
+  sheet.appendChild(actGrid);
 
   const rGrid=div({class:'grid2',style:{marginBottom:'12px'}});
   rGrid.appendChild(selField('Performance',perf,[{v:'5',l:'5 Exceeded'},{v:'4',l:'4 Solid'},{v:'3',l:'3 Met plan'},{v:'2',l:'2 Below'},{v:'1',l:'1 Poor'}],v=>perf=v));
@@ -937,15 +1067,22 @@ function showRunModal(wIdx,dIdx,session,existing){
 
   const noteWrap=div({style:{marginBottom:'14px'}});
   noteWrap.appendChild(lbl('Note'));
-  const ta=el('textarea',{class:'inp',rows:'2',placeholder:'How did it feel? Anything to flag...'},note);
+  const ta=el('textarea',{class:'inp',rows:'2',placeholder:'How did it feel?'},note);
   ta.addEventListener('input',()=>note=ta.value);
   noteWrap.appendChild(ta);
   sheet.appendChild(noteWrap);
 
   const btnRow=div({style:{display:'flex',gap:'8px'}});
   const saveBtn=btn({class:'btn btn-ok',style:{flex:'1'},onclick:()=>{
-    const data={actualKm:akm,actualVert:avert,actualHrs:ahrs,perf,exec,note,completed:true,ts:Date.now()};
-    RUNS['w'+wIdx+'-d'+dIdx]=data; S.set(SK.runs,RUNS);
+    const updated=[...getDayActivities(wIdx,dIdx)];
+    updated[aIdx]={
+      id:existing.id||newActId(),
+      label, type,
+      actualKm:akm, actualVert:avert, actualHrs:ahrs,
+      perf, exec, note,
+      completed:true, ts:Date.now()
+    };
+    saveDayActivities(wIdx,dIdx,updated);
     overlay.remove(); render();
   }},'SAVE');
   const closeBtn=btn({class:'btn-sm btn-ghost',onclick:()=>overlay.remove()},'Close');
@@ -954,6 +1091,21 @@ function showRunModal(wIdx,dIdx,session,existing){
 
   overlay.appendChild(sheet);
   document.body.appendChild(overlay);
+}
+
+// ============================================================
+// RUN MODAL — now wraps showActivityModal for TODAY tab compat
+// ============================================================
+// ============================================================
+function showRunModal(wIdx,dIdx,session,existing){
+  // If no activities yet, create one seeded from plan session
+  const activities=getDayActivities(wIdx,dIdx);
+  if(activities.length===0){
+    const newAct={id:newActId(),label:session?.label||'',type:session?.type||'easy',
+      actualKm:'',actualVert:'',actualHrs:'',perf:'',exec:'',note:'',completed:false,ts:Date.now()};
+    saveDayActivities(wIdx,dIdx,[newAct]);
+  }
+  showActivityModal(wIdx,dIdx,0,session);
 }
 
 // ============================================================
@@ -1039,8 +1191,9 @@ function renderPlan(){
 
   // Actuals
   const actuals=week.days.reduce((acc,_,dIdx)=>{
-    const r=getRunLog(wIdx,dIdx);
-    if(r?.completed){acc.km+=parseFloat(r.actualKm||0);acc.vert+=parseFloat(r.actualVert||0);acc.hrs+=parseFloat(r.actualHrs||0);acc.done++;}
+    const t=getDayTotals(wIdx,dIdx);
+    acc.km+=t.km; acc.vert+=t.vert; acc.hrs+=t.hrs;
+    if(isDayDone(wIdx,dIdx)) acc.done++;
     return acc;
   },{km:0,vert:0,hrs:0,done:0});
 
@@ -1076,29 +1229,51 @@ function renderPlan(){
   // Sessions
   week.days.forEach((_,dIdx)=>{
     const s=getSession(wIdx,dIdx);
-    const rl=getRunLog(wIdx,dIdx);
+    const activities=getDayActivities(wIdx,dIdx);
+    const dayDone=isDayDone(wIdx,dIdx);
+    const totals=getDayTotals(wIdx,dIdx);
     const isEdited=!!EDITS['w'+wIdx+'-d'+dIdx];
     const isExp=EXPANDED_DAY===dIdx, isEdit=EDITING_DAY===dIdx;
-    const done=rl?.completed;
     const tc=TC[s.type]||'#555';
+    const dateStr=slotDate(wIdx,s.day);
+
+    // Collapsed row — show first/main activity label, day totals
+    const firstAct=activities[0];
+    const mainLabel=firstAct?.label||s.label||'';
+    const showLabel=mainLabel||s.day;
 
     const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'10px 12px',
-      background:isExp?'#111128':done?'#0a120a':'#0a0a1a',
-      border:'1px solid '+(isExp?tc+'50':done?'#00ff8725':'#1c1c2e'),
+      background:isExp?'#111128':dayDone?'#0a120a':'#0a0a1a',
+      border:'1px solid '+(isExp?tc+'50':dayDone?'#00ff8725':'#1c1c2e'),
       borderRadius:isExp?'8px 8px 0 0':'8px',display:'flex',alignItems:'center',gap:'8px',marginBottom:isExp?'0':'6px'},
       onclick:()=>{if(isEdit)return;EXPANDED_DAY=isExp?null:dIdx;if(!isExp)EDITING_DAY=null;render();}});
 
-    if(done){
-      rowBtn.appendChild(span({style:{fontSize:'12px',color:'#00ff87',minWidth:'18px'}},'OK'));
+    // Status / type badge
+    if(dayDone){
+      rowBtn.appendChild(span({style:{fontSize:'11px',color:'#00ff87',minWidth:'18px'}},'✓'));
     } else {
       rowBtn.appendChild(span({class:'badge',style:{background:tc}},TL[s.type]||'--'));
     }
     rowBtn.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',minWidth:'26px'}},s.day));
-    rowBtn.appendChild(span({style:{fontSize:'9px',color:'#333',marginRight:'2px'}},fmtDate(slotDate(wIdx,s.day))));
-    rowBtn.appendChild(span({style:{fontSize:'12px',color:done?'#55efc4':'#c0c0e0',flex:'1'}},s.label));
-    rowBtn.appendChild(span({style:{fontSize:'9px',color:'#333'}},s.km>0?s.km+'k':''+(s.vert>0?' ^'+s.vert:'')));
+    rowBtn.appendChild(span({style:{fontSize:'9px',color:'#333',marginRight:'2px'}},fmtDate(slotDateObj(wIdx,s.day))));
+    rowBtn.appendChild(span({style:{fontSize:'12px',color:dayDone?'#55efc4':'#c0c0e0',flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},showLabel||'Rest'));
+
+    // Day totals (if any activity logged)
+    if(dayDone && (totals.km>0||totals.hrs>0)){
+      rowBtn.appendChild(span({style:{fontSize:'9px',color:'#555',whiteSpace:'nowrap'}},
+        (totals.km>0?totals.km.toFixed(1)+'k ':'')+
+        (totals.hrs>0?totals.hrs.toFixed(1)+'h':'')
+      ));
+    } else if(!dayDone && s.km>0){
+      rowBtn.appendChild(span({style:{fontSize:'9px',color:'#333'}},s.km+'k'));
+    }
+
+    // Activity count bubble if multiple
+    if(activities.length>1){
+      rowBtn.appendChild(span({style:{fontSize:'9px',background:'#2a2a4a',color:'#888',padding:'1px 5px',borderRadius:'8px'}},activities.length+''));
+    }
     if(isEdited) rowBtn.appendChild(span({style:{fontSize:'8px',color:'#555'}},'ED'));
-    rowBtn.appendChild(span({style:{fontSize:'10px',color:'#333'}},isExp?'^':'v'));
+    rowBtn.appendChild(span({style:{fontSize:'10px',color:'#333'}},isExp?'▲':'▼'));
     wrap.appendChild(rowBtn);
 
     if(isExp){
@@ -1106,40 +1281,84 @@ function renderPlan(){
 
       if(!isEdit){
         const pd=div({style:{padding:'12px'}});
-        pd.appendChild(div({style:{display:'flex',gap:'14px',marginBottom:'8px'}},[
-          span({style:{fontSize:'11px',color:'#555'}},s.km+'km'),
-          span({style:{fontSize:'11px',color:'#555'}},s.vert+'m'),
-          span({style:{fontSize:'11px',color:'#555'}},s.hrs+'hr'),
-        ]));
-        pd.appendChild(div({style:{fontSize:'11px',color:'#aaa',lineHeight:'1.7',marginBottom:'10px'}},s.detail));
 
-        if(done&&rl){
-          const actBox=div({style:{padding:'8px 10px',background:'#0a1a0a',border:'1px solid #00ff8720',borderRadius:'6px',marginBottom:'10px'}});
-          actBox.appendChild(div({style:{display:'flex',gap:'14px',marginBottom:'4px'}},[
-            span({style:{fontSize:'11px',color:'#00ff87'}},(rl.actualKm||'?')+'km'),
-            span({style:{fontSize:'11px',color:'#00ff87'}},(rl.actualVert||'?')+'m'),
-            span({style:{fontSize:'11px',color:'#00ff87'}},(rl.actualHrs||'?')+'hr'),
-            span({style:{fontSize:'10px',color:'#555',marginLeft:'auto'}},'P:'+(rl.perf||'?')+' E:'+(rl.exec||'?')),
+        // Planned session info
+        if(s.label){
+          pd.appendChild(div({style:{display:'flex',gap:'12px',marginBottom:'6px'}},[
+            span({style:{fontSize:'10px',color:'#333'}},'PLANNED:'),
+            span({style:{fontSize:'10px',color:'#555'}},s.km+'km'),
+            span({style:{fontSize:'10px',color:'#555'}},s.vert+'m'),
+            span({style:{fontSize:'10px',color:'#555'}},s.hrs+'hr'),
           ]));
-          if(rl.note) actBox.appendChild(div({style:{fontSize:'10px',color:'#666',marginBottom:'6px'}},rl.note));
-          pd.appendChild(actBox);
+          pd.appendChild(div({style:{fontSize:'11px',color:'#555',lineHeight:'1.6',marginBottom:'12px',paddingBottom:'10px',borderBottom:'1px solid #1a1a2e'}},s.detail));
         }
 
+        // Activity list
+        activities.forEach((act,aIdx)=>{
+          const atc=TC[act.type||'easy']||'#555';
+          const actRow=div({style:{marginBottom:'10px',padding:'8px',background:'#0d0d20',borderRadius:'6px',border:'1px solid '+(act.completed?'#00ff8720':'#1c1c2e')}});
+
+          // Activity header row
+          const actHdr=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:act.completed?'6px':'0'}});
+          actHdr.appendChild(span({style:{fontSize:'9px',background:atc,color:'#000',padding:'1px 5px',borderRadius:'3px',fontWeight:'700'}},TL[act.type||'easy']||'--'));
+          actHdr.appendChild(span({style:{fontSize:'12px',color:act.completed?'#55efc4':'#c0c0e0',flex:'1'}},act.label||'Activity'));
+          if(act.completed) actHdr.appendChild(span({style:{fontSize:'9px',color:'#00ff87'}},'✓'));
+
+          // Edit / delete buttons
+          const actCtrl=div({style:{display:'flex',gap:'4px',marginLeft:'4px'}});
+          actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'#1a1a3a',border:'1px solid #2a2a4a',color:'#888'},
+            onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'✎'));
+          actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'#1a0a0a',border:'1px solid #2a2a2a',color:'#555'},
+            onclick:()=>{
+              const updated=activities.filter((_,i)=>i!==aIdx);
+              saveDayActivities(wIdx,dIdx,updated);
+              render();
+            }},'✕'));
+          actHdr.appendChild(actCtrl);
+          actRow.appendChild(actHdr);
+
+          // Logged actuals
+          if(act.completed){
+            const actData=div({style:{display:'flex',gap:'10px',flexWrap:'wrap'}});
+            if(act.actualKm) actData.appendChild(span({style:{fontSize:'10px',color:'#00ff87'}},act.actualKm+'km'));
+            if(act.actualVert) actData.appendChild(span({style:{fontSize:'10px',color:'#00ff87'}},act.actualVert+'m'));
+            if(act.actualHrs) actData.appendChild(span({style:{fontSize:'10px',color:'#00ff87'}},act.actualHrs+'hr'));
+            if(act.perf) actData.appendChild(span({style:{fontSize:'9px',color:'#555'}},'P:'+act.perf+' E:'+(act.exec||'?')));
+            actRow.appendChild(actData);
+            if(act.note) actRow.appendChild(div({style:{fontSize:'10px',color:'#555',marginTop:'4px'}},act.note));
+          } else {
+            actRow.appendChild(btn({style:{marginTop:'6px',padding:'5px 12px',borderRadius:'5px',fontSize:'10px',background:'#1a1a3a',border:'1px solid #3a3a6a',color:'#e0e0ff'},
+              onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'Log this'));
+          }
+          pd.appendChild(actRow);
+        });
+
+        // Add activity button
+        const addBtn=btn({style:{width:'100%',padding:'8px',borderRadius:'6px',fontSize:'11px',background:'#0a0a18',border:'1px dashed #2a2a4a',color:'#555',marginBottom:'10px'},
+          onclick:()=>{
+            const newAct={id:newActId(),label:'',type:'easy',actualKm:'',actualVert:'',actualHrs:'',perf:'',exec:'',note:'',completed:false,ts:Date.now()};
+            const updated=[...activities,newAct];
+            saveDayActivities(wIdx,dIdx,updated);
+            render();
+            // Auto-open the new activity modal
+            setTimeout(()=>showActivityModal(wIdx,dIdx,updated.length-1,s),50);
+          }},'+ Add activity');
+        pd.appendChild(addBtn);
+
+        // Plan edit / reset buttons
         const btnRow=div({style:{display:'flex',gap:'8px'}});
-        btnRow.appendChild(btn({class:'btn-sm'+(done?' btn-ok':''),onclick:()=>showRunModal(wIdx,dIdx,s,rl)},done?'Edit log':'Log session'));
-        btnRow.appendChild(btn({class:'btn-sm',onclick:()=>{EDITING_DAY=dIdx;render();}},'Edit'));
-        if(isEdited) btnRow.appendChild(btn({class:'btn-sm btn-danger',onclick:()=>{delete EDITS['w'+wIdx+'-d'+dIdx];S.set(SK.edits,EDITS);render();}},'Reset'));
+        btnRow.appendChild(btn({class:'btn-sm',onclick:()=>{EDITING_DAY=dIdx;render();}},'✎ Edit plan'));
+        if(isEdited) btnRow.appendChild(btn({class:'btn-sm btn-danger',onclick:()=>{delete EDITS['w'+wIdx+'-d'+dIdx];S.set(SK.edits,EDITS);render();}},'↺ Reset'));
         pd.appendChild(btnRow);
         panel.appendChild(pd);
+
       } else {
-        // Edit form
+        // Plan edit form
         let ef={label:s.label,type:s.type,detail:s.detail,km:s.km,vert:s.vert,hrs:s.hrs};
         const ed=div({style:{padding:'12px',display:'flex',flexDirection:'column',gap:'10px'}});
-
         const li=inp({class:'inp',type:'text',value:ef.label});
         li.addEventListener('input',()=>ef.label=li.value);
         ed.appendChild(div({},[lbl('Session name'),li]));
-
         const typeBtns=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
         Object.keys(TL).forEach(t=>{
           const b=btn({style:{padding:'5px 9px',borderRadius:'4px',fontSize:'9px',
@@ -1148,17 +1367,14 @@ function renderPlan(){
           typeBtns.appendChild(b);
         });
         ed.appendChild(div({},[lbl('Type'),typeBtns]));
-
         const ng=div({class:'grid3'});
         [['km',ef.km,'km',v=>ef.km=parseFloat(v)||0],['vert',ef.vert,'m',v=>ef.vert=parseFloat(v)||0],['hrs',ef.hrs,'hr',v=>ef.hrs=parseFloat(v)||0]].forEach(([lb,val,unit,cb])=>{
           ng.appendChild(numInp(lb,val,cb,unit));
         });
         ed.appendChild(ng);
-
         const di=el('textarea',{class:'inp',rows:'2'},ef.detail);
         di.addEventListener('input',()=>ef.detail=di.value);
         ed.appendChild(div({},[lbl('Detail'),di]));
-
         const sbtn=btn({class:'btn btn-ok',style:{marginBottom:'0'},onclick:()=>{EDITS['w'+wIdx+'-d'+dIdx]=ef;S.set(SK.edits,EDITS);EDITING_DAY=null;render();}},'Save');
         const cbtn=btn({class:'btn-sm btn-ghost',onclick:()=>{EDITING_DAY=null;render();}},'Cancel');
         ed.appendChild(div({style:{display:'flex',gap:'8px'}},[sbtn,cbtn]));
@@ -1191,7 +1407,7 @@ function renderTrend(){
   const now=new Date();
   for(let i=6;i>=0;i--){
     const d=new Date(now); d.setDate(now.getDate()-i);
-    const key=d.toISOString().split('T')[0];
+    const key=localDateStr(d);
     const entry=LOG[key];
     const dc=entry?.decision?(DC[entry.decision]||'#333'):'#1a1a2e';
     const dh=entry?.decision?(DH[entry.decision]||8):8;
@@ -1225,30 +1441,32 @@ function renderTrend(){
   // Weekly summary
   const wIdx=curWeek()-1;
   const plan=getPlan();
-  const weekRunLogs=(plan[wIdx]?.days||[]).map((_,dIdx)=>getRunLog(wIdx,dIdx)).filter(r=>r?.completed);
+  const weekRunLogs=(plan[wIdx]?.days||[]).map((_,dIdx)=>getDayActivities(wIdx,dIdx).filter(a=>a.completed)).flat();
   const target=TARGETS[wIdx];
-  const wAct=weekRunLogs.reduce((acc,r)=>{acc.km+=parseFloat(r.actualKm||0);acc.vert+=parseFloat(r.actualVert||0);acc.hrs+=parseFloat(r.actualHrs||0);return acc;},{km:0,vert:0,hrs:0});
+  const wAct=(plan[wIdx]?.days||[]).reduce((acc,_,dIdx)=>{const t=getDayTotals(wIdx,dIdx);acc.km+=t.km;acc.vert+=t.vert;acc.hrs+=t.hrs;return acc;},{km:0,vert:0,hrs:0});
+  const doneDays=(plan[wIdx]?.days||[]).filter((_,dIdx)=>isDayDone(wIdx,dIdx)).length;
 
   const summCard=card([],{marginBottom:'20px'});
   summCard.appendChild(div({class:'section-title'},'Week '+curWeek()+' Coach Summary'));
-  const summText=div({style:{fontSize:'12px',color:'#aaa',lineHeight:'1.7',marginBottom:'10px'}},weekRunLogs.length===0?'Log sessions first.':'Ready to generate.');
+  const summText=div({style:{fontSize:'12px',color:'#aaa',lineHeight:'1.7',marginBottom:'10px'}},doneDays===0?'Log sessions first.':'Ready to generate.');
   summCard.appendChild(summText);
   const summBtn=btn({class:'btn',style:{width:'auto',display:'inline-block',padding:'8px 14px',fontSize:'11px'},onclick:async()=>{
-    if(weekRunLogs.length===0) return;
+    if(doneDays===0) return;
     summBtn.textContent='GENERATING...'; summBtn.disabled=true;
     const sessSummaries=(plan[wIdx]?.days||[]).map((_,dIdx)=>{
-      const s=getSession(wIdx,dIdx);const r=getRunLog(wIdx,dIdx);
-      if(!r?.completed) return s.day+' '+s.label+': NOT DONE';
-      return s.day+' '+s.label+': '+(r.actualKm||'?')+'km / '+(r.actualVert||'?')+'m / '+(r.actualHrs||'?')+'hr | P:'+(r.perf||'?')+' E:'+(r.exec||'?')+' | "'+(r.note||'')+'"';
+      const s=getSession(wIdx,dIdx);
+      const acts=getDayActivities(wIdx,dIdx).filter(a=>a.completed);
+      if(!acts.length) return s.day+' '+(s.label||'Rest')+': NOT DONE';
+      return acts.map(a=>s.day+' '+a.label+': '+(a.actualKm||'?')+'km / '+(a.actualVert||'?')+'m / '+(a.actualHrs||'?')+'hr | P:'+(a.perf||'?')+' E:'+(a.exec||'?')+' | "'+(a.note||'')+'"').join('\n');
     }).join('\n');
     const readinessSummary=entries.slice(-7).map(([date,e])=>date+': HRV '+(e.hrv||'?')+' RHR '+(e.rhr||'?')+' -> '+(e.decision||'?')).join('\n');
-    const ctx='Week '+curWeek()+' of '+plan.length+' ('+target?.type+') - '+daysToRace()+' days to race\nTarget: '+target?.km+'km / '+target?.vert+'m / '+target?.hrs+'hr\nActual: '+wAct.km.toFixed(1)+'km / '+wAct.vert+'m / '+wAct.hrs.toFixed(1)+'hr ('+weekRunLogs.length+'/'+(plan[wIdx]?.days.length)+' done)\n\nSessions:\n'+sessSummaries+'\n\nReadiness:\n'+readinessSummary;
+    const ctx='Week '+curWeek()+' of '+plan.length+' ('+target?.type+') - '+daysToRace()+' days to race\nTarget: '+target?.km+'km / '+target?.vert+'m / '+target?.hrs+'hr\nActual: '+wAct.km.toFixed(1)+'km / '+wAct.vert+'m / '+wAct.hrs.toFixed(1)+'hr ('+doneDays+'/'+(plan[wIdx]?.days.length)+' days done)\n\nSessions:\n'+sessSummaries+'\n\nReadiness:\n'+readinessSummary;
     try{
       const s=await aiCall('You are an experienced ultra trail running coach. Give a weekly debrief to Jaime, a competitive trail ultrarunner. Direct and analytical: volume vs target, session quality, readiness patterns, one focus for next week. 4-6 sentences max. No fluff.',ctx);
       summText.textContent=s;
     }catch(e){summText.textContent='Error - check connection.';}
     summBtn.textContent='REGENERATE'; summBtn.disabled=false;
-  }},weekRunLogs.length===0?'Log sessions first':'Get Week Summary');
+  }},doneDays===0?'Log sessions first':'Get Week Summary');
   summCard.appendChild(summBtn);
   wrap.appendChild(summCard);
 
@@ -1352,6 +1570,32 @@ function renderSettings(){
   ]));
   wrap.appendChild(bkCard);
 
+  // Activity totals toggle card
+  const totalsCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
+  totalsCard.appendChild(div({class:'section-title'},'Daily Totals — Activity Types'));
+  totalsCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},'These activity types contribute to daily km/vert/hr totals and weekly progress bars.'));
+  const toggleGrid=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
+  const countTypes=CFG.countTypes||DEFAULT_COUNT_TYPES;
+  ALL_TYPES.forEach(t=>{
+    const active=countTypes.includes(t);
+    const tc2=TC[t]||'#555';
+    const b=btn({style:{padding:'5px 10px',borderRadius:'4px',fontSize:'10px',
+      background:active?tc2+'25':'#0a0a18',border:'1px solid '+(active?tc2:'#2a2a4a'),
+      color:active?tc2:'#444'},
+      onclick:()=>{
+        const cur=CFG.countTypes||[...DEFAULT_COUNT_TYPES];
+        const idx=cur.indexOf(t);
+        if(idx>=0) cur.splice(idx,1); else cur.push(t);
+        CFG.countTypes=[...cur]; S.set(SK.cfg,CFG);
+        b.style.background=cur.includes(t)?tc2+'25':'#0a0a18';
+        b.style.borderColor=cur.includes(t)?tc2:'#2a2a4a';
+        b.style.color=cur.includes(t)?tc2:'#444';
+      }},TL[t]||t.toUpperCase());
+    toggleGrid.appendChild(b);
+  });
+  totalsCard.appendChild(toggleGrid);
+  wrap.appendChild(totalsCard);
+
   // TrainingPeaks iCal card
   const tpCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
 
@@ -1404,9 +1648,9 @@ function renderSettings(){
     const reader=new FileReader();
     reader.onload=ev=>{
       try{
-        const edits=csvToEdits(ev.target.result);
-        EDITS=edits; S.set(SK.edits,EDITS);
-        csvInfo.textContent='Imported '+Object.keys(edits).length+' sessions from CSV.';
+        const result=csvToEdits(ev.target.result);
+        EDITS=result.edits; S.set(SK.edits,EDITS);
+        csvInfo.textContent='Imported '+result.importedCount+' sessions from CSV.';
         csvInfo.style.color='#00ff87';
       }catch(e){csvInfo.textContent='CSV import failed: '+e.message;csvInfo.style.color='#ff6b6b';}
     };
@@ -1436,17 +1680,13 @@ function renderSettings(){
 // STRAVA BACKFILL (pre-loaded from Strava, May 9 - Jun 8 2026)
 // ============================================================
 function applyStravaBackfill(){
-  // Only run if no existing run log data (avoid overwriting user entries)
-  if(Object.keys(RUNS).length>0) return;
-
+  // Runs on fresh storage key — previous buggy data is gone
   const plan=getPlan();
 
-  // Build date->slot lookup
   const dateLookup={};
   plan.forEach((wk,wIdx)=>{
     wk.days.forEach((d,dIdx)=>{
-      const sd=slotDate(wIdx,d.day);
-      const dateStr=sd.toISOString().split('T')[0];
+      const dateStr=slotDate(wIdx,d.day);
       dateLookup[dateStr]={wIdx,dIdx};
     });
   });
@@ -1491,11 +1731,14 @@ function applyStravaBackfill(){
     const {wIdx,dIdx}=slot;
     const key='w'+wIdx+'-d'+dIdx;
     if(newRuns[key]) return; // don't overwrite
-    newRuns[key]={
-      actualKm:km,actualVert:vert,actualHrs:hrs,
-      perf:String(perf),exec:String(exec),note,
-      completed:true,ts:new Date(dateStr+'T12:00:00').getTime()
-    };
+    newRuns[key]=[{
+      id:newActId(),
+      label,
+      type: km>15?'long': (label.toLowerCase().includes('strength')||label.toLowerCase().includes('weight'))?'strength':'easy',
+      actualKm:km, actualVert:vert, actualHrs:hrs,
+      perf:String(perf), exec:String(exec), note,
+      completed:true, ts:new Date(dateStr+'T12:00:00').getTime()
+    }];
   });
 
   RUNS=newRuns;
