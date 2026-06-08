@@ -335,9 +335,49 @@ function scoreSub(legs,mood,mot){
   if(!vals.length) return null;
   return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length/5*100);
 }
-function getDecision(combined,rpe){
+// 7-day weighted fatigue load — more recent days weighted more heavily
+// RPE/perf scores cast a recovery shadow that decays over days
+function getFatigueLoad(){
+  const weights=[1.0,0.85,0.7,0.55,0.4,0.28,0.15]; // today-1 to today-7
+  let totalLoad=0, totalWeight=0;
+  const plan=getPlan();
+  for(let daysAgo=1;daysAgo<=7;daysAgo++){
+    const d=new Date(); d.setDate(d.getDate()-daysAgo); d.setHours(0,0,0,0);
+    const dateStr=d.toISOString().split('T')[0];
+    const w=weights[daysAgo-1];
+    // Check daily log RPE first
+    const logEntry=LOG[dateStr];
+    if(logEntry?.rpe){
+      const rpeVal=parseInt(logEntry.rpe);
+      totalLoad+=rpeVal*w; totalWeight+=w;
+      continue;
+    }
+    // Fall back to run log perf for that date
+    const diffDays=Math.floor((d-getBlockMonday())/(86400000));
+    if(diffDays>=0){
+      const wIdx=Math.floor(diffDays/7);
+      const dow=d.getDay();
+      if(plan[wIdx]){
+        const dIdx=plan[wIdx].days.findIndex(s=>dowIndex(s.day)===dow);
+        if(dIdx>=0){
+          const rl=getRunLog(wIdx,dIdx);
+          if(rl?.perf){ totalLoad+=parseInt(rl.perf)*w; totalWeight+=w; }
+        }
+      }
+    }
+  }
+  if(!totalWeight) return null;
+  return totalLoad/totalWeight; // 1-5 scale
+}
+
+function getDecision(combined, fatigueLoad){
+  // Fatigue penalty: each point above 3 on the weighted load subtracts from combined score
+  // A week of hard 4s = ~-8 pts; a race week = ~-15 pts
   let adj=combined;
-  if(rpe==='5') adj-=10; else if(rpe==='4') adj-=5;
+  if(fatigueLoad!=null){
+    const fatiguePenalty=Math.round((fatigueLoad-2.5)*8);
+    adj=Math.max(0, adj-Math.max(0,fatiguePenalty));
+  }
   if(adj>=74) return {label:'GO HARD',short:'up',color:'#00ff87',desc:'All signals green. Execute as planned or push harder.'};
   if(adj>=55) return {label:'AS PLANNED',short:'right',color:'#b8ff4f',desc:'Solid baseline. Stick to the plan.'};
   if(adj>=38) return {label:'MODIFY',short:'wave',color:'#ffd166',desc:'Mixed signals. Cut intensity or volume ~20%.'};
@@ -361,14 +401,20 @@ function parseICS(text){
     const summary=get('SUMMARY');
     const description=get('DESCRIPTION')||'';
     if(!dtstart||!summary) continue;
-    const ds=dtstart.replace(/[TZ]/g,'').slice(0,8);
-    const year=parseInt(ds.slice(0,4)),month=parseInt(ds.slice(4,6))-1,day=parseInt(ds.slice(6,8));
-    const date=new Date(year,month,day);
+    // Strip everything after T to get just YYYYMMDD regardless of format
+    const ds=dtstart.replace(/[^0-9]/g,'').slice(0,8);
+    if(ds.length<8) continue;
+    const year=parseInt(ds.slice(0,4));
+    const month=parseInt(ds.slice(4,6))-1;
+    const day=parseInt(ds.slice(6,8));
+    // Use local date constructor to avoid UTC offset shifting the day
+    const date=new Date(year,month,day,12,0,0);
+    const dateStr=year+'-'+String(month+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
     events.push({
       date,
-      dateStr:date.toISOString().split('T')[0],
-      summary:summary.replace(/\\n/g,' ').replace(/\\,/g,','),
-      description:description.replace(/\\n/g,' ').replace(/\\,/g,','),
+      dateStr,
+      summary:summary.replace(/\\n/g,' ').replace(/\\,/g,',').trim(),
+      description:description.replace(/\\n/g,' ').replace(/\\,/g,',').trim(),
     });
   }
   return events.sort((a,b)=>a.date-b.date);
@@ -397,24 +443,32 @@ function applyICSToEdits(icsText){
     });
   });
 
+  // Group events by date to handle multiple sessions on same day
+  const byDate={};
+  events.forEach(ev=>{
+    if(!byDate[ev.dateStr]) byDate[ev.dateStr]=[];
+    byDate[ev.dateStr].push(ev);
+  });
+
   let matched=0, skipped=0;
   const newEdits={...EDITS};
-  events.forEach(ev=>{
-    const slot=dateLookup[ev.dateStr];
-    if(!slot){skipped++;return;}
+  Object.entries(byDate).forEach(([dateStr,evs])=>{
+    const slot=dateLookup[dateStr];
+    if(!slot){skipped+=evs.length;return;}
     const {wIdx,dIdx}=slot;
     const base=plan[wIdx].days[dIdx];
-    const type=guessTypeFromSummary(ev.summary);
-    newEdits['w'+wIdx+'-d'+dIdx]={
-      label:ev.summary,
-      type,
-      detail:ev.description||base.detail,
-      km:base.km, vert:base.vert, hrs:base.hrs,
-    };
+    // Filter out non-training entries like sauna, walks, rest days
+    const skip=['sauna','walk','walking','rest','day off','other'];
+    const training=evs.filter(e=>!skip.some(s=>e.summary.toLowerCase().includes(s)));
+    const use=training.length?training:evs;
+    const label=use.map(e=>e.summary).join(' + ');
+    const detail=use.map(e=>e.description).filter(Boolean).join(' | ')||base.detail;
+    const type=guessTypeFromSummary(use[0].summary);
+    newEdits['w'+wIdx+'-d'+dIdx]={label,type,detail,km:base.km,vert:base.vert,hrs:base.hrs};
     matched++;
   });
   EDITS=newEdits; S.set(SK.edits,EDITS);
-  const msg=matched+' of '+events.length+' events matched to plan.'+(skipped?' '+skipped+' outside block range.':'');
+  const msg=matched+' days matched to plan.'+(skipped?' '+skipped+' events outside block range.':'');
   return {ok:true,msg};
 }
 
@@ -700,7 +754,8 @@ function renderToday(){
     const rScore=physVals.length?Math.round(physVals.reduce((a,b)=>a+b,0)/physVals.length):null;
     const sScore=scoreSub(legs,mood,mot);
     const combined=rScore!=null&&sScore!=null?Math.round((rScore+sScore)/2):(rScore??sScore);
-    return {rScore,sScore,combined};
+    const fatigueLoad=getFatigueLoad();
+    return {rScore,sScore,combined,fatigueLoad};
   }
 
   // Decision banner
@@ -712,8 +767,8 @@ function renderToday(){
   ringsRow.id='rings-row';
 
   function updateDecision(){
-    const {rScore,sScore,combined}=computeScores();
-    const dec=combined!=null?getDecision(combined,rpe):null;
+    const {rScore,sScore,combined,fatigueLoad}=computeScores();
+    const dec=combined!=null?getDecision(combined,fatigueLoad):null;
 
     // Update banner
     decBanner.innerHTML='';
@@ -723,6 +778,11 @@ function renderToday(){
       decBanner.style.borderLeft='3px solid '+dec.color;
       decBanner.appendChild(span({style:{fontSize:'20px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.1em',color:dec.color,display:'block'}},dec.label));
       decBanner.appendChild(span({style:{fontSize:'11px',color:'#888',marginTop:'4px',lineHeight:'1.6',display:'block'}},dec.desc));
+      if(fatigueLoad!=null){
+        const fl=fatigueLoad.toFixed(1);
+        const flColor=fatigueLoad>3.5?'#ffd166':fatigueLoad>4.2?'#ff6b6b':'#555';
+        decBanner.appendChild(span({style:{fontSize:'9px',color:flColor,display:'block',marginTop:'6px',letterSpacing:'0.1em'}},'7-DAY FATIGUE LOAD: '+fl+'/5'));
+      }
     } else {
       decBanner.style.background='#0a0a1a';
       decBanner.style.border='1px solid #1c1c2e';
@@ -812,9 +872,9 @@ function renderToday(){
   wrap.appendChild(noteWrap);
 
   const saveBtn=btn({class:'btn',onclick:()=>{
-    const {rScore,sScore,combined}=computeScores();
-    const dec=combined!=null?getDecision(combined,rpe):null;
-    const entry={hrv,rhr,sleep,legs,mood,motivation:mot,rpe,note,decision:dec?.label,ts:Date.now()};
+    const {rScore,sScore,combined,fatigueLoad}=computeScores();
+    const dec=combined!=null?getDecision(combined,fatigueLoad):null;
+    const entry={hrv,rhr,sleep,legs,mood,motivation:mot,rpe,note,decision:dec?.label,fatigueLoad,ts:Date.now()};
     LOG[td]=entry; S.set(SK.log,LOG);
     saveBtn.textContent='LOGGED'; saveBtn.style.color='#00ff87'; saveBtn.style.borderColor='#00ff87';
     setTimeout(()=>{saveBtn.textContent='LOG TODAY';saveBtn.style.color='';saveBtn.style.borderColor='';},1800);
@@ -1373,8 +1433,79 @@ function renderSettings(){
 }
 
 // ============================================================
+// STRAVA BACKFILL (pre-loaded from Strava, May 9 - Jun 8 2026)
+// ============================================================
+function applyStravaBackfill(){
+  // Only run if no existing run log data (avoid overwriting user entries)
+  if(Object.keys(RUNS).length>0) return;
+
+  const plan=getPlan();
+
+  // Build date->slot lookup
+  const dateLookup={};
+  plan.forEach((wk,wIdx)=>{
+    wk.days.forEach((d,dIdx)=>{
+      const sd=slotDate(wIdx,d.day);
+      const dateStr=sd.toISOString().split('T')[0];
+      dateLookup[dateStr]={wIdx,dIdx};
+    });
+  });
+
+  // Strava activities mapped to run logs
+  // Format: [dateStr, label, km, vertM, hrs, perf, exec, note]
+  const activities=[
+    // Pre-UTA taper
+    ['2026-05-09','BMMG Shakeout / UTA11 course scope',10.3,545,1.3,3,3,'Course scope before UTA'],
+    ['2026-05-12','EZ45 - taper run',7.9,74,0.75,3,3,'4 sleeps to go. Easy.'],
+    ['2026-05-13','Poppin - carbon zing',10.5,111,0.85,3,4,'Legs feeling zingy in race shoes'],
+    ['2026-05-15','Shakeout 4x20sec',3.4,47,0.27,2,3,'Pre-race shakeout'],
+    // UTA100
+    ['2026-05-16','UTA100 2026 - Race',101.6,4158,10.9,5,5,'11:13:56 / 20th overall / 8th 20-34M. Lotta challenges presented and overcome. Very sore, very stoked.'],
+    // Recovery week
+    ['2026-05-18','Morning Weight Training - Upper',0,0,0.8,2,3,'Feels like upper body week. Very easy.'],
+    ['2026-05-21','Morning Weight Training - Legs',0,0,0.5,2,3,'Reverse taper engaged. Ridiculous DOMS.'],
+    ['2026-05-21','Vibe Check - return to running',2.7,31,0.23,2,3,'The vibe is good. Short and easy.'],
+    ['2026-05-23','Morning Weight Training',0,0,0.5,2,3,'Light session'],
+    ['2026-05-23','Return to Moo',10.5,119,0.9,3,3,'Time to get back to work. Legs feeling ok.'],
+    // Build begins
+    ['2026-05-24','Faulco Social + Upper Strength',13.2,232,1.2,3,4,'Great social run with the boys'],
+    ['2026-05-25','Morning Weight Training - Upper',0,0,1.1,3,3,'Upper session'],
+    ['2026-05-27','Morning Weight Training - Legs + Incline Treadmill',2,300,1.25,3,3,'Legs + 300m treadmill vert. We are so back.'],
+    ['2026-05-28','Morning Ridge',17.6,304,1.7,3,4,'Ridiculous DOMS from not training legs properly for 2-3 weeks. Great to be moving.'],
+    ['2026-05-29','Morning Oaks Recce',10.2,298,0.9,4,4,'Feels like I have legs again. 6 PRs.'],
+    ['2026-05-30','Return to Kedumba',16.5,699,1.6,4,4,'Hard down, all-day pace up. 25 PRs. Cheers Damien Gooch for the push.'],
+    ['2026-05-31','Grose Valley Tour',20.5,1268,3.2,4,4,'Fun morning with Jinwoo and the boys. Only goal: run horse track. Done.'],
+    ['2026-06-01','Morning Weight Training - Upper',0,0,0.9,3,3,'Upper session'],
+    ['2026-06-02','Back in the Lab - 4x6min intervals',13,49,0.95,4,5,'Target 3:50/km. Last rep spicy. 16 PRs.'],
+    ['2026-06-03','Morning Weight Training - Legs + Uphill Treadmill',3,450,1.25,4,4,'Squat, lunge, Zercher, RDL, calf, tib. 450m treadmill vert.'],
+    ['2026-06-04','Grand View FT Hill Reps',12.2,523,1.2,4,4,'3.25 reps ~45min. Race-specific stimulus.'],
+    ['2026-06-05','Morning Grose - Easy Long',20,381,1.9,3,4,'Cheeky KOM hunt at the end. 2 PRs.'],
+    ['2026-06-06','Korowal Kapers - Big Day',36.8,2194,4.9,5,5,'Unreal training run. 5hrs in the bush solo. 34 PRs. Biggest day of the block.'],
+    ['2026-06-08','Morning Weight Training - Upper',0,0,0.9,3,3,'Upper session'],
+  ];
+
+  const newRuns={...RUNS};
+  activities.forEach(([dateStr,label,km,vert,hrs,perf,exec,note])=>{
+    const slot=dateLookup[dateStr];
+    if(!slot) return;
+    const {wIdx,dIdx}=slot;
+    const key='w'+wIdx+'-d'+dIdx;
+    if(newRuns[key]) return; // don't overwrite
+    newRuns[key]={
+      actualKm:km,actualVert:vert,actualHrs:hrs,
+      perf:String(perf),exec:String(exec),note,
+      completed:true,ts:new Date(dateStr+'T12:00:00').getTime()
+    };
+  });
+
+  RUNS=newRuns;
+  S.set(SK.runs,RUNS);
+}
+
+// ============================================================
 // BOOT
 // ============================================================
+applyStravaBackfill();
 render();
 setInterval(()=>{ renderHeader(); }, 60000);
 </script>
