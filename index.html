@@ -65,14 +65,34 @@ select option{background:#0e0e1f;}
 // ============================================================
 const SK = {cfg:'utmb_cfg_v1',log:'utmb_log_v1',edits:'utmb_edits_v2',targets:'utmb_targets_v1',runs:'utmb_runs_v3'};
 const WTC = {RECOVERY:'#55efc4',BUILD:'#ffd166',SHARPEN:'#ff9f43',DELOAD:'#74b9ff',RACE:'#fd79a8'};
-const TC = {strength:'#7b9cff',intervals:'#ff9f43',easy:'#55efc4',long:'#a29bfe',race:'#fd79a8',rest:'#636e72',walk:'#a0a0a0',sauna:'#ff9f43',other:'#636e72'};
-const TL = {strength:'STR',intervals:'INT',easy:'EASY',long:'LONG',race:'RACE',rest:'REST',walk:'WALK',sauna:'SAUNA',other:'OTHER'};
+const TC = {strength:'#7b9cff',intervals:'#ff9f43',easy:'#55efc4',long:'#a29bfe',race:'#fd79a8',ride:'#06b6d4',walk:'#94a3b8',sauna:'#fb923c',other:'#636e72'};
+const TL = {strength:'STR',intervals:'INT',easy:'EASY',long:'LONG',race:'RACE',ride:'RIDE',walk:'WALK',sauna:'SAUNA',other:'OTHER'};
+// For display/toggle: run types consolidated, rest removed, ride added
+const ALL_TYPES = ['strength','intervals','easy','long','race','ride','walk','sauna','other'];
+// Count types use 'run' as a meta-group (intervals+easy+long+race) plus strength and ride
+const COUNT_TOGGLE_GROUPS = [
+  {id:'run',   label:'RUN',      color:'#a29bfe', types:['intervals','easy','long','race']},
+  {id:'strength',label:'STR',   color:'#7b9cff', types:['strength']},
+  {id:'ride',  label:'RIDE',     color:'#06b6d4', types:['ride']},
+  {id:'walk',  label:'WALK',     color:'#94a3b8', types:['walk']},
+  {id:'sauna', label:'SAUNA',    color:'#fb923c', types:['sauna']},
+  {id:'other', label:'OTHER',    color:'#636e72', types:['other']},
+];
+const DEFAULT_COUNT_TYPES = ['intervals','easy','long','race','strength'];
 const WEEK_TYPES = ['RECOVERY','BUILD','SHARPEN','DELOAD','RACE'];
-// Types that count toward daily/weekly totals by default
-const ALL_TYPES = ['strength','intervals','easy','long','race','rest','walk','sauna','other'];
-const DEFAULT_COUNT_TYPES = ['strength','intervals','easy','long','race'];
 
-const DEF_CFG = {hrvLow:45,hrvHigh:70,rhrLow:45,rhrHigh:50,raceDateStr:'2026-08-28',blockStartStr:'2026-06-06',raceName:'UTMB 2026',countTypes:DEFAULT_COUNT_TYPES};
+const DEF_CFG = {
+  hrvLow:45, hrvHigh:70, rhrLow:45, rhrHigh:50,
+  blockStartStr:'2026-06-06',
+  blockEndStr:'2026-09-01',   // Sunday on or after last race — controls block length
+  raceDateStr:'2026-08-28',   // kept for backward compat — mirrors races[0].date
+  raceName:'UTMB 2026',       // kept for backward compat — mirrors races[0].name
+  races:[
+    {name:'Woodford to Glenbrook',  date:'2026-06-21', dist:'25km'},
+    {name:'UTMB 2026',              date:'2026-08-28', dist:'171km'},
+  ],
+  countTypes:DEFAULT_COUNT_TYPES,
+};
 
 // BASE_PLAN: empty day slots. Sessions only populate from TP iCal import or manual edits.
 const DAYS_OF_WEEK=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -80,19 +100,22 @@ function makeEmptyWeek(wNum){
   return {week:wNum,days:DAYS_OF_WEEK.map(day=>({day,label:'',type:'easy',detail:'',km:0,vert:0,hrs:0}))};
 }
 const BASE_PLAN=Array.from({length:12},(_,i)=>makeEmptyWeek(i+1));
+// Default targets — match the 4-week sample plan structure.
+// These expand to totalWeeks() when block is longer than 4 weeks.
 const DEF_TARGETS = [
-  {week:1,type:'RECOVERY',km:75,vert:2750,hrs:10},
-  {week:2,type:'RECOVERY',km:75,vert:2750,hrs:10},
-  {week:3,type:'BUILD',km:92,vert:3500,hrs:12},
-  {week:4,type:'BUILD',km:97,vert:3800,hrs:13},
-  {week:5,type:'BUILD',km:97,vert:4000,hrs:13},
-  {week:6,type:'BUILD',km:102,vert:4500,hrs:14},
-  {week:7,type:'BUILD',km:102,vert:5000,hrs:15},
-  {week:8,type:'SHARPEN',km:107,vert:5500,hrs:16},
-  {week:9,type:'SHARPEN',km:110,vert:5800,hrs:16},
-  {week:10,type:'RACE',km:110,vert:6000,hrs:16},
-  {week:11,type:'DELOAD',km:80,vert:3000,hrs:11},
-  {week:12,type:'DELOAD',km:45,vert:1200,hrs:6},
+  {week:1, type:'RECOVERY', km:70,  vert:2100, hrs:11},
+  {week:2, type:'BUILD',    km:95,  vert:3500, hrs:13.5},
+  {week:3, type:'SHARPEN',  km:80,  vert:2500, hrs:11.5},
+  {week:4, type:'RACE',     km:30,  vert:500,  hrs:4},
+  // Extended block defaults (weeks 5+)
+  {week:5, type:'BUILD',    km:97,  vert:4000, hrs:13},
+  {week:6, type:'BUILD',    km:102, vert:4500, hrs:14},
+  {week:7, type:'BUILD',    km:102, vert:5000, hrs:15},
+  {week:8, type:'SHARPEN',  km:107, vert:5500, hrs:16},
+  {week:9, type:'SHARPEN',  km:110, vert:5800, hrs:16},
+  {week:10,type:'RACE',     km:110, vert:6000, hrs:16},
+  {week:11,type:'DELOAD',   km:80,  vert:3000, hrs:11},
+  {week:12,type:'DELOAD',   km:45,  vert:1200, hrs:6},
 ];
 
 // ============================================================
@@ -131,34 +154,55 @@ function localDateStr(d){
 }
 function today(){ return localDateStr(new Date()); }
 
-// Find the Monday on or before a given date — this is the true week anchor
+// Validate a date string — returns true only for complete YYYY-MM-DD
+function validDateStr(s){
+  if(!s||!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d=new Date(s+'T00:00:00');
+  return !isNaN(d.getTime());
+}
+
+// Find the Monday on or before a given date — true week anchor
 function getBlockMonday(){
-  const bs=new Date(CFG.blockStartStr+'T00:00:00');
+  const str=validDateStr(CFG.blockStartStr)?CFG.blockStartStr:'2026-06-06';
+  const bs=new Date(str+'T00:00:00');
   bs.setHours(0,0,0,0);
-  const dow=bs.getDay(); // 0=Sun,1=Mon,...,6=Sat
-  const daysBack=dow===0?6:dow-1; // days to go back to reach Monday
+  const dow=bs.getDay();
+  const daysBack=dow===0?6:dow-1;
   bs.setDate(bs.getDate()-daysBack);
   return bs;
 }
 
+// Last Sunday on or after the race date — so a mid-week race still fills the week
+function getBlockEnd(){
+  const str=validDateStr(CFG.raceDateStr)?CFG.raceDateStr:'2026-08-28';
+  const rd=new Date(str+'T00:00:00');
+  rd.setHours(0,0,0,0);
+  const dow=rd.getDay(); // 0=Sun
+  const daysForward=dow===0?0:7-dow;
+  rd.setDate(rd.getDate()+daysForward);
+  return rd;
+}
+
 function totalWeeks(){
   const mon=getBlockMonday();
-  const rd=new Date(CFG.raceDateStr+'T00:00:00');
-  return Math.max(1,Math.ceil((rd-mon)/(7*86400000)));
+  const end=getBlockEnd();
+  const tw=Math.ceil((end-mon)/(7*86400000));
+  return Math.max(1,Math.min(52,isNaN(tw)?12:tw)); // cap at 52 weeks
 }
 
 function curWeek(){
   const mon=getBlockMonday();
   const now=new Date(); now.setHours(0,0,0,0);
   const w=Math.floor((now-mon)/(7*86400000))+1;
-  return Math.max(1,Math.min(totalWeeks(),w));
+  const tw=totalWeeks();
+  return Math.max(1,Math.min(tw,isNaN(w)?1:w));
 }
 
 // Returns {mon, sun} Date objects for a given week index (0-based)
 function weekDates(wIdx){
   const anchor=getBlockMonday();
   const mon=new Date(anchor);
-  mon.setDate(anchor.getDate()+wIdx*7);
+  mon.setDate(anchor.getDate()+(wIdx||0)*7);
   const sun=new Date(mon);
   sun.setDate(mon.getDate()+6);
   return {mon,sun};
@@ -166,6 +210,7 @@ function weekDates(wIdx){
 
 // Format a Date as "6 Jun" or "28 Aug"
 function fmtDate(d){
+  if(!d||isNaN(d.getTime())) return '?';
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return d.getDate()+' '+months[d.getMonth()];
 }
@@ -196,6 +241,7 @@ function slotDateObj(wIdx, dayName){
 }
 
 function daysToRace(){
+  if(!validDateStr(CFG.raceDateStr)) return '?';
   const rd=new Date(CFG.raceDateStr+'T00:00:00');
   const now=new Date(); now.setHours(0,0,0,0);
   return Math.max(0,Math.ceil((rd-now)/86400000));
@@ -205,7 +251,7 @@ function getPlan(){
   const tw=totalWeeks();
   const out=[];
   for(let i=0;i<tw;i++){
-    out.push(BASE_PLAN[i]||{...BASE_PLAN[6],week:i+1});
+    out.push(BASE_PLAN[i]||{...BASE_PLAN[Math.min(6,BASE_PLAN.length-1)],week:i+1});
   }
   return out;
 }
@@ -217,6 +263,20 @@ function buildTargets(){
     out.push(DEF_TARGETS[i]||{week:i+1,type:'BUILD',km:100,vert:4500,hrs:14});
   }
   return out;
+}
+
+// Ensure TARGETS always matches current totalWeeks — trims or extends as needed
+function syncTargets(){
+  const tw=totalWeeks();
+  if(TARGETS.length===tw) return;
+  if(TARGETS.length>tw){
+    TARGETS=TARGETS.slice(0,tw);
+  } else {
+    for(let i=TARGETS.length;i<tw;i++){
+      TARGETS.push(DEF_TARGETS[i]||{week:i+1,type:'BUILD',km:100,vert:4500,hrs:14});
+    }
+  }
+  S.set(SK.targets,TARGETS);
 }
 
 function getSession(wIdx,dIdx){
@@ -368,12 +428,22 @@ function parseICS(text){
 }
 function guessTypeFromSummary(s){
   const t=s.toLowerCase();
-  if(t.includes('race')||t.includes('utmb')||t.includes('utk')) return 'race';
-  if(t.includes('rest')||t.includes('off')||t.includes('travel')) return 'rest';
-  if(t.includes('long')||t.includes('climb')||t.includes('vert')) return 'long';
-  if(t.includes('interval')||t.includes('sprint')||t.includes('rep')||t.includes('threshold')||t.includes('vo2')||t.includes('tempo')) return 'intervals';
-  if(t.includes('strength')||t.includes('gym')||t.includes('squat')||t.includes('upper')||t.includes('lower')||t.includes('weights')) return 'strength';
+  if(t.includes('race')||t.includes('utmb')||t.includes('utk')||t.includes('time trial')) return 'race';
+  if(t.includes('rest')||t.includes('day off')||t.includes('travel')) return 'rest';
+  if(t.includes('ride')||t.includes('cycling')||t.includes('bike')||t.includes('cycle')) return 'ride';
+  if(t.includes('walk')||t.includes('hike')) return 'walk';
+  if(t.includes('sauna')||t.includes('heat')) return 'sauna';
+  if(t.includes('strength')||t.includes('gym')||t.includes('squat')||t.includes('upper')||t.includes('lower')||t.includes('weights')||t.includes('lifting')) return 'strength';
+  if(t.includes('interval')||t.includes('sprint')||t.includes('rep')||t.includes('threshold')||t.includes('vo2')||t.includes('tempo')||t.includes('fartlek')) return 'intervals';
+  // long/climb handled by km threshold after parsing
   return 'easy';
+}
+// Apply km-based type upgrade: >20km = long, unless already race/intervals/strength/ride
+function autoUpgradeType(type, km){
+  if(['race','intervals','strength','ride','sauna','walk','other'].includes(type)) return type;
+  if(km>=20) return 'long';
+  if(km>=15 && type==='easy') return 'long';
+  return type;
 }
 function parseTPDescription(desc){
   // Unescape literal \n sequences from iCal
@@ -441,9 +511,7 @@ function applyICSToEdits(icsText){
     if(hasKm) km=Math.round(totalKm*10)/10;
     if(hasHrs) hrs=Math.round(totalHrs*100)/100;
 
-    // Auto-upgrade to long if km > 15
-    const finalType = km>15 && type==='easy' ? 'long' : type;
-
+    const finalType=autoUpgradeType(type, km);
     newEdits['w'+wIdx+'-d'+dIdx]={label, type:finalType, detail:rawDetail, km, vert:base.vert, hrs};
     matched++;
   });
@@ -456,13 +524,25 @@ function applyICSToEdits(icsText){
 // AI
 // ============================================================
 async function aiCall(system, userMsg){
-  const r = await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system,messages:[{role:'user',content:userMsg}]})
-  });
-  const d = await r.json();
-  return d.content?.find(b=>b.type==='text')?.text || 'No response.';
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system,messages:[{role:'user',content:userMsg}]})
+    });
+    if(!r.ok){
+      const err=await r.json().catch(()=>({}));
+      throw new Error(err?.error?.message||'HTTP '+r.status);
+    }
+    const d=await r.json();
+    return d.content?.find(b=>b.type==='text')?.text||'No response.';
+  }catch(e){
+    return 'Error: '+e.message;
+  }
 }
 
 // ============================================================
@@ -694,8 +774,8 @@ function csvToEdits(csv){
 
     if(!label) continue; // skip empty sessions
 
-    // Auto-upgrade type to long if km > 15
-    if(km>15&&type==='easy') type='long';
+    // Auto-upgrade type based on km
+    type=autoUpgradeType(type,km);
 
     // Validate type
     if(!TYPE_KEY[type]) type='easy';
@@ -783,13 +863,14 @@ function showTPInstructions(){
 // ============================================================
 // RENDER ENGINE
 // ============================================================
-function render(){ renderHeader(); renderTabs(); renderContent(); }
+function render(){ syncTargets(); renderHeader(); renderTabs(); renderContent(); }
 
 function renderHeader(){
   const h=document.getElementById('header');
   h.innerHTML='';
   const days=daysToRace();
-  const dColor=days<=30?'#ff6b6b':days<=60?'#ffd166':'#00ff87';
+  const daysNum=typeof days==='number'?days:null;
+  const dColor=daysNum===null?'#555':daysNum<=30?'#ff6b6b':daysNum<=60?'#ffd166':'#00ff87';
   const cw=curWeek(), tw=totalWeeks();
   const phase=TARGETS[cw-1]?.type||'--';
   const phColor=WTC[phase]||'#888';
@@ -801,9 +882,9 @@ function renderHeader(){
       span({style:{fontSize:'10px',color:'#555',display:'block',marginTop:'3px'}},fmtToday()),
     ]),
     div({style:{textAlign:'right'}},[
-      span({style:{fontSize:'26px',fontFamily:"'Bebas Neue',cursive",color:dColor,lineHeight:'1',display:'block'}},days+''),
+      span({style:{fontSize:'26px',fontFamily:"'Bebas Neue',cursive",color:dColor,lineHeight:'1',display:'block'}},daysNum!==null?daysNum+'':'--'),
       span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em',display:'block'}},'DAYS TO RACE'),
-      span({style:{fontSize:'9px',color:'#333',display:'block',marginTop:'2px'}},CFG.raceDateStr),
+      span({style:{fontSize:'9px',color:'#333',display:'block',marginTop:'2px'}},validDateStr(CFG.raceDateStr)?CFG.raceDateStr:'set in settings'),
     ]),
   ]));
 
@@ -1020,24 +1101,26 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
   hdrDiv.appendChild(div({},[lbl('Activity name'),labelI]));
   sheet.appendChild(hdrDiv);
 
-  // Type selector
+  // Type selector — uses a container we can re-render on selection
   const typeDiv=div({style:{marginBottom:'14px'}});
   typeDiv.appendChild(lbl('Type'));
   const typeBtns=div({style:{display:'flex',gap:'5px',flexWrap:'wrap'}});
-  const typeBtnEls={};
-  ALL_TYPES.forEach(t=>{
-    const b=btn({style:{padding:'5px 8px',borderRadius:'4px',fontSize:'9px',
-      background:type===t?TC[t]+'30':'#0a0a18',border:'1px solid '+(type===t?TC[t]:'#2a2a4a'),color:type===t?TC[t]:'#555'},
-      onclick:()=>{
-        type=t;
-        ALL_TYPES.forEach(tt=>{
-          const bb=typeBtnEls[tt];
-          if(bb){ bb.style.background=tt===t?TC[tt]+'30':'#0a0a18'; bb.style.borderColor=tt===t?TC[tt]:'#2a2a4a'; bb.style.color=tt===t?TC[tt]:'#555'; }
-        });
-      }},TL[t]||t.toUpperCase());
-    typeBtnEls[t]=b;
-    typeBtns.appendChild(b);
-  });
+
+  function renderTypeBtns(){
+    typeBtns.innerHTML='';
+    ALL_TYPES.forEach(t=>{
+      const isActive=type===t;
+      const color=TC[t]||'#555';
+      const b=btn({style:{padding:'5px 8px',borderRadius:'4px',fontSize:'9px',
+        background:isActive?color+'30':'#0a0a18',
+        border:'1px solid '+(isActive?color:'#2a2a4a'),
+        color:isActive?color:'#555'},
+        onclick:()=>{ type=t; renderTypeBtns(); }},
+        TL[t]||t.toUpperCase());
+      typeBtns.appendChild(b);
+    });
+  }
+  renderTypeBtns();
   typeDiv.appendChild(typeBtns);
   sheet.appendChild(typeDiv);
 
@@ -1113,59 +1196,142 @@ function showRunModal(wIdx,dIdx,session,existing){
 // ============================================================
 function renderBlock(){
   const wrap=div({});
-  wrap.appendChild(div({class:'section-title'},totalWeeks()+'-Week Block - '+CFG.raceName));
+  const plan=getPlan();
+  const cw=curWeek();
 
+  // Header
+  const hdrRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'16px'}});
+  hdrRow.appendChild(div({class:'section-title',style:{marginBottom:'0'}},totalWeeks()+'-Week Block'));
+  hdrRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},fmtDate(getBlockMonday())+' to '+CFG.raceDateStr));
+  wrap.appendChild(hdrRow);
+
+  // Group weeks by phase
+  const groups=[];
+  let curGroup=null;
   TARGETS.forEach((t,wIdx)=>{
-    const wn=wIdx+1, isCur=wn===curWeek(), isEd=BLOCK_EDITING===wIdx;
-    const tc=WTC[t.type]||'#555';
-
-    const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'10px 12px',marginBottom:isEd?'0':'6px',
-      background:isEd?'#111128':isCur?'#0d0d20':'#0a0a1a',
-      border:'1px solid '+(isEd?tc+'50':isCur?'#2a2a4a':'#1c1c2e'),
-      borderRadius:isEd?'8px 8px 0 0':'8px',display:'flex',alignItems:'center',gap:'10px'},
-      onclick:()=>{BLOCK_EDITING=isEd?null:wIdx;render();}},[
-      span({style:{fontSize:'10px',color:isCur?'#e0e0ff':'#555',minWidth:'24px',fontWeight:isCur?'700':'400'}},'W'+wn),
-      span({style:{fontSize:'9px',background:tc+'25',border:'1px solid '+tc+'40',color:tc,padding:'2px 7px',borderRadius:'3px',minWidth:'68px',textAlign:'center'}},t.type),
-      span({style:{fontSize:'11px',color:'#666',flex:'1'}},t.km+'km - '+(t.vert>=1000?(t.vert/1000).toFixed(1)+'k':t.vert)+'m - '+t.hrs+'hr'),
-      span({style:{fontSize:'9px',color:'#444'}},(()=>{const {mon,sun}=weekDates(wIdx);return fmtDate(mon)+'-'+fmtDate(sun);})()),
-      isCur?span({style:{fontSize:'8px',color:'#b8ff4f'}},'NOW'):null,
-      span({style:{fontSize:'10px',color:'#333'}},isEd?'v':'v'),
-    ]);
-    wrap.appendChild(rowBtn);
-
-    if(isEd){
-      let form={...t};
-      const panel=div({style:{padding:'14px',background:'#111128',border:'1px solid '+tc+'30',borderTop:'none',borderRadius:'0 0 8px 8px',marginBottom:'6px'}});
-
-      const typeRow=div({style:{marginBottom:'12px'}});
-      typeRow.appendChild(lbl('Week type'));
-      const typeBtns=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
-      WEEK_TYPES.forEach(wt=>{
-        const wtc=WTC[wt];
-        const b=btn({style:{padding:'5px 10px',borderRadius:'4px',fontSize:'10px',
-          background:form.type===wt?wtc+'30':'#0a0a18',border:'1px solid '+(form.type===wt?wtc:'#2a2a4a'),color:form.type===wt?wtc:'#555'},
-          onclick:()=>{form.type=wt;TARGETS[wIdx]=form;S.set(SK.targets,TARGETS);render();}},wt);
-        typeBtns.appendChild(b);
-      });
-      typeRow.appendChild(typeBtns);
-      panel.appendChild(typeRow);
-
-      const ng=div({class:'grid3',style:{marginBottom:'12px'}});
-      [['km',form.km,'km',v=>form.km=parseFloat(v)||0],['vert',form.vert,'m',v=>form.vert=parseFloat(v)||0],['hrs',form.hrs,'hr',v=>form.hrs=parseFloat(v)||0]].forEach(([lb,val,unit,cb])=>{
-        const fi=numInp(lb,val,cb,unit);
-        ng.appendChild(fi);
-      });
-      panel.appendChild(ng);
-
-      const savBtn=btn({class:'btn btn-ok',style:{marginRight:'8px',display:'inline-block',width:'auto',padding:'8px 16px'},onclick:()=>{TARGETS[wIdx]=form;S.set(SK.targets,TARGETS);BLOCK_EDITING=null;render();}},'Save');
-      const canBtn=btn({class:'btn-sm btn-ghost',onclick:()=>{BLOCK_EDITING=null;render();}},'Cancel');
-      panel.appendChild(div({style:{display:'flex',gap:'8px'}},[savBtn,canBtn]));
-      wrap.appendChild(panel);
-    }
+    if(!curGroup||curGroup.type!==t.type){curGroup={type:t.type,weeks:[]};groups.push(curGroup);}
+    curGroup.weeks.push(wIdx);
   });
 
+  groups.forEach(group=>{
+    const tc=WTC[group.type]||'#555';
+    const phaseTotals=group.weeks.reduce((acc,wIdx)=>{
+      const t=TARGETS[wIdx]; acc.km+=t.km; acc.vert+=t.vert; acc.hrs+=t.hrs; return acc;
+    },{km:0,vert:0,hrs:0});
+    const phaseHdr=div({style:{display:'flex',alignItems:'center',gap:'8px',margin:'10px 0 6px'}});
+    phaseHdr.appendChild(span({style:{fontSize:'9px',background:tc+'20',border:'1px solid '+tc+'30',color:tc,padding:'2px 8px',borderRadius:'10px',letterSpacing:'0.1em'}},group.type));
+    phaseHdr.appendChild(span({style:{fontSize:'9px',color:'#333'}},phaseTotals.km+'km · '+(phaseTotals.vert>=1000?(phaseTotals.vert/1000).toFixed(0)+'k':phaseTotals.vert)+'m'));
+    wrap.appendChild(phaseHdr);
+
+    group.weeks.forEach(wIdx=>{
+      let t=TARGETS[wIdx];
+      const wn=wIdx+1, isCur=wn===cw, isEd=BLOCK_EDITING===wIdx;
+      const tc2=WTC[t.type]||'#555';
+      const {mon,sun}=weekDates(wIdx);
+
+      // Compute actuals
+      const actuals=(plan[wIdx]?.days||[]).reduce((acc,_,dIdx)=>{
+        const dt=getDayTotals(wIdx,dIdx);
+        acc.km+=dt.km; acc.vert+=dt.vert; acc.hrs+=dt.hrs;
+        if(isDayDone(wIdx,dIdx)) acc.done++;
+        return acc;
+      },{km:0,vert:0,hrs:0,done:0});
+      const totalDays=plan[wIdx]?.days.length||7;
+      const hasDone=actuals.done>0;
+
+      const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'9px 12px',
+        marginBottom:isEd||hasDone?'0':'5px',
+        background:isEd?'#111128':isCur?'#0d0d20':'#0a0a1a',
+        border:'1px solid '+(isEd?tc2+'50':isCur?'#2a2a4a':'#1a1a2e'),
+        borderRadius:isEd||hasDone?'8px 8px 0 0':'8px',
+        display:'flex',alignItems:'center',gap:'8px'},
+        onclick:()=>{BLOCK_EDITING=isEd?null:wIdx;render();}});
+
+      rowBtn.appendChild(span({style:{fontSize:'12px',fontFamily:"'Bebas Neue',cursive",color:isCur?'#e0e0ff':'#555',minWidth:'22px',fontWeight:isCur?'700':'400'}},wn+''));
+      const rowText=div({style:{flex:'1',minWidth:0}});
+      rowText.appendChild(div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'1px'}},[
+        span({style:{fontSize:'10px',color:'#777'}},fmtDate(mon)+' – '+fmtDate(sun)),
+        isCur?span({style:{fontSize:'8px',color:'#b8ff4f'}},'NOW'):null,
+      ]));
+      rowText.appendChild(span({style:{fontSize:'10px',color:'#555'}},t.km+'km · '+(t.vert>=1000?(t.vert/1000).toFixed(1)+'k':t.vert)+'m · '+t.hrs+'hr'+(hasDone?' • '+actuals.done+'/'+totalDays+' done':'')));
+      rowBtn.appendChild(rowText);
+      rowBtn.appendChild(span({style:{fontSize:'11px',color:'#333'}},isEd?'▲':'▼'));
+      wrap.appendChild(rowBtn);
+
+      // Progress bars when week has data
+      if(hasDone){
+        const barsDiv=div({style:{padding:'8px 12px 10px',background:'#0a0a1a',
+          border:'1px solid #1a1a2e',borderTop:'none',
+          borderRadius:isEd?'0':'0 0 8px 8px',marginBottom:isEd?'0':'5px'}});
+        [['KM',actuals.km,t.km,'#60a5fa'],['VERT',actuals.vert,t.vert,'#a29bfe'],['HRS',actuals.hrs,t.hrs,'#ffd166']].forEach(([lb,act,tgt,col])=>{
+          const row=div({style:{marginBottom:'5px'}});
+          const over=act>tgt&&tgt>0;
+          const pct=tgt>0?Math.min(100,Math.round(act/tgt*100)):0;
+          const info=div({style:{display:'flex',justifyContent:'space-between',marginBottom:'2px'}});
+          info.appendChild(span({style:{fontSize:'8px',color:'#444',letterSpacing:'0.1em'}},lb));
+          const actF=lb==='HRS'?act.toFixed(1):lb==='VERT'&&act>=1000?(act/1000).toFixed(1)+'k':Math.round(act);
+          const tgtF=lb==='HRS'?t.hrs:lb==='VERT'&&t.vert>=1000?(t.vert/1000).toFixed(1)+'k':tgt;
+          info.appendChild(span({style:{fontSize:'8px',color:over?'#ff6b6b':'#555'}},actF+'/'+tgtF+(lb==='KM'?'km':lb==='VERT'?'m':'hr')+(over?' ↑':pct===100?' ✓':' '+pct+'%')));
+          row.appendChild(info); row.appendChild(pbar(act,tgt||1,col));
+          barsDiv.appendChild(row);
+        });
+        barsDiv.appendChild(btn({style:{marginTop:'6px',padding:'4px 10px',borderRadius:'4px',fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555'},
+          onclick:()=>{EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;EXPANDED_DAY=null;EDITING_DAY=null;render();}},'View sessions →'));
+        wrap.appendChild(barsDiv);
+      }
+
+      if(isEd){
+        const panel=div({style:{padding:'14px',background:'#111128',border:'1px solid '+tc2+'30',borderTop:'none',borderRadius:'0 0 8px 8px',marginBottom:'5px'}});
+        const typeContainer=div({style:{marginBottom:'12px'}});
+        typeContainer.appendChild(lbl('Week type'));
+        const typeBtnsDiv=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
+        function renderWTBtns(){
+          typeBtnsDiv.innerHTML='';
+          WEEK_TYPES.forEach(wt=>{
+            const wtc=WTC[wt], isA=TARGETS[wIdx].type===wt;
+            const b=btn({style:{padding:'5px 10px',borderRadius:'4px',fontSize:'10px',
+              background:isA?wtc+'30':'#0a0a18',border:'1px solid '+(isA?wtc:'#2a2a4a'),color:isA?wtc:'#555'},
+              onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],type:wt};S.set(SK.targets,TARGETS);renderWTBtns();}},wt);
+            typeBtnsDiv.appendChild(b);
+          });
+        }
+        renderWTBtns();
+        typeContainer.appendChild(typeBtnsDiv);
+        panel.appendChild(typeContainer);
+
+        let form={...TARGETS[wIdx]};
+        const ng=div({class:'grid3',style:{marginBottom:'12px'}});
+        [['Target km',form.km,'km',v=>form.km=parseFloat(v)||0],['Target vert',form.vert,'m',v=>form.vert=parseFloat(v)||0],['Target hrs',form.hrs,'hr',v=>form.hrs=parseFloat(v)||0]].forEach(([lb,val,unit,cb])=>ng.appendChild(numInp(lb,val,cb,unit)));
+        panel.appendChild(ng);
+
+        const btnsRow=div({style:{display:'flex',gap:'8px'}});
+        btnsRow.appendChild(btn({style:{padding:'8px 12px',borderRadius:'6px',fontSize:'10px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#666'},
+          onclick:()=>{EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;render();}},'View sessions'));
+        btnsRow.appendChild(btn({class:'btn btn-ok',style:{padding:'9px 16px'},
+          onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],...form};S.set(SK.targets,TARGETS);BLOCK_EDITING=null;render();}},'Save'));
+        btnsRow.appendChild(btn({class:'btn-sm btn-ghost',onclick:()=>{BLOCK_EDITING=null;render();}},'Cancel'));
+        panel.appendChild(btnsRow);
+        wrap.appendChild(panel);
+      }
+    });
+  });
+
+  // Block totals footer
+  const totals=TARGETS.reduce((acc,t)=>({km:acc.km+t.km,vert:acc.vert+t.vert,hrs:acc.hrs+t.hrs}),{km:0,vert:0,hrs:0});
+  const footer=div({style:{marginTop:'16px',padding:'12px 14px',background:'#0a0a1a',border:'1px solid #1c1c2e',borderRadius:'8px'}});
+  footer.appendChild(div({class:'section-title',style:{marginBottom:'8px'}},'Block totals (planned)'));
+  const totRow=div({style:{display:'flex',gap:'0'}});
+  [[totals.km+'km','#60a5fa','TOTAL KM'],[( totals.vert/1000).toFixed(0)+'km','#a29bfe','VERT (000m)'],[totals.hrs+'hr','#ffd166','HOURS']].forEach(([val,col,label])=>{
+    const cell=div({style:{flex:'1',textAlign:'center'}});
+    cell.appendChild(div({style:{fontSize:'20px',fontFamily:"'Bebas Neue',cursive",color:col,lineHeight:'1'}},val));
+    cell.appendChild(div({style:{fontSize:'8px',color:'#444',letterSpacing:'0.1em',marginTop:'2px'}},label));
+    totRow.appendChild(cell);
+  });
+  footer.appendChild(totRow);
+  wrap.appendChild(footer);
   return wrap;
 }
+
 
 // ============================================================
 // PLAN TAB
@@ -1304,10 +1470,36 @@ function renderPlan(){
           actHdr.appendChild(span({style:{fontSize:'12px',color:act.completed?'#55efc4':'#c0c0e0',flex:'1'}},act.label||'Activity'));
           if(act.completed) actHdr.appendChild(span({style:{fontSize:'9px',color:'#00ff87'}},'✓'));
 
-          // Edit / delete buttons
+          // Edit / delete / move buttons
           const actCtrl=div({style:{display:'flex',gap:'4px',marginLeft:'4px'}});
           actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'#1a1a3a',border:'1px solid #2a2a4a',color:'#888'},
             onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'✎'));
+
+          // Move to day selector
+          const moveWrap=div({style:{position:'relative',display:'inline-block'}});
+          const moveSel=el('select',{style:{padding:'2px 5px',borderRadius:'4px',fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555',cursor:'pointer',outline:'none'}});
+          const moveOpt=el('option',{value:''},'↕');
+          moveSel.appendChild(moveOpt);
+          week.days.forEach((wd,targetDIdx)=>{
+            if(targetDIdx===dIdx) return;
+            const o=el('option',{value:String(targetDIdx)},wd.day+' '+fmtDate(slotDateObj(wIdx,wd.day)));
+            moveSel.appendChild(o);
+          });
+          moveSel.addEventListener('change',()=>{
+            const targetDIdx=parseInt(moveSel.value);
+            if(isNaN(targetDIdx)) return;
+            // Remove from source
+            const srcActs=[...getDayActivities(wIdx,dIdx)];
+            const [moved]=srcActs.splice(aIdx,1);
+            saveDayActivities(wIdx,dIdx,srcActs);
+            // Add to target
+            const tgtActs=[...getDayActivities(wIdx,targetDIdx),moved];
+            saveDayActivities(wIdx,targetDIdx,tgtActs);
+            render();
+          });
+          moveWrap.appendChild(moveSel);
+          actCtrl.appendChild(moveWrap);
+
           actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'#1a0a0a',border:'1px solid #2a2a2a',color:'#555'},
             onclick:()=>{
               const updated=activities.filter((_,i)=>i!==aIdx);
@@ -1359,14 +1551,19 @@ function renderPlan(){
         const li=inp({class:'inp',type:'text',value:ef.label});
         li.addEventListener('input',()=>ef.label=li.value);
         ed.appendChild(div({},[lbl('Session name'),li]));
-        const typeBtns=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
-        Object.keys(TL).forEach(t=>{
-          const b=btn({style:{padding:'5px 9px',borderRadius:'4px',fontSize:'9px',
-            background:ef.type===t?TC[t]+'30':'#0a0a18',border:'1px solid '+(ef.type===t?TC[t]:'#2a2a4a'),color:ef.type===t?TC[t]:'#555'},
-            onclick:()=>{ef.type=t;b.style.background=TC[t]+'30';b.style.borderColor=TC[t];b.style.color=TC[t];}},TL[t]);
-          typeBtns.appendChild(b);
-        });
-        ed.appendChild(div({},[lbl('Type'),typeBtns]));
+        const typeBtnsContainer=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
+        function renderPlanTypeBtns(){
+          typeBtnsContainer.innerHTML='';
+          Object.keys(TL).forEach(t=>{
+            const isA=ef.type===t; const col=TC[t]||'#555';
+            const b=btn({style:{padding:'5px 9px',borderRadius:'4px',fontSize:'9px',
+              background:isA?col+'30':'#0a0a18',border:'1px solid '+(isA?col:'#2a2a4a'),color:isA?col:'#555'},
+              onclick:()=>{ef.type=t;renderPlanTypeBtns();}},TL[t]);
+            typeBtnsContainer.appendChild(b);
+          });
+        }
+        renderPlanTypeBtns();
+        ed.appendChild(div({},[lbl('Type'),typeBtnsContainer]));
         const ng=div({class:'grid3'});
         [['km',ef.km,'km',v=>ef.km=parseFloat(v)||0],['vert',ef.vert,'m',v=>ef.vert=parseFloat(v)||0],['hrs',ef.hrs,'hr',v=>ef.hrs=parseFloat(v)||0]].forEach(([lb,val,unit,cb])=>{
           ng.appendChild(numInp(lb,val,cb,unit));
@@ -1461,10 +1658,9 @@ function renderTrend(){
     }).join('\n');
     const readinessSummary=entries.slice(-7).map(([date,e])=>date+': HRV '+(e.hrv||'?')+' RHR '+(e.rhr||'?')+' -> '+(e.decision||'?')).join('\n');
     const ctx='Week '+curWeek()+' of '+plan.length+' ('+target?.type+') - '+daysToRace()+' days to race\nTarget: '+target?.km+'km / '+target?.vert+'m / '+target?.hrs+'hr\nActual: '+wAct.km.toFixed(1)+'km / '+wAct.vert+'m / '+wAct.hrs.toFixed(1)+'hr ('+doneDays+'/'+(plan[wIdx]?.days.length)+' days done)\n\nSessions:\n'+sessSummaries+'\n\nReadiness:\n'+readinessSummary;
-    try{
-      const s=await aiCall('You are an experienced ultra trail running coach. Give a weekly debrief to Jaime, a competitive trail ultrarunner. Direct and analytical: volume vs target, session quality, readiness patterns, one focus for next week. 4-6 sentences max. No fluff.',ctx);
-      summText.textContent=s;
-    }catch(e){summText.textContent='Error - check connection.';}
+    try{const s=await aiCall('You are an experienced ultra trail running coach. Give a weekly debrief to Jaime, a competitive trail ultrarunner. Direct and analytical: volume vs target, session quality, readiness patterns, one focus for next week. 4-6 sentences max. No fluff.',ctx);
+      summText.textContent=s.startsWith('Error:')?s:s;
+    }catch(e){summText.textContent='Error: '+e.message;}
     summBtn.textContent='REGENERATE'; summBtn.disabled=false;
   }},doneDays===0?'Log sessions first':'Get Week Summary');
   summCard.appendChild(summBtn);
@@ -1510,7 +1706,27 @@ function renderSettings(){
   dg.appendChild(div({},[lbl('Block start'),bsI]));
   cfgCard.appendChild(dg);
 
-  const weeksInfo=div({style:{padding:'8px 10px',background:'#0a0a18',border:'1px solid #1c1c2e',borderRadius:'6px',fontSize:'10px',color:'#555'}},'Calculated weeks will show on save');
+  const weeksInfo=div({style:{padding:'8px 10px',background:'#0a0a18',border:'1px solid #1c1c2e',borderRadius:'6px',fontSize:'10px',color:'#555'}},'');
+  function updateWeeksPreview(){
+    if(!validDateStr(cfgForm.raceDateStr)||!validDateStr(cfgForm.blockStartStr)){
+      weeksInfo.textContent='Set valid dates to see week count';
+      weeksInfo.style.color='#555';
+      return;
+    }
+    // Temporarily compute with form values
+    const savedRace=CFG.raceDateStr, savedStart=CFG.blockStartStr;
+    CFG.raceDateStr=cfgForm.raceDateStr; CFG.blockStartStr=cfgForm.blockStartStr;
+    const tw=totalWeeks();
+    const bm=getBlockMonday();
+    const be=getBlockEnd();
+    CFG.raceDateStr=savedRace; CFG.blockStartStr=savedStart;
+    weeksInfo.textContent=tw+' weeks · '+fmtDate(bm)+' to '+fmtDate(be)+(be.getDate()!==new Date(cfgForm.raceDateStr+'T00:00:00').getDate()?' (extended to Sunday)':'');
+    weeksInfo.style.color='#888';
+  }
+  updateWeeksPreview();
+  // Wire date inputs to update preview
+  rdI.addEventListener('input',()=>{cfgForm.raceDateStr=rdI.value;updateWeeksPreview();});
+  bsI.addEventListener('input',()=>{cfgForm.blockStartStr=bsI.value;updateWeeksPreview();});
   cfgCard.appendChild(weeksInfo);
 
   const hg=div({class:'grid2'});
@@ -1532,16 +1748,21 @@ function renderSettings(){
   cfgCard.appendChild(rg);
 
   const savCfgBtn=btn({class:'btn',onclick:()=>{
-    CFG=cfgForm; S.set(SK.cfg,CFG);
-    // Rebuild targets if week count changed
-    const newTW=totalWeeks();
-    if(TARGETS.length!==newTW){
-      const newT=buildTargets();
-      TARGETS=newT.map((t,i)=>TARGETS[i]||t);
-      S.set(SK.targets,TARGETS);
+    // Validate dates before applying
+    if(!validDateStr(cfgForm.raceDateStr)){
+      savCfgBtn.textContent='Invalid race date'; savCfgBtn.style.color='#ff6b6b';
+      setTimeout(()=>{savCfgBtn.textContent='Save Config';savCfgBtn.style.color='';savCfgBtn.style.borderColor='';},2000);
+      return;
     }
+    if(!validDateStr(cfgForm.blockStartStr)){
+      savCfgBtn.textContent='Invalid block start'; savCfgBtn.style.color='#ff6b6b';
+      setTimeout(()=>{savCfgBtn.textContent='Save Config';savCfgBtn.style.color='';savCfgBtn.style.borderColor='';},2000);
+      return;
+    }
+    CFG=cfgForm; S.set(SK.cfg,CFG);
+    syncTargets(); // auto-trims or extends TARGETS to match new week count
     savCfgBtn.textContent='SAVED'; savCfgBtn.style.color='#00ff87'; savCfgBtn.style.borderColor='#00ff87';
-    setTimeout(()=>{render();},800);
+    setTimeout(()=>render(),800);
   }},'Save Config');
   cfgCard.appendChild(savCfgBtn);
   wrap.appendChild(cfgCard);
@@ -1573,26 +1794,31 @@ function renderSettings(){
   // Activity totals toggle card
   const totalsCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
   totalsCard.appendChild(div({class:'section-title'},'Daily Totals — Activity Types'));
-  totalsCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},'These activity types contribute to daily km/vert/hr totals and weekly progress bars.'));
+  totalsCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},'Toggle which activity types contribute to daily km/vert/hr totals and weekly progress bars.'));
   const toggleGrid=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
-  const countTypes=CFG.countTypes||DEFAULT_COUNT_TYPES;
-  ALL_TYPES.forEach(t=>{
-    const active=countTypes.includes(t);
-    const tc2=TC[t]||'#555';
-    const b=btn({style:{padding:'5px 10px',borderRadius:'4px',fontSize:'10px',
-      background:active?tc2+'25':'#0a0a18',border:'1px solid '+(active?tc2:'#2a2a4a'),
-      color:active?tc2:'#444'},
-      onclick:()=>{
-        const cur=CFG.countTypes||[...DEFAULT_COUNT_TYPES];
-        const idx=cur.indexOf(t);
-        if(idx>=0) cur.splice(idx,1); else cur.push(t);
-        CFG.countTypes=[...cur]; S.set(SK.cfg,CFG);
-        b.style.background=cur.includes(t)?tc2+'25':'#0a0a18';
-        b.style.borderColor=cur.includes(t)?tc2:'#2a2a4a';
-        b.style.color=cur.includes(t)?tc2:'#444';
-      }},TL[t]||t.toUpperCase());
-    toggleGrid.appendChild(b);
-  });
+
+  function groupActive(group){
+    const ct=CFG.countTypes||[...DEFAULT_COUNT_TYPES];
+    return group.types.some(t=>ct.includes(t));
+  }
+  function renderToggleBtns(){
+    toggleGrid.innerHTML='';
+    COUNT_TOGGLE_GROUPS.forEach(g=>{
+      const active=groupActive(g);
+      const b=btn({style:{padding:'6px 12px',borderRadius:'4px',fontSize:'10px',
+        background:active?g.color+'25':'#0a0a18',border:'1px solid '+(active?g.color:'#2a2a4a'),
+        color:active?g.color:'#444'},
+        onclick:()=>{
+          const cur=new Set(CFG.countTypes||[...DEFAULT_COUNT_TYPES]);
+          if(groupActive(g)){ g.types.forEach(t=>cur.delete(t)); }
+          else { g.types.forEach(t=>cur.add(t)); }
+          CFG.countTypes=[...cur]; S.set(SK.cfg,CFG);
+          renderToggleBtns();
+        }},g.label);
+      toggleGrid.appendChild(b);
+    });
+  }
+  renderToggleBtns();
   totalsCard.appendChild(toggleGrid);
   wrap.appendChild(totalsCard);
 
@@ -1619,8 +1845,10 @@ function renderSettings(){
     const text=icsTa.value.trim();
     if(!text){icsStatus.textContent='Paste iCal text first.';icsStatus.style.color='#ff6b6b';return;}
     if(!text.includes('BEGIN:VCALENDAR')){icsStatus.textContent='Not valid iCal — check you copied the full calendar text.';icsStatus.style.color='#ff6b6b';return;}
+    // Clear sample plan sessions before importing
+    clearSamplePlan();
     const result=applyICSToEdits(text);
-    icsStatus.textContent=result.msg;
+    icsStatus.textContent=result.msg+(hasSamplePlan()?'':' Sample plan cleared.');
     icsStatus.style.color=result.ok?'#00ff87':'#ff6b6b';
     if(result.ok){ icsTa.value=''; setTimeout(()=>render(),1200); }
   }},'Import Calendar'));
@@ -1628,10 +1856,18 @@ function renderSettings(){
   tpCard.appendChild(tpBtnRow);
   tpCard.appendChild(icsStatus);
 
-  // Show current TP session count
-  const tpEdits=Object.keys(EDITS).length;
-  if(tpEdits>0){
-    tpCard.appendChild(div({style:{fontSize:'10px',color:'#4a4a6a',borderTop:'1px solid #1a1a2e',paddingTop:'8px'}},tpEdits+' plan sessions currently overridden (from TP or manual edits)'));
+  // Sample plan controls
+  if(hasSamplePlan()){
+    const sampleRow=div({style:{display:'flex',alignItems:'center',gap:'10px',borderTop:'1px solid #1a1a2e',paddingTop:'8px'}});
+    sampleRow.appendChild(span({style:{fontSize:'10px',color:'#555',flex:'1'}},'Sample plan loaded (weeks 1–4)'));
+    sampleRow.appendChild(btn({class:'btn-sm btn-danger',onclick:()=>{
+      if(confirm('Clear the sample plan? Your own edits will be kept.')) clearSamplePlan(); render();
+    }},'Clear sample'));
+    tpCard.appendChild(sampleRow);
+  } else if(Object.keys(EDITS).length===0){
+    const sampleRow=div({style:{borderTop:'1px solid #1a1a2e',paddingTop:'8px'}});
+    sampleRow.appendChild(btn({class:'btn-sm',style:{fontSize:'9px'},onclick:()=>{applySamplePlan();render();}},'Restore sample plan'));
+    tpCard.appendChild(sampleRow);
   }
 
   wrap.appendChild(tpCard);
@@ -1734,7 +1970,10 @@ function applyStravaBackfill(){
     newRuns[key]=[{
       id:newActId(),
       label,
-      type: km>15?'long': (label.toLowerCase().includes('strength')||label.toLowerCase().includes('weight'))?'strength':'easy',
+      type: autoUpgradeType(
+        (label.toLowerCase().includes('strength')||label.toLowerCase().includes('weight'))?'strength':'easy',
+        km
+      ),
       actualKm:km, actualVert:vert, actualHrs:hrs,
       perf:String(perf), exec:String(exec), note,
       completed:true, ts:new Date(dateStr+'T12:00:00').getTime()
@@ -1746,9 +1985,126 @@ function applyStravaBackfill(){
 }
 
 // ============================================================
+// SAMPLE PLAN
+// ============================================================
+// 4-week intro plan based on Jaime's training patterns.
+// Sessions are marked _sample:true so they can be bulk-cleared on iCal import.
+// Week structure: Mon upper strength / Tue intervals / Wed legs+treadmill /
+//                Thu easy trail / Fri shakeout / Sat climb or long / Sun long + race wk4
+
+const SAMPLE_SESSIONS = [
+  // WEEK 1 — RECOVERY / BASE
+  {day:'Mon',wk:1,label:'Upper Body Strength',type:'strength',km:0,vert:0,hrs:0.75,
+    detail:'Bench press, rows, pull-ups, shoulder press. Keep it aerobic — no max effort sets. Focus on movement quality.'},
+  {day:'Tue',wk:1,label:'Easy Intervals — 4x6min',type:'intervals',km:10,vert:100,hrs:1,
+    detail:'Warm up 2km, then 4x6min at 3:50–4:00/km with 2min jog recovery. Cool down easy. Total ~10km.'},
+  {day:'Wed',wk:1,label:'Legs Strength + Treadmill Climb',type:'strength',km:3,vert:300,hrs:1.25,
+    detail:'Squat 3x6 at 80% 1RM, barbell lunges, single-leg RDL, calf raises, tibialis raises. Then 40min treadmill at 10–12% incline.'},
+  {day:'Thu',wk:1,label:'Easy Trail Run',type:'easy',km:17,vert:300,hrs:2,
+    detail:'Zone 2 the whole way. 135–148bpm. Conversational effort. Good opportunity to practise race nutrition — aim for 60g carbs/hr.'},
+  {day:'Fri',wk:1,label:'Shakeout',type:'easy',km:6,vert:50,hrs:0.5,
+    detail:'30–40min easy. Flush the legs. This is recovery, not training.'},
+  {day:'Sat',wk:1,label:'Trail Climb Session',type:'long',km:20,vert:700,hrs:3,
+    detail:'Find a sustained climb — aim for 600–800m vert. Run easy on the flat sections, hike the steep stuff. Practise power hiking technique.'},
+  {day:'Sun',wk:1,label:'Back-to-Back Long Run',type:'long',km:17,vert:350,hrs:2,
+    detail:'Easy effort on tired legs. This is the point — learning to run fatigued. Keep HR in Z2 even if pace suffers.'},
+
+  // WEEK 2 — BUILD
+  {day:'Mon',wk:2,label:'Upper Body Strength',type:'strength',km:0,vert:0,hrs:0.75,
+    detail:'Progress load from Week 1 where it felt easy. Maintain full range of motion.'},
+  {day:'Tue',wk:2,label:'Hill Reps — 6x3min',type:'intervals',km:11,vert:250,hrs:1.25,
+    detail:'Find a steep trail hill. 6x3min uphill at hard effort (155–160bpm), walk/jog back down. Total ~11km with warm-up and cool-down.'},
+  {day:'Wed',wk:2,label:'Legs Strength + Treadmill Climb',type:'strength',km:4,vert:450,hrs:1.5,
+    detail:'Squat up to working weight, barbell lunges, single-leg RDL, calf raises. Then 60min treadmill incline — push the last 15min.'},
+  {day:'Thu',wk:2,label:'Easy Trail Run',type:'easy',km:18,vert:350,hrs:2,
+    detail:'Zone 2. Add 2x15min Z3 blocks mid-run on uphills. Gut practice — caffeinated gels if racing with them.'},
+  {day:'Fri',wk:2,label:'Shakeout',type:'easy',km:6,vert:50,hrs:0.5,
+    detail:'Easy 30min. Optional 4x20sec strides at the end if legs feel good.'},
+  {day:'Sat',wk:2,label:'Big Climb Day',type:'long',km:24,vert:1100,hrs:3.5,
+    detail:'Target 1000–1200m vert. Blackheath horse track or equivalent. Hike the steep sections with poles. Final 45min at race effort.'},
+  {day:'Sun',wk:2,label:'Back-to-Back Long Run',type:'long',km:20,vert:400,hrs:2.5,
+    detail:'Moderate effort. Practice race nutrition — 80g carbs/hr. Note any gut issues.'},
+
+  // WEEK 3 — SHARPEN
+  {day:'Mon',wk:3,label:'Upper Body Strength — Maintain',type:'strength',km:0,vert:0,hrs:0.75,
+    detail:'Maintenance load only. No new PRs this week. Volume drops, quality stays.'},
+  {day:'Tue',wk:3,label:'Race-Pace Effort — 3x10min',type:'intervals',km:13,vert:150,hrs:1.25,
+    detail:'3x10min at goal race effort (148–153bpm) with 3min jog recovery. Flat or slight uphill. This is your race-day intensity — practise it.'},
+  {day:'Wed',wk:3,label:'Legs Strength + Short Treadmill',type:'strength',km:3,vert:250,hrs:1,
+    detail:'Reduce squat volume — 3x5 at 70% 1RM. Single-leg work, calf, tibialis. 30min treadmill at 12% — easy effort.'},
+  {day:'Thu',wk:3,label:'Easy Trail — Sharpener',type:'easy',km:14,vert:250,hrs:1.5,
+    detail:'Mostly Z2 with 4x1min surges at race effort on uphills. Keep the legs moving without accumulating fatigue.'},
+  {day:'Fri',wk:3,label:'Rest or Shakeout',type:'rest',km:0,vert:0,hrs:0,
+    detail:'Full rest or 20min easy walk. Save legs for the weekend.'},
+  {day:'Sat',wk:3,label:'Moderate Long Run',type:'long',km:22,vert:700,hrs:3,
+    detail:'Easy effort. Last significant training stimulus before race week. Finish feeling like you could do more.'},
+  {day:'Sun',wk:3,label:'Easy Recovery Run',type:'easy',km:12,vert:150,hrs:1.25,
+    detail:'Very easy. Zone 1–2 only. Start thinking about race week logistics.'},
+
+  // WEEK 4 — RACE WEEK
+  {day:'Mon',wk:4,label:'Upper Body — Very Light',type:'strength',km:0,vert:0,hrs:0.5,
+    detail:'30–40min max. Bodyweight or very light load only. Movement, not training.'},
+  {day:'Tue',wk:4,label:'Race-Feel Strides',type:'intervals',km:6,vert:60,hrs:0.5,
+    detail:'20min easy + 6x20sec strides at race effort. Legs should feel quick and springy.'},
+  {day:'Wed',wk:4,label:'Easy Movement',type:'easy',km:4,vert:30,hrs:0.4,
+    detail:'25–30min easy walk or jog. Gear check today. Pack drop bags if relevant.'},
+  {day:'Thu',wk:4,label:'Short Shakeout',type:'easy',km:5,vert:50,hrs:0.4,
+    detail:'20–25min easy. Last run before race. No heroics.'},
+  {day:'Fri',wk:4,label:'Rest / Travel',type:'rest',km:0,vert:0,hrs:0,
+    detail:'Full rest or travel to race venue. Walk around, stay loose. Sleep is the priority.'},
+  {day:'Sat',wk:4,label:'Pre-Race Prep',type:'rest',km:0,vert:0,hrs:0,
+    detail:'Race briefing, bib collection, early dinner, early to bed. Trust your training.'},
+  {day:'Sun',wk:4,label:'RACE DAY',type:'race',km:0,vert:0,hrs:0,
+    detail:'Execute the plan. First quarter conservative. Fuel from the gun — 80g carbs/hr. Hike the big climbs. You\'ve done the work.'},
+];
+
+function applySamplePlan(){
+  const plan=getPlan();
+  const newEdits={...EDITS};
+
+  // Build date lookup
+  const dateLookup={};
+  plan.forEach((wk,wIdx)=>{
+    wk.days.forEach((d,dIdx)=>{
+      dateLookup[slotDate(wIdx,d.day)]={wIdx,dIdx};
+    });
+  });
+
+  SAMPLE_SESSIONS.forEach(s=>{
+    // Find the slot by week offset + day name
+    const wIdx=s.wk-1;
+    if(!plan[wIdx]) return;
+    const dIdx=plan[wIdx].days.findIndex(d=>d.day===s.day);
+    if(dIdx<0) return;
+    const key='w'+wIdx+'-d'+dIdx;
+    // Don't overwrite real edits (non-sample)
+    if(newEdits[key] && !newEdits[key]._sample) return;
+    newEdits[key]={label:s.label,type:s.type,detail:s.detail,km:s.km,vert:s.vert,hrs:s.hrs,_sample:true};
+  });
+
+  EDITS=newEdits;
+  S.set(SK.edits,EDITS);
+}
+
+function clearSamplePlan(){
+  const newEdits={};
+  Object.entries(EDITS).forEach(([k,v])=>{
+    if(!v._sample) newEdits[k]=v;
+  });
+  EDITS=newEdits;
+  S.set(SK.edits,EDITS);
+}
+
+function hasSamplePlan(){
+  return Object.values(EDITS).some(v=>v._sample);
+}
+
+// ============================================================
 // BOOT
 // ============================================================
 applyStravaBackfill();
+// Apply sample plan on first load (no existing edits)
+if(Object.keys(EDITS).length===0) applySamplePlan();
 render();
 setInterval(()=>{ renderHeader(); }, 60000);
 </script>
