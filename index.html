@@ -172,17 +172,6 @@ function getBlockMonday(){
   return bs;
 }
 
-// Last Sunday on or after the race date — so a mid-week race still fills the week
-function getBlockEnd(){
-  const str=validDateStr(CFG.raceDateStr)?CFG.raceDateStr:'2026-08-28';
-  const rd=new Date(str+'T00:00:00');
-  rd.setHours(0,0,0,0);
-  const dow=rd.getDay(); // 0=Sun
-  const daysForward=dow===0?0:7-dow;
-  rd.setDate(rd.getDate()+daysForward);
-  return rd;
-}
-
 function totalWeeks(){
   const mon=getBlockMonday();
   const end=getBlockEnd();
@@ -240,11 +229,43 @@ function slotDateObj(wIdx, dayName){
   return d;
 }
 
-function daysToRace(){
-  if(!validDateStr(CFG.raceDateStr)) return '?';
-  const rd=new Date(CFG.raceDateStr+'T00:00:00');
+// Returns races array, merging legacy raceDateStr for old saved configs
+function getRaces(){
+  const races=CFG.races&&CFG.races.length?CFG.races:[];
+  if(!races.length&&validDateStr(CFG.raceDateStr)){
+    return [{name:CFG.raceName||'Race',date:CFG.raceDateStr,dist:''}];
+  }
+  return races.filter(r=>validDateStr(r.date)).sort((a,b)=>a.date.localeCompare(b.date));
+}
+// Next upcoming race (today counts)
+function getNextRace(){
+  const td=today();
+  const upcoming=getRaces().filter(r=>r.date>=td);
+  return upcoming[0]||getRaces().slice(-1)[0]||null;
+}
+// Days to a specific date string
+function daysTo(dateStr){
+  if(!validDateStr(dateStr)) return null;
+  const rd=new Date(dateStr+'T00:00:00');
   const now=new Date(); now.setHours(0,0,0,0);
   return Math.max(0,Math.ceil((rd-now)/86400000));
+}
+function daysToRace(){
+  const r=getNextRace();
+  return r?daysTo(r.date):null;
+}
+// Last Sunday on or after the block end / last race
+function getBlockEnd(){
+  // Prefer explicit blockEndStr, else derive from last race
+  let endStr=validDateStr(CFG.blockEndStr)?CFG.blockEndStr:null;
+  if(!endStr){
+    const races=getRaces();
+    endStr=races.length?races[races.length-1].date:(validDateStr(CFG.raceDateStr)?CFG.raceDateStr:'2026-08-28');
+  }
+  const rd=new Date(endStr+'T00:00:00'); rd.setHours(0,0,0,0);
+  const dow=rd.getDay();
+  rd.setDate(rd.getDate()+(dow===0?0:7-dow));
+  return rd;
 }
 
 function getPlan(){
@@ -377,17 +398,10 @@ function getFatigueLoad(){
   return totalLoad/totalWeight; // 1-5 scale
 }
 
-function getDecision(combined, fatigueLoad){
-  // Fatigue penalty: each point above 3 on the weighted load subtracts from combined score
-  // A week of hard 4s = ~-8 pts; a race week = ~-15 pts
-  let adj=combined;
-  if(fatigueLoad!=null){
-    const fatiguePenalty=Math.round((fatigueLoad-2.5)*8);
-    adj=Math.max(0, adj-Math.max(0,fatiguePenalty));
-  }
-  if(adj>=74) return {label:'GO HARD',short:'up',color:'#00ff87',desc:'All signals green. Execute as planned or push harder.'};
-  if(adj>=55) return {label:'AS PLANNED',short:'right',color:'#b8ff4f',desc:'Solid baseline. Stick to the plan.'};
-  if(adj>=38) return {label:'MODIFY',short:'wave',color:'#ffd166',desc:'Mixed signals. Cut intensity or volume ~20%.'};
+function getDecision(combined){
+  if(combined>=74) return {label:'GO HARD',short:'up',color:'#00ff87',desc:'All signals green. Execute as planned or push harder.'};
+  if(combined>=55) return {label:'AS PLANNED',short:'right',color:'#b8ff4f',desc:'Solid baseline. Stick to the plan.'};
+  if(combined>=38) return {label:'MODIFY',short:'wave',color:'#ffd166',desc:'Mixed signals. Cut intensity or volume ~20%.'};
   return {label:'BACK OFF',short:'down',color:'#ff6b6b',desc:'Non-negotiable. Easy movement or full rest only.'};
 }
 
@@ -868,9 +882,13 @@ function render(){ syncTargets(); renderHeader(); renderTabs(); renderContent();
 function renderHeader(){
   const h=document.getElementById('header');
   h.innerHTML='';
-  const days=daysToRace();
+  const nextRace=getNextRace();
+  const allRaces=getRaces();
+  const td=today();
+  const upcomingRaces=allRaces.filter(r=>r.date>=td).slice(0,2);
+  const days=nextRace?daysTo(nextRace.date):null;
   const daysNum=typeof days==='number'?days:null;
-  const dColor=daysNum===null?'#555':daysNum<=30?'#ff6b6b':daysNum<=60?'#ffd166':'#00ff87';
+  const daysColor=daysNum===null?'#555':daysNum<=14?'#ff6b6b':daysNum<=42?'#ffd166':'#00ff87';
   const cw=curWeek(), tw=totalWeeks();
   const phase=TARGETS[cw-1]?.type||'--';
   const phColor=WTC[phase]||'#888';
@@ -882,18 +900,24 @@ function renderHeader(){
       span({style:{fontSize:'10px',color:'#555',display:'block',marginTop:'3px'}},fmtToday()),
     ]),
     div({style:{textAlign:'right'}},[
-      span({style:{fontSize:'26px',fontFamily:"'Bebas Neue',cursive",color:dColor,lineHeight:'1',display:'block'}},daysNum!==null?daysNum+'':'--'),
-      span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em',display:'block'}},'DAYS TO RACE'),
-      span({style:{fontSize:'9px',color:'#333',display:'block',marginTop:'2px'}},validDateStr(CFG.raceDateStr)?CFG.raceDateStr:'set in settings'),
+      span({style:{fontSize:'26px',fontFamily:"'Bebas Neue',cursive",color:daysColor,lineHeight:'1',display:'block'}},daysNum!==null?daysNum+'':'--'),
+      span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em',display:'block'}},nextRace?'DAYS TO '+nextRace.name.toUpperCase().split(' ')[0]:'DAYS TO RACE'),
+      nextRace?span({style:{fontSize:'9px',color:'#333',display:'block',marginTop:'1px'}},nextRace.date+(nextRace.dist?' · '+nextRace.dist:'')):null,
     ]),
   ]));
 
   const {mon:wMon,sun:wSun}=weekDates(cw-1);
-  h.appendChild(div({style:{display:'flex',gap:'6px',marginTop:'10px',flexWrap:'wrap'}},[
-    span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#888',padding:'3px 8px',borderRadius:'4px'}},'WK '+cw+'/'+tw),
-    span({style:{fontSize:'9px',background:phColor+'18',border:'1px solid '+phColor+'35',color:phColor,padding:'3px 8px',borderRadius:'4px'}},phase),
-    span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555',padding:'3px 8px',borderRadius:'4px'}},fmtDate(wMon)+' - '+fmtDate(wSun)),
-  ]));
+  const pillRow=div({style:{display:'flex',gap:'6px',marginTop:'10px',flexWrap:'wrap'}});
+  pillRow.appendChild(span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#888',padding:'3px 8px',borderRadius:'4px'}},'WK '+cw+'/'+tw));
+  pillRow.appendChild(span({style:{fontSize:'9px',background:phColor+'18',border:'1px solid '+phColor+'35',color:phColor,padding:'3px 8px',borderRadius:'4px'}},phase));
+  pillRow.appendChild(span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555',padding:'3px 8px',borderRadius:'4px'}},fmtDate(wMon)+' – '+fmtDate(wSun)));
+  // Show second upcoming race if exists
+  if(upcomingRaces.length>1){
+    const r2=upcomingRaces[1];
+    const d2=daysTo(r2.date);
+    pillRow.appendChild(span({style:{fontSize:'9px',background:'#fd79a820',border:'1px solid #fd79a840',color:'#fd79a8',padding:'3px 8px',borderRadius:'4px'}},r2.name.split(' ')[0]+' '+fmtDate(new Date(r2.date+'T12:00:00'))+' · '+d2+'d'));
+  }
+  h.appendChild(pillRow);
 }
 
 function renderTabs(){
@@ -942,9 +966,31 @@ function renderToday(){
     const rScore=physVals.length?Math.round(physVals.reduce((a,b)=>a+b,0)/physVals.length):null;
     const sScore=scoreSub(legs,mood,mot);
     const combined=rScore!=null&&sScore!=null?Math.round((rScore+sScore)/2):(rScore??sScore);
-    const fatigueLoad=getFatigueLoad();
-    return {rScore,sScore,combined,fatigueLoad};
+    return {rScore,sScore,combined};
   }
+
+  // Today's session card — shown first so it's closest to the data inputs
+  const sessCardWrap=div({});
+  if(todaySess){
+    const tc=TC[todaySess.type]||'#555';
+    const sessCard=div({style:{padding:'12px 14px',marginBottom:'16px',background:'#0b0b1c',border:'1px solid '+tc+'30',borderRadius:'8px'}});
+    const hdrRow=div({class:'flex',style:{marginBottom:'6px'}});
+    hdrRow.appendChild(span({style:{fontSize:'9px',background:tc,color:'#000',padding:'2px 6px',borderRadius:'3px',fontWeight:'700'}},TL[todaySess.type]||'--'));
+    hdrRow.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em'}},'TODAY - WK '+(wIdx+1)));
+    if(todayRun?.completed) hdrRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87',marginLeft:'auto'}},'DONE'));
+    sessCard.appendChild(hdrRow);
+    sessCard.appendChild(div({style:{fontSize:'14px',color:'#e0e0ff',marginBottom:'4px'}},todaySess.label));
+    sessCard.appendChild(div({style:{fontSize:'11px',color:'#666',lineHeight:'1.6',marginBottom:'8px'}},todaySess.detail));
+    sessCard.appendChild(div({style:{display:'flex',gap:'14px',marginBottom:'10px'}},[
+      span({style:{fontSize:'10px',color:'#555'}},todaySess.km+'km'),
+      span({style:{fontSize:'10px',color:'#555'}},todaySess.vert+'m'),
+      span({style:{fontSize:'10px',color:'#555'}},todaySess.hrs+'hr'),
+    ]));
+    const logBtn=btn({class:'btn-sm'+(todayRun?.completed?' btn-ok':''),onclick:()=>showRunModal(wIdx,dIdx,todaySess,todayRun)},todayRun?.completed?'Edit log':'Log this session');
+    sessCard.appendChild(logBtn);
+    sessCardWrap.appendChild(sessCard);
+  }
+  wrap.appendChild(sessCardWrap);
 
   // Decision banner
   const decBanner=div({style:{padding:'14px 16px',marginBottom:'20px',borderRadius:'8px',border:'1px solid #1c1c2e',background:'#0a0a1a'}});
@@ -955,10 +1001,9 @@ function renderToday(){
   ringsRow.id='rings-row';
 
   function updateDecision(){
-    const {rScore,sScore,combined,fatigueLoad}=computeScores();
-    const dec=combined!=null?getDecision(combined,fatigueLoad):null;
+    const {rScore,sScore,combined}=computeScores();
+    const dec=combined!=null?getDecision(combined):null;
 
-    // Update banner
     decBanner.innerHTML='';
     if(dec){
       decBanner.style.background=dec.color+'12';
@@ -966,11 +1011,6 @@ function renderToday(){
       decBanner.style.borderLeft='3px solid '+dec.color;
       decBanner.appendChild(span({style:{fontSize:'20px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.1em',color:dec.color,display:'block'}},dec.label));
       decBanner.appendChild(span({style:{fontSize:'11px',color:'#888',marginTop:'4px',lineHeight:'1.6',display:'block'}},dec.desc));
-      if(fatigueLoad!=null){
-        const fl=fatigueLoad.toFixed(1);
-        const flColor=fatigueLoad>3.5?'#ffd166':fatigueLoad>4.2?'#ff6b6b':'#555';
-        decBanner.appendChild(span({style:{fontSize:'9px',color:flColor,display:'block',marginTop:'6px',letterSpacing:'0.1em'}},'7-DAY FATIGUE LOAD: '+fl+'/5'));
-      }
     } else {
       decBanner.style.background='#0a0a1a';
       decBanner.style.border='1px solid #1c1c2e';
@@ -988,27 +1028,6 @@ function renderToday(){
   wrap.appendChild(decBanner);
   wrap.appendChild(ringsRow);
   updateDecision();
-
-  // Today's session card
-  if(todaySess){
-    const tc=TC[todaySess.type]||'#555';
-    const sessCard=div({style:{padding:'12px 14px',marginBottom:'20px',background:'#0b0b1c',border:'1px solid '+tc+'30',borderRadius:'8px'}});
-    const hdrRow=div({class:'flex',style:{marginBottom:'6px'}});
-    hdrRow.appendChild(span({style:{fontSize:'9px',background:tc,color:'#000',padding:'2px 6px',borderRadius:'3px',fontWeight:'700'}},TL[todaySess.type]||'--'));
-    hdrRow.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em'}},'TODAY - WK '+(wIdx+1)));
-    if(todayRun?.completed) hdrRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87',marginLeft:'auto'}},'DONE'));
-    sessCard.appendChild(hdrRow);
-    sessCard.appendChild(div({style:{fontSize:'14px',color:'#e0e0ff',marginBottom:'4px'}},todaySess.label));
-    sessCard.appendChild(div({style:{fontSize:'11px',color:'#666',lineHeight:'1.6',marginBottom:'8px'}},todaySess.detail));
-    sessCard.appendChild(div({style:{display:'flex',gap:'14px',marginBottom:'10px'}},[
-      span({style:{fontSize:'10px',color:'#555'}},todaySess.km+'km'),
-      span({style:{fontSize:'10px',color:'#555'}},todaySess.vert+'m'),
-      span({style:{fontSize:'10px',color:'#555'}},todaySess.hrs+'hr'),
-    ]));
-    const logBtn=btn({class:'btn-sm'+(todayRun?.completed?' btn-ok':''),onclick:()=>showRunModal(wIdx,dIdx,todaySess,todayRun)},todayRun?.completed?'Edit log':'Log this session');
-    sessCard.appendChild(logBtn);
-    wrap.appendChild(sessCard);
-  }
 
   // Pre-populate RPE from yesterday's logged session if not already saved today
   if(!saved.rpe){
@@ -1045,7 +1064,7 @@ function renderToday(){
 
   const grid2=div({class:'grid2',style:{marginBottom:'12px'}});
   grid2.appendChild(selField('Sleep',sleep,[{v:'great',l:'Solid 8+'},{v:'ok',l:'6-7hr OK'},{v:'poor',l:'Poor / broken'}],v=>{sleep=v;updateDecision();}));
-  grid2.appendChild(selField('Yesterday RPE',rpe,[{v:'1',l:'1-2 Very easy'},{v:'3',l:'3 Moderate'},{v:'4',l:'4 Hard'},{v:'5',l:'5 Maximal'}],v=>{rpe=v;updateDecision();}));
+  grid2.appendChild(selField('Yesterday RPE',rpe,[{v:'0',l:'0 - Rest'},{v:'1',l:'1-2 Very easy'},{v:'3',l:'3 Moderate'},{v:'4',l:'4 Hard'},{v:'5',l:'5 Maximal'}],v=>{rpe=v;updateDecision();}));
   grid2.appendChild(selField('Legs',legs,[{v:'5',l:'5 Fresh'},{v:'4',l:'4 Good'},{v:'3',l:'3 OK'},{v:'2',l:'2 Heavy'},{v:'1',l:'1 Wrecked'}],v=>{legs=v;updateDecision();}));
   grid2.appendChild(selField('Mood',mood,[{v:'5',l:'5 Sharp'},{v:'4',l:'4 Good'},{v:'3',l:'3 OK'},{v:'2',l:'2 Stressed'},{v:'1',l:'1 Flat'}],v=>{mood=v;updateDecision();}));
   wrap.appendChild(grid2);
@@ -1060,9 +1079,9 @@ function renderToday(){
   wrap.appendChild(noteWrap);
 
   const saveBtn=btn({class:'btn',onclick:()=>{
-    const {rScore,sScore,combined,fatigueLoad}=computeScores();
-    const dec=combined!=null?getDecision(combined,fatigueLoad):null;
-    const entry={hrv,rhr,sleep,legs,mood,motivation:mot,rpe,note,decision:dec?.label,fatigueLoad,ts:Date.now()};
+    const {rScore,sScore,combined}=computeScores();
+    const dec=combined!=null?getDecision(combined):null;
+    const entry={hrv,rhr,sleep,legs,mood,motivation:mot,rpe,note,decision:dec?.label,ts:Date.now()};
     LOG[td]=entry; S.set(SK.log,LOG);
     saveBtn.textContent='LOGGED'; saveBtn.style.color='#00ff87'; saveBtn.style.borderColor='#00ff87';
     setTimeout(()=>{saveBtn.textContent='LOG TODAY';saveBtn.style.color='';saveBtn.style.borderColor='';},1800);
@@ -1202,7 +1221,7 @@ function renderBlock(){
   // Header
   const hdrRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'16px'}});
   hdrRow.appendChild(div({class:'section-title',style:{marginBottom:'0'}},totalWeeks()+'-Week Block'));
-  hdrRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},fmtDate(getBlockMonday())+' to '+CFG.raceDateStr));
+  hdrRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},fmtDate(getBlockMonday())+' – '+fmtDate(getBlockEnd())));
   wrap.appendChild(hdrRow);
 
   // Group weeks by phase
@@ -1375,20 +1394,40 @@ function renderPlan(){
   hdrBadges.appendChild(span({style:{fontSize:'9px',color:'#555'}},fmtDate(pwMon)+' - '+fmtDate(pwSun)));
   if(EDIT_WEEK===curWeek()) hdrBadges.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'CURRENT'));
   hdrLeft.appendChild(hdrBadges);
-  hdrLeft.appendChild(div({style:{fontSize:'13px',fontFamily:"'Bebas Neue',cursive",color:'#e0e0ff'}},target?.km+'km - '+target?.vert+'m - '+target?.hrs+'hr targets'));
+  // Target line — clean "TARGET: 95km · 3500m · 13hr" format
+  hdrLeft.appendChild(div({style:{fontSize:'12px',color:'#e0e0ff',letterSpacing:'0.04em',marginBottom:'2px'}},
+    'TARGET: '+(target?.km||0)+'km · '+(target?.vert||0)+'m · '+(target?.hrs||0)+'hr'));
   hdrTop.appendChild(hdrLeft);
   hdrTop.appendChild(div({style:{fontSize:'11px',color:'#555',textAlign:'right'}},actuals.done+'/'+week.days.length+'\ndone'));
   hdrCard.appendChild(hdrTop);
 
-  [['KM',actuals.km,target?.km,'#60a5fa'],['VERT',actuals.vert,target?.vert,'#a29bfe'],['HRS',actuals.hrs,target?.hrs,'#ffd166']].forEach(([lb,act,tgt,col])=>{
-    const row=div({style:{marginBottom:'8px'}});
-    const info=div({style:{display:'flex',justifyContent:'space-between',marginBottom:'3px'}});
-    info.appendChild(span({style:{fontSize:'9px',color:'#555'}},lb));
-    const actVal=lb==='HRS'?act.toFixed(1):Math.round(act);
-    info.appendChild(span({style:{fontSize:'9px',color:'#666'}},actVal+'/'+(tgt||0)+(lb==='KM'?'km':lb==='VERT'?'m':'hr')));
-    row.appendChild(info);
-    row.appendChild(pbar(act,tgt||1,col));
-    hdrCard.appendChild(row);
+  // Progress bars: planned (sum of session km/vert/hrs) vs weekly target
+  // This lets user see: how much is planned this week vs what the target asks for
+  const planned=week.days.reduce((acc,_,dIdx)=>{
+    const s=getSession(wIdx,dIdx);
+    if(s&&s.label){acc.km+=s.km||0;acc.vert+=s.vert||0;acc.hrs+=s.hrs||0;}
+    return acc;
+  },{km:0,vert:0,hrs:0});
+
+  [['LOGGED',actuals.km,actuals.vert,actuals.hrs],
+   ['PLANNED',planned.km,planned.vert,planned.hrs]].forEach(([rowLabel,km,vert,hrs],rowIdx)=>{
+    const isLogged=rowIdx===0;
+    const col=isLogged?'#00ff87':'#60a5fa';
+    const metaRow=div({style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'4px'}});
+    metaRow.appendChild(span({style:{fontSize:'8px',color:isLogged?'#00ff87':'#4a4a6a',letterSpacing:'0.12em',minWidth:'48px'}},rowLabel));
+    [['km',km,target?.km||0],['m',vert,target?.vert||0],['hr',hrs,target?.hrs||0]].forEach(([unit,val,tgt])=>{
+      const over=val>tgt&&tgt>0;
+      const fmtVal=unit==='hr'?val.toFixed(1):Math.round(val)>999?(Math.round(val)/1000).toFixed(1)+'k':Math.round(val);
+      metaRow.appendChild(span({style:{fontSize:'10px',color:over?'#ff6b6b':isLogged&&val>0?col:'#444',flex:'1'}},fmtVal+unit));
+    });
+    hdrCard.appendChild(metaRow);
+    if(isLogged){
+      // Logged progress bar vs target
+      [['KM',actuals.km,target?.km,'#00ff87'],['VERT',actuals.vert,target?.vert,'#55efc4'],['HRS',actuals.hrs,target?.hrs,'#b8ff4f']].forEach(([lb,act,tgt,barCol])=>{
+        hdrCard.appendChild(pbar(act,tgt||1,barCol));
+      });
+      hdrCard.appendChild(div({style:{height:'6px'}}));
+    }
   });
   wrap.appendChild(hdrCard);
 
@@ -1475,30 +1514,30 @@ function renderPlan(){
           actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'#1a1a3a',border:'1px solid #2a2a4a',color:'#888'},
             onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'✎'));
 
-          // Move to day selector
-          const moveWrap=div({style:{position:'relative',display:'inline-block'}});
-          const moveSel=el('select',{style:{padding:'2px 5px',borderRadius:'4px',fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555',cursor:'pointer',outline:'none'}});
-          const moveOpt=el('option',{value:''},'↕');
-          moveSel.appendChild(moveOpt);
-          week.days.forEach((wd,targetDIdx)=>{
-            if(targetDIdx===dIdx) return;
-            const o=el('option',{value:String(targetDIdx)},wd.day+' '+fmtDate(slotDateObj(wIdx,wd.day)));
-            moveSel.appendChild(o);
-          });
-          moveSel.addEventListener('change',()=>{
-            const targetDIdx=parseInt(moveSel.value);
-            if(isNaN(targetDIdx)) return;
-            // Remove from source
-            const srcActs=[...getDayActivities(wIdx,dIdx)];
-            const [moved]=srcActs.splice(aIdx,1);
-            saveDayActivities(wIdx,dIdx,srcActs);
-            // Add to target
-            const tgtActs=[...getDayActivities(wIdx,targetDIdx),moved];
-            saveDayActivities(wIdx,targetDIdx,tgtActs);
-            render();
-          });
-          moveWrap.appendChild(moveSel);
-          actCtrl.appendChild(moveWrap);
+          // Move to day selector — only for incomplete (future) activities
+          if(!act.completed){
+            const moveWrap=div({style:{position:'relative',display:'inline-block'}});
+            const moveSel=el('select',{style:{padding:'2px 5px',borderRadius:'4px',fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555',cursor:'pointer',outline:'none'}});
+            const moveOpt=el('option',{value:''},'↕');
+            moveSel.appendChild(moveOpt);
+            week.days.forEach((wd,targetDIdx)=>{
+              if(targetDIdx===dIdx) return;
+              const o=el('option',{value:String(targetDIdx)},wd.day+' '+fmtDate(slotDateObj(wIdx,wd.day)));
+              moveSel.appendChild(o);
+            });
+            moveSel.addEventListener('change',()=>{
+              const targetDIdx=parseInt(moveSel.value);
+              if(isNaN(targetDIdx)) return;
+              const srcActs=[...getDayActivities(wIdx,dIdx)];
+              const [moved]=srcActs.splice(aIdx,1);
+              saveDayActivities(wIdx,dIdx,srcActs);
+              const tgtActs=[...getDayActivities(wIdx,targetDIdx),moved];
+              saveDayActivities(wIdx,targetDIdx,tgtActs);
+              render();
+            });
+            moveWrap.appendChild(moveSel);
+            actCtrl.appendChild(moveWrap);
+          }
 
           actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'#1a0a0a',border:'1px solid #2a2a2a',color:'#555'},
             onclick:()=>{
@@ -1658,7 +1697,7 @@ function renderTrend(){
     }).join('\n');
     const readinessSummary=entries.slice(-7).map(([date,e])=>date+': HRV '+(e.hrv||'?')+' RHR '+(e.rhr||'?')+' -> '+(e.decision||'?')).join('\n');
     const ctx='Week '+curWeek()+' of '+plan.length+' ('+target?.type+') - '+daysToRace()+' days to race\nTarget: '+target?.km+'km / '+target?.vert+'m / '+target?.hrs+'hr\nActual: '+wAct.km.toFixed(1)+'km / '+wAct.vert+'m / '+wAct.hrs.toFixed(1)+'hr ('+doneDays+'/'+(plan[wIdx]?.days.length)+' days done)\n\nSessions:\n'+sessSummaries+'\n\nReadiness:\n'+readinessSummary;
-    try{const s=await aiCall('You are an experienced ultra trail running coach. Give a weekly debrief to Jaime, a competitive trail ultrarunner. Direct and analytical: volume vs target, session quality, readiness patterns, one focus for next week. 4-6 sentences max. No fluff.',ctx);
+    try{const s=await aiCall('You are an experienced ultra trail running coach giving a weekly training debrief. Be direct and analytical. Cover: (1) volume vs target — was the week under/over/on target and what does that mean, (2) quality of key sessions based on performance/execution ratings, (3) load trend — using the readiness data, identify any fatigue accumulation or under-recovery patterns across the week, (4) one specific focus for next week. 4-6 sentences. No fluff.',ctx);
       summText.textContent=s.startsWith('Error:')?s:s;
     }catch(e){summText.textContent='Error: '+e.message;}
     summBtn.textContent='REGENERATE'; summBtn.disabled=false;
@@ -1693,41 +1732,72 @@ function renderSettings(){
   const cfgCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'12px'});
   cfgCard.appendChild(div({class:'section-title'},'Configuration'));
 
-  const raceNameI=inp({class:'inp',type:'text',value:cfgForm.raceName});
-  raceNameI.addEventListener('input',()=>cfgForm.raceName=raceNameI.value);
-  cfgCard.appendChild(div({},[lbl('Race name'),raceNameI]));
-
+  // Block dates
   const dg=div({class:'grid2'});
-  const rdI=inp({class:'inp',type:'date',value:cfgForm.raceDateStr});
-  rdI.addEventListener('input',()=>cfgForm.raceDateStr=rdI.value);
   const bsI=inp({class:'inp',type:'date',value:cfgForm.blockStartStr});
-  bsI.addEventListener('input',()=>cfgForm.blockStartStr=bsI.value);
-  dg.appendChild(div({},[lbl('Race date'),rdI]));
+  bsI.addEventListener('input',()=>{cfgForm.blockStartStr=bsI.value;updateWeeksPreview();});
+  const beI=inp({class:'inp',type:'date',value:cfgForm.blockEndStr||''});
+  beI.addEventListener('input',()=>{cfgForm.blockEndStr=beI.value;updateWeeksPreview();});
   dg.appendChild(div({},[lbl('Block start'),bsI]));
+  dg.appendChild(div({},[lbl('Block end (optional)'),beI]));
   cfgCard.appendChild(dg);
 
-  const weeksInfo=div({style:{padding:'8px 10px',background:'#0a0a18',border:'1px solid #1c1c2e',borderRadius:'6px',fontSize:'10px',color:'#555'}},'');
+  const weeksInfo=div({style:{padding:'8px 10px',background:'#0a0a18',border:'1px solid #1c1c2e',borderRadius:'6px',fontSize:'10px',color:'#555',marginTop:'8px'}},'');
   function updateWeeksPreview(){
-    if(!validDateStr(cfgForm.raceDateStr)||!validDateStr(cfgForm.blockStartStr)){
-      weeksInfo.textContent='Set valid dates to see week count';
-      weeksInfo.style.color='#555';
-      return;
-    }
-    // Temporarily compute with form values
-    const savedRace=CFG.raceDateStr, savedStart=CFG.blockStartStr;
-    CFG.raceDateStr=cfgForm.raceDateStr; CFG.blockStartStr=cfgForm.blockStartStr;
-    const tw=totalWeeks();
-    const bm=getBlockMonday();
-    const be=getBlockEnd();
-    CFG.raceDateStr=savedRace; CFG.blockStartStr=savedStart;
-    weeksInfo.textContent=tw+' weeks · '+fmtDate(bm)+' to '+fmtDate(be)+(be.getDate()!==new Date(cfgForm.raceDateStr+'T00:00:00').getDate()?' (extended to Sunday)':'');
+    const startOk=validDateStr(cfgForm.blockStartStr);
+    const endOk=validDateStr(cfgForm.blockEndStr)||getRaces().length>0;
+    if(!startOk){weeksInfo.textContent='Set block start date';weeksInfo.style.color='#555';return;}
+    const savedCFG={...CFG};
+    Object.assign(CFG,cfgForm);
+    const tw=totalWeeks(), bm=getBlockMonday(), be=getBlockEnd();
+    Object.assign(CFG,savedCFG);
+    weeksInfo.textContent=tw+' weeks · '+fmtDate(bm)+' to '+fmtDate(be);
     weeksInfo.style.color='#888';
   }
   updateWeeksPreview();
-  // Wire date inputs to update preview
-  rdI.addEventListener('input',()=>{cfgForm.raceDateStr=rdI.value;updateWeeksPreview();});
-  bsI.addEventListener('input',()=>{cfgForm.blockStartStr=bsI.value;updateWeeksPreview();});
   cfgCard.appendChild(weeksInfo);
+
+  // Races editor
+  cfgCard.appendChild(div({style:{marginTop:'14px',marginBottom:'4px',fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.14em',textTransform:'uppercase'}},'Races'));
+  const racesContainer=div({});
+
+  function renderRacesEditor(){
+    racesContainer.innerHTML='';
+    const races=cfgForm.races&&cfgForm.races.length?cfgForm.races:[{name:'',date:'',dist:''}];
+    races.forEach((r,i)=>{
+      const row=div({style:{display:'flex',gap:'6px',alignItems:'flex-end',marginBottom:'8px'}});
+      const nameI=inp({class:'inp',type:'text',value:r.name,placeholder:'Race name'});
+      nameI.addEventListener('input',()=>{cfgForm.races[i].name=nameI.value;});
+      const dateI=inp({class:'inp',type:'date',value:r.date});
+      dateI.addEventListener('input',()=>{cfgForm.races[i].date=dateI.value;updateWeeksPreview();});
+      const distI=inp({class:'inp',type:'text',value:r.dist||'',placeholder:'50km'});
+      distI.style.width='70px';
+      distI.addEventListener('input',()=>{cfgForm.races[i].dist=distI.value;});
+      const delBtn=btn({style:{padding:'7px 9px',borderRadius:'5px',background:'#1a0a0a',border:'1px solid #2a1a1a',color:'#ff6b6b',fontSize:'11px',flexShrink:'0'},
+        onclick:()=>{cfgForm.races.splice(i,1);renderRacesEditor();}},'\u2715');
+      row.appendChild(div({style:{flex:'2',minWidth:0}}),[]);
+      row.querySelector('div').appendChild(lbl('Name'));
+      row.querySelector('div').appendChild(nameI);
+      const dateWrap=div({style:{flex:'1.5',minWidth:0}});
+      dateWrap.appendChild(lbl('Date')); dateWrap.appendChild(dateI);
+      const distWrap=div({style:{width:'70px',flexShrink:'0'}});
+      distWrap.appendChild(lbl('Dist')); distWrap.appendChild(distI);
+      row.appendChild(dateWrap); row.appendChild(distWrap); row.appendChild(delBtn);
+      racesContainer.appendChild(row);
+    });
+    const addBtn=btn({style:{padding:'6px 12px',borderRadius:'5px',fontSize:'10px',background:'#0a0a18',border:'1px dashed #2a2a4a',color:'#555',width:'100%'},
+      onclick:()=>{if(!cfgForm.races)cfgForm.races=[];cfgForm.races.push({name:'',date:'',dist:''});renderRacesEditor();}},
+      '+ Add race');
+    racesContainer.appendChild(addBtn);
+  }
+  // Initialise cfgForm.races if missing
+  if(!cfgForm.races){
+    cfgForm.races=validDateStr(cfgForm.raceDateStr)?[{name:cfgForm.raceName||'Race',date:cfgForm.raceDateStr,dist:''}]:[];
+  }
+  renderRacesEditor();
+  cfgCard.appendChild(racesContainer);
+
+  // Backwards-compat: keep raceDateStr/raceName in sync with first race on save
 
   const hg=div({class:'grid2'});
   const hvlI=inp({class:'inp',type:'number',value:cfgForm.hrvLow});
@@ -1748,19 +1818,23 @@ function renderSettings(){
   cfgCard.appendChild(rg);
 
   const savCfgBtn=btn({class:'btn',onclick:()=>{
-    // Validate dates before applying
-    if(!validDateStr(cfgForm.raceDateStr)){
-      savCfgBtn.textContent='Invalid race date'; savCfgBtn.style.color='#ff6b6b';
-      setTimeout(()=>{savCfgBtn.textContent='Save Config';savCfgBtn.style.color='';savCfgBtn.style.borderColor='';},2000);
-      return;
-    }
     if(!validDateStr(cfgForm.blockStartStr)){
       savCfgBtn.textContent='Invalid block start'; savCfgBtn.style.color='#ff6b6b';
       setTimeout(()=>{savCfgBtn.textContent='Save Config';savCfgBtn.style.color='';savCfgBtn.style.borderColor='';},2000);
       return;
     }
+    // Sync legacy fields from first race
+    const validRaces=(cfgForm.races||[]).filter(r=>r.name&&validDateStr(r.date));
+    cfgForm.races=validRaces;
+    if(validRaces.length){
+      const lastRace=validRaces[validRaces.length-1];
+      cfgForm.raceDateStr=lastRace.date;
+      cfgForm.raceName=lastRace.name;
+      // Default blockEndStr to Sunday after last race if not set
+      if(!validDateStr(cfgForm.blockEndStr)) cfgForm.blockEndStr='';
+    }
     CFG=cfgForm; S.set(SK.cfg,CFG);
-    syncTargets(); // auto-trims or extends TARGETS to match new week count
+    syncTargets();
     savCfgBtn.textContent='SAVED'; savCfgBtn.style.color='#00ff87'; savCfgBtn.style.borderColor='#00ff87';
     setTimeout(()=>render(),800);
   }},'Save Config');
