@@ -2468,12 +2468,176 @@ function hasSamplePlan(){
 }
 
 // ============================================================
+// ONBOARDING
+// ============================================================
+const ONBOARDED_KEY = 'utmb_onboarded_v1';
+
+function isFirstRun(){
+  return !localStorage.getItem(ONBOARDED_KEY);
+}
+
+function markOnboarded(){
+  localStorage.setItem(ONBOARDED_KEY,'1');
+}
+
+function showOnboarding(){
+  const overlay=div({style:{position:'fixed',inset:'0',background:'#07071a',zIndex:'500',display:'flex',flexDirection:'column',overflowY:'auto'}});
+
+  // Step state
+  let step=0; // 0=welcome, 1=restore-or-new, 2=setup-hrv-race, 3=done
+
+  function goto(s){ step=s; renderStep(); }
+
+  const body=div({style:{flex:'1',display:'flex',flexDirection:'column',maxWidth:'480px',margin:'0 auto',padding:'32px 24px 48px',width:'100%'}});
+  overlay.appendChild(body);
+  document.body.appendChild(overlay);
+
+  function renderStep(){
+    body.innerHTML='';
+
+    // Logo / title
+    body.appendChild(div({style:{marginBottom:'32px'}},[]));
+    body.querySelector('div').appendChild(div({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.2em',textTransform:'uppercase',marginBottom:'4px'}},'Welcome to'));
+    body.querySelector('div').appendChild(div({style:{fontSize:'36px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.04em',lineHeight:'1',color:'#e0e0ff'}},'Training OS'));
+
+    if(step===0){
+      // Welcome
+      body.appendChild(div({style:{fontSize:'12px',color:'#666',lineHeight:'1.9',marginBottom:'32px'}},
+        'A training planner and daily readiness tool for trail runners.\n\nTrack load, log sessions, monitor HRV and readiness, and get coach summaries — all from your phone.'));
+
+      const resumeBtn=btn({class:'btn',style:{marginBottom:'12px'},onclick:()=>goto(1)},'Get started');
+      body.appendChild(resumeBtn);
+
+    } else if(step===1){
+      // Restore or new
+      body.appendChild(div({style:{fontSize:'14px',color:'#e0e0ff',marginBottom:'8px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.06em'}},'RETURNING USER?'));
+      body.appendChild(div({style:{fontSize:'11px',color:'#555',lineHeight:'1.7',marginBottom:'20px'}},'If you have a backup file from a previous install, restore it now. Otherwise set up fresh.'));
+
+      // Restore card
+      const restoreCard=div({style:{padding:'14px',background:'#0a0a1a',border:'1px solid #1c1c2e',borderRadius:'8px',marginBottom:'12px'}});
+      restoreCard.appendChild(div({style:{fontSize:'12px',color:'#e0e0ff',marginBottom:'6px'}},'Restore from backup'));
+      restoreCard.appendChild(div({style:{fontSize:'10px',color:'#555',marginBottom:'10px',lineHeight:'1.6'}},'Import a JSON backup file to restore your plan, logs and settings.'));
+      const restoreMsg=div({style:{fontSize:'11px',marginBottom:'8px',minHeight:'16px'}});
+      const fileI=el('input',{type:'file',accept:'.json',style:{display:'none'}});
+      fileI.addEventListener('change',()=>{
+        const file=fileI.files[0]; if(!file) return;
+        const reader=new FileReader();
+        reader.onload=ev=>{
+          const msg=importAll(ev.target.result);
+          restoreMsg.textContent=msg;
+          restoreMsg.style.color=msg.startsWith('Data')?'#00ff87':'#ff6b6b';
+          if(msg.startsWith('Data')){
+            markOnboarded();
+            setTimeout(()=>{overlay.remove();render();},1000);
+          }
+        };
+        reader.readAsText(file);
+      });
+      restoreCard.appendChild(restoreMsg);
+      restoreCard.appendChild(btn({class:'btn btn-ok',onclick:()=>fileI.click()},'Choose backup file'));
+      restoreCard.appendChild(fileI);
+      body.appendChild(restoreCard);
+
+      // New user option
+      body.appendChild(btn({class:'btn',onclick:()=>goto(2)},'Set up fresh →'));
+
+    } else if(step===2){
+      // Setup: HRV/RHR + race
+      body.appendChild(div({style:{fontSize:'14px',color:'#e0e0ff',marginBottom:'4px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.06em'}},'QUICK SETUP'));
+      body.appendChild(div({style:{fontSize:'11px',color:'#555',lineHeight:'1.7',marginBottom:'20px'}},'These two things make the app work for you. Everything else can be set later.'));
+
+      // HRV section
+      const hrvSect=div({style:{marginBottom:'20px'}});
+      hrvSect.appendChild(div({style:{fontSize:'11px',color:'#888',marginBottom:'10px',lineHeight:'1.6'}},
+        'Your HRV and resting HR normal ranges (from your watch). Used to score daily readiness.'));
+      const hrvGrid=div({class:'grid2',style:{marginBottom:'10px'}});
+      let hrvLow=CFG.hrvLow||45, hrvHigh=CFG.hrvHigh||70;
+      let rhrLow=CFG.rhrLow||45, rhrHigh=CFG.rhrHigh||50;
+      const hli=inp({class:'inp',type:'number',value:hrvLow,placeholder:'45'});
+      hli.addEventListener('input',()=>hrvLow=parseFloat(hli.value)||45);
+      const hhi=inp({class:'inp',type:'number',value:hrvHigh,placeholder:'70'});
+      hhi.addEventListener('input',()=>hrvHigh=parseFloat(hhi.value)||70);
+      const rli=inp({class:'inp',type:'number',value:rhrLow,placeholder:'45'});
+      rli.addEventListener('input',()=>rhrLow=parseFloat(rli.value)||45);
+      const rhi=inp({class:'inp',type:'number',value:rhrHigh,placeholder:'50'});
+      rhi.addEventListener('input',()=>rhrHigh=parseFloat(rhi.value)||50);
+      const g1=div({},[lbl('HRV low (ms)'),hli]);
+      const g2=div({},[lbl('HRV high (ms)'),hhi]);
+      const g3=div({},[lbl('RHR low (bpm)'),rli]);
+      const g4=div({},[lbl('RHR high (bpm)'),rhi]);
+      hrvGrid.appendChild(g1); hrvGrid.appendChild(g2);
+      hrvSect.appendChild(hrvGrid);
+      const rhrGrid=div({class:'grid2'});
+      rhrGrid.appendChild(g3); rhrGrid.appendChild(g4);
+      hrvSect.appendChild(rhrGrid);
+      hrvSect.appendChild(div({style:{fontSize:'9px',color:'#333',marginTop:'6px'}},'Not sure? Check your Garmin Connect, Apple Health, or Whoop app for your normal range. You can update this anytime in Settings.'));
+      body.appendChild(hrvSect);
+
+      // Race section
+      const raceSect=div({style:{marginBottom:'24px'}});
+      raceSect.appendChild(div({style:{fontSize:'11px',color:'#888',marginBottom:'10px',lineHeight:'1.6'}},'Your next race. Sets the countdown and block length. Add more races in Settings later.'));
+      const raceGrid=div({style:{display:'flex',flexDirection:'column',gap:'10px'}});
+      let raceName=CFG.races?.[0]?.name||'', raceDate=CFG.races?.[0]?.date||'', raceDist=CFG.races?.[0]?.dist||'';
+      let blockStart=CFG.blockStartStr||new Date().toISOString().split('T')[0];
+      const rni=inp({class:'inp',type:'text',value:raceName,placeholder:'UTMB 2026'});
+      rni.addEventListener('input',()=>raceName=rni.value);
+      const rdi=inp({class:'inp',type:'date',value:raceDate});
+      rdi.addEventListener('input',()=>raceDate=rdi.value);
+      const rdi2=inp({class:'inp',type:'text',value:raceDist,placeholder:'100km'});
+      rdi2.addEventListener('input',()=>raceDist=rdi2.value);
+      const bsi=inp({class:'inp',type:'date',value:blockStart});
+      bsi.addEventListener('input',()=>blockStart=bsi.value);
+      raceGrid.appendChild(div({},[lbl('Race name'),rni]));
+      const rdRow=div({class:'grid2'});
+      rdRow.appendChild(div({},[lbl('Race date'),rdi]));
+      rdRow.appendChild(div({},[lbl('Distance'),rdi2]));
+      raceGrid.appendChild(rdRow);
+      raceGrid.appendChild(div({},[lbl('Training block start'),bsi]));
+      raceGrid.appendChild(div({style:{fontSize:'9px',color:'#333'}},'Block start is the Monday your training begins. Weeks are calculated from there.'));
+      raceSect.appendChild(raceGrid);
+      body.appendChild(raceSect);
+
+      const errMsg=div({style:{fontSize:'11px',color:'#ff6b6b',marginBottom:'10px',minHeight:'16px'}});
+      body.appendChild(errMsg);
+
+      body.appendChild(btn({class:'btn btn-ok',onclick:()=>{
+        if(!raceName.trim()){ errMsg.textContent='Enter a race name.'; return; }
+        if(!validDateStr(raceDate)){ errMsg.textContent='Enter a valid race date.'; return; }
+        if(!validDateStr(blockStart)){ errMsg.textContent='Enter a valid block start date.'; return; }
+        // Apply to CFG
+        CFG.hrvLow=hrvLow; CFG.hrvHigh=hrvHigh;
+        CFG.rhrLow=rhrLow; CFG.rhrHigh=rhrHigh;
+        CFG.blockStartStr=blockStart;
+        CFG.raceDateStr=raceDate; CFG.raceName=raceName;
+        CFG.races=[{name:raceName,date:raceDate,dist:raceDist}];
+        S.set(SK.cfg,CFG);
+        syncTargets();
+        if(Object.keys(EDITS).length===0) applySamplePlan();
+        markOnboarded();
+        overlay.remove();
+        render();
+      }},'Start training →'));
+
+      body.appendChild(btn({style:{padding:'10px',background:'transparent',border:'none',color:'#333',fontSize:'11px',marginTop:'8px',width:'100%'},
+        onclick:()=>{markOnboarded();overlay.remove();render();}},'Skip for now'));
+    }
+  }
+
+  renderStep();
+}
+
+// ============================================================
 // BOOT
 // ============================================================
 applyStravaBackfill();
 // Apply sample plan on first load (no existing edits)
 if(Object.keys(EDITS).length===0) applySamplePlan();
-render();
+if(isFirstRun()){
+  render();
+  showOnboarding();
+} else {
+  render();
+}
 setInterval(()=>{ renderHeader(); }, 60000);
 </script>
 </body>
