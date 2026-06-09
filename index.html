@@ -93,7 +93,6 @@ const DEF_CFG = {
     {name:'UTMB 2026',              date:'2026-08-28', dist:'171km'},
   ],
   countTypes:DEFAULT_COUNT_TYPES,
-  aiProxyUrl:'',
 };
 
 // BASE_PLAN: empty day slots. Sessions only populate from TP iCal import or manual edits.
@@ -148,6 +147,19 @@ function save(key, val){ S.set(key,val); }
 // HELPERS
 // ============================================================
 // Always use local date string to avoid UTC timezone shift (critical for AEST +10)
+// Format hours as h:mm for activity display (e.g. 1.5 -> "1:30")
+function fmtHms(hrs){
+  if(!hrs||isNaN(hrs)||hrs<=0) return '';
+  const h=Math.floor(hrs);
+  const m=Math.round((hrs-h)*60);
+  return h+':'+(m<10?'0':'')+m;
+}
+// Format hours as x.x for totals (e.g. 3.5 -> "3.5hr")
+function fmtHrTot(hrs){
+  if(!hrs||isNaN(hrs)||hrs<=0) return '0hr';
+  return parseFloat(hrs).toFixed(1)+'hr';
+}
+// Always use local date string to avoid UTC timezone shift
 function localDateStr(d){
   const y=d.getFullYear();
   const m=String(d.getMonth()+1).padStart(2,'0');
@@ -494,7 +506,7 @@ function applyICSToEdits(icsText){
     });
   });
 
-  // Group events by date to handle multiple sessions on same day
+  // Group events by date
   const byDate={};
   events.forEach(ev=>{
     if(!byDate[ev.dateStr]) byDate[ev.dateStr]=[];
@@ -503,35 +515,78 @@ function applyICSToEdits(icsText){
 
   let matched=0, skipped=0;
   const newEdits={...EDITS};
+
   Object.entries(byDate).forEach(([dateStr,evs])=>{
     const slot=dateLookup[dateStr];
     if(!slot){skipped+=evs.length;return;}
     const {wIdx,dIdx}=slot;
     const base=plan[wIdx].days[dIdx];
-    // Filter out non-training entries like sauna, walks, rest days
-    const skip=['sauna','walk','walking','rest','day off','other'];
-    const training=evs.filter(e=>!skip.some(s=>e.summary.toLowerCase().includes(s)));
+    const key='w'+wIdx+'-d'+dIdx;
+
+    // Filter obvious non-training
+    const skipWords=['sauna','walk','walking','rest','day off'];
+    const training=evs.filter(e=>!skipWords.some(s=>e.summary.toLowerCase().includes(s)));
+    const nonTraining=evs.filter(e=>skipWords.some(s=>e.summary.toLowerCase().includes(s)));
     const use=training.length?training:evs;
-    const label=use.map(e=>e.summary).join(' + ');
-    const rawDetail=use.map(e=>e.description).filter(Boolean).join(' | ')||base.detail;
-    const type=guessTypeFromSummary(use[0].summary);
 
-    // Parse planned metrics from TP description fields
-    let km=base.km, hrs=base.hrs;
-    let totalKm=0, totalHrs=0, hasKm=false, hasHrs=false;
-    use.forEach(e=>{
-      const m=parseTPDescription(e.description||'');
-      if(m.km!=null){ totalKm+=m.km; hasKm=true; }
-      if(m.hrs!=null){ totalHrs+=m.hrs; hasHrs=true; }
+    // Parse metrics for each event
+    const parsed=use.map(ev=>{
+      const m=parseTPDescription(ev.description||'');
+      const t=guessTypeFromSummary(ev.summary);
+      const km=m.km!=null?m.km:0;
+      return {
+        label:ev.summary,
+        type:autoUpgradeType(t,km),
+        detail:(ev.description||'').replace(/Workout type:[^\n]*\n?/,'').replace(/Actual[^\n]*\n?/g,'').trim()||'',
+        km, vert:0, hrs:m.hrs!=null?m.hrs:0,
+      };
     });
-    if(hasKm) km=Math.round(totalKm*10)/10;
-    if(hasHrs) hrs=Math.round(totalHrs*100)/100;
 
-    const finalType=autoUpgradeType(type, km);
-    newEdits['w'+wIdx+'-d'+dIdx]={label, type:finalType, detail:rawDetail, km, vert:base.vert, hrs};
+    // Plan edit: use primary event for label/type, sum metrics
+    const primary=parsed[0];
+    const totalKm=parsed.reduce((s,p)=>s+p.km,0);
+    const totalHrs=parsed.reduce((s,p)=>s+p.hrs,0);
+    // If multiple types, pick the dominant one (longest session by hrs)
+    const dominant=parsed.reduce((a,b)=>b.hrs>a.hrs?b:a);
+
+    newEdits[key]={
+      label:parsed.length>1
+        ? parsed.map(p=>p.label).join(' + ')
+        : primary.label,
+      type:dominant.type,
+      detail:primary.detail,
+      km:Math.round(totalKm*10)/10,
+      vert:base.vert,
+      hrs:Math.round(totalHrs*100)/100,
+    };
+
+    // Store ALL events as pre-planned (incomplete) activities in RUNS
+    // This is the source of truth for what shows in the plan day view
+    const existing=RUNS[key]||[];
+    const existingLabels=new Set(existing.map(a=>a.label));
+
+    const toAdd=[...parsed,...nonTraining.map(ev=>{
+      const t=guessTypeFromSummary(ev.summary);
+      return {label:ev.summary,type:t,detail:'',km:0,vert:0,hrs:0};
+    })].filter(p=>!existingLabels.has(p.label)).map(p=>({
+      id:newActId(),
+      label:p.label,
+      type:p.type,
+      detail:p.detail,
+      actualKm:'', actualVert:'', actualHrs:'',
+      perf:'', exec:'', note:'',
+      completed:false,
+      ts:Date.now(),
+      planned:{km:p.km, hrs:p.hrs},
+    }));
+
+    if(toAdd.length) RUNS[key]=[...existing,...toAdd];
     matched++;
   });
+
   EDITS=newEdits; S.set(SK.edits,EDITS);
+  S.set(SK.runs,RUNS);
+
   const msg=matched+' days matched to plan.'+(skipped?' '+skipped+' events outside block range.':'');
   return {ok:true,msg};
 }
@@ -540,28 +595,7 @@ function applyICSToEdits(icsText){
 // AI
 // ============================================================
 // AI calls go through a proxy URL (set in settings) to avoid exposing API key
-// Set CFG.aiProxyUrl to a Cloudflare Worker or similar endpoint
-async function aiCall(system, userMsg){
-  const proxyUrl=CFG.aiProxyUrl||'';
-  if(!proxyUrl){
-    return 'Coach summary requires a proxy URL. See Settings → AI Coach Setup for instructions.';
-  }
-  try{
-    const r=await fetch(proxyUrl,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({system,message:userMsg})
-    });
-    if(!r.ok){
-      const err=await r.json().catch(()=>({}));
-      throw new Error(err?.error||err?.message||'HTTP '+r.status);
-    }
-    const d=await r.json();
-    return d.text||d.content||d.response||'No response.';
-  }catch(e){
-    return 'Error: '+e.message;
-  }
-}
+
 
 // ============================================================
 // DOM HELPERS
@@ -975,23 +1009,97 @@ function renderToday(){
 
   // Today's session card — shown first so it's closest to the data inputs
   const sessCardWrap=div({});
-  if(todaySess){
-    const tc=TC[todaySess.type]||'#555';
-    const sessCard=div({style:{padding:'12px 14px',marginBottom:'16px',background:'#0b0b1c',border:'1px solid '+tc+'30',borderRadius:'8px'}});
-    const hdrRow=div({class:'flex',style:{marginBottom:'6px'}});
-    hdrRow.appendChild(span({style:{fontSize:'9px',background:tc,color:'#000',padding:'2px 6px',borderRadius:'3px',fontWeight:'700'}},TL[todaySess.type]||'--'));
-    hdrRow.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em'}},'TODAY - WK '+(wIdx+1)));
-    if(todayRun?.completed) hdrRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87',marginLeft:'auto'}},'DONE'));
+  if(todaySess||(dIdx>=0&&getDayActivities(wIdx,dIdx).length>0)){
+    const allTodayActs=dIdx>=0?getDayActivities(wIdx,dIdx):[];
+    const hasActs=allTodayActs.length>0;
+
+    // Card border colour: use primary type
+    const primaryType=allTodayActs[0]?.type||todaySess?.type||'easy';
+    const primaryTc=TC[primaryType]||'#555';
+
+    const sessCard=div({style:{padding:'12px 14px',marginBottom:'16px',background:'#0b0b1c',border:'1px solid '+primaryTc+'30',borderRadius:'8px'}});
+
+    // Header: type badges + day label + done count
+    const hdrRow=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'8px'}});
+    const badgeTypes=hasActs
+      ?[...new Set(allTodayActs.map(a=>a.type||todaySess?.type||'easy'))]
+      :[todaySess?.type||'easy'];
+    const bwrap=div({style:{display:'flex',gap:'2px'}});
+    badgeTypes.forEach(t=>bwrap.appendChild(span({style:{fontSize:'9px',background:TC[t]||'#555',color:'#000',padding:'2px 5px',borderRadius:'3px',fontWeight:'700'}},TL[t]||'--')));
+    hdrRow.appendChild(bwrap);
+    hdrRow.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em',flex:'1'}},'TODAY · WK '+(wIdx+1)));
+    const doneCount=allTodayActs.filter(a=>a.completed).length;
+    if(doneCount>0){
+      hdrRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87'}},doneCount+'/'+allTodayActs.length+' done'));
+    }
     sessCard.appendChild(hdrRow);
-    sessCard.appendChild(div({style:{fontSize:'14px',color:'#e0e0ff',marginBottom:'4px'}},todaySess.label));
-    sessCard.appendChild(div({style:{fontSize:'11px',color:'#666',lineHeight:'1.6',marginBottom:'8px'}},todaySess.detail));
-    sessCard.appendChild(div({style:{display:'flex',gap:'14px',marginBottom:'10px'}},[
-      span({style:{fontSize:'10px',color:'#555'}},todaySess.km+'km'),
-      span({style:{fontSize:'10px',color:'#555'}},todaySess.vert+'m'),
-      span({style:{fontSize:'10px',color:'#555'}},todaySess.hrs+'hr'),
-    ]));
-    const logBtn=btn({class:'btn-sm'+(todayRun?.completed?' btn-ok':''),onclick:()=>showRunModal(wIdx,dIdx,todaySess,todayRun)},todayRun?.completed?'Edit log':'Log this session');
-    sessCard.appendChild(logBtn);
+
+    if(hasActs){
+      // List each activity with its own log button
+      allTodayActs.forEach((act,aIdx)=>{
+        const atc=TC[act.type||'easy']||'#555';
+        const actRow=div({style:{
+          padding:'8px 0',
+          borderTop:aIdx>0?'1px solid #111':'none',
+        }});
+
+        // Main row — tappable for detail
+        const mainLine=div({style:{display:'flex',alignItems:'center',gap:'8px',cursor:'pointer'}});
+        mainLine.appendChild(span({style:{fontSize:'8px',background:atc,color:'#000',padding:'1px 5px',borderRadius:'2px',fontWeight:'700',flexShrink:'0'}},TL[act.type||'easy']||'--'));
+
+        const actInfo=div({style:{flex:'1',minWidth:'0'}});
+        actInfo.appendChild(div({style:{fontSize:'12px',color:act.completed?'#55efc4':'#c0c0e0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},act.label||'Activity'));
+
+        // Planned or actual metrics line
+        const hasActuals=act.completed&&(act.actualKm||act.actualHrs);
+        const hasPlanned=act.planned&&(act.planned.km||act.planned.hrs);
+        if(hasActuals){
+          actInfo.appendChild(div({style:{fontSize:'9px',color:'#555',marginTop:'1px'}},
+            (act.actualKm?act.actualKm+'km ':'')+
+            (act.actualVert?act.actualVert+'m ':'')+
+            fmtHms(parseFloat(act.actualHrs||0))));
+        } else if(hasPlanned){
+          actInfo.appendChild(div({style:{fontSize:'9px',color:'#2a2a3a',marginTop:'1px'}},
+            (act.planned.km?act.planned.km+'km ':'')+
+            fmtHms(act.planned.hrs||0)));
+        }
+        mainLine.appendChild(actInfo);
+
+        // Log button
+        mainLine.appendChild(btn({style:{padding:'5px 10px',borderRadius:'5px',fontSize:'10px',flexShrink:'0',
+          background:act.completed?'#0a1a0a':'#1a1a3a',
+          border:'1px solid '+(act.completed?'#00ff8740':'#3a3a6a'),
+          color:act.completed?'#00ff87':'#e0e0ff'},
+          onclick:e=>{e.stopPropagation();showActivityModal(wIdx,dIdx,aIdx,todaySess);}},
+          act.completed?'✓ Edit':'Log'));
+
+        actRow.appendChild(mainLine);
+
+        // Detail — expandable inline (tap row to show/hide)
+        const hasDetail=act.detail&&act.detail.trim();
+        if(hasDetail){
+          const detailDiv=div({style:{display:'none',fontSize:'10px',color:'#555',lineHeight:'1.6',marginTop:'6px',paddingTop:'6px',borderTop:'1px solid #1a1a2e'}},act.detail);
+          mainLine.style.cursor='pointer';
+          mainLine.addEventListener('click',()=>{
+            detailDiv.style.display=detailDiv.style.display==='none'?'block':'none';
+          });
+          actRow.appendChild(detailDiv);
+        }
+
+        sessCard.appendChild(actRow);
+      });
+    } else if(todaySess){
+      // Fallback: no activities in RUNS yet, show plan session with single log button
+      sessCard.appendChild(div({style:{fontSize:'13px',color:'#e0e0ff',marginBottom:'3px'}},todaySess.label));
+      sessCard.appendChild(div({style:{fontSize:'11px',color:'#555',lineHeight:'1.5',marginBottom:'8px'}},todaySess.detail));
+      sessCard.appendChild(div({style:{display:'flex',gap:'12px',marginBottom:'8px'}},[
+        span({style:{fontSize:'10px',color:'#444'}},todaySess.km+'km'),
+        span({style:{fontSize:'10px',color:'#444'}},todaySess.vert+'m'),
+        span({style:{fontSize:'10px',color:'#444'}},fmtHms(todaySess.hrs)),
+      ]));
+      sessCard.appendChild(btn({class:'btn-sm',onclick:()=>showRunModal(wIdx,dIdx,todaySess,null)},'Log this session'));
+    }
+
     sessCardWrap.appendChild(sessCard);
   }
   wrap.appendChild(sessCardWrap);
@@ -1157,7 +1265,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
       span({style:{fontSize:'9px',color:'#333'}},'PLANNED:'),
       span({style:{fontSize:'10px',color:'#444'}},planSession.km+'km'),
       span({style:{fontSize:'10px',color:'#444'}},planSession.vert+'m'),
-      span({style:{fontSize:'10px',color:'#444'}},planSession.hrs+'hr'),
+      span({style:{fontSize:'10px',color:'#444'}},fmtHms(planSession.hrs)),
     ]));
   }
 
@@ -1348,7 +1456,7 @@ function renderBlock(){
   const footer=div({style:{marginTop:'16px',padding:'12px 14px',background:'#0a0a1a',border:'1px solid #1c1c2e',borderRadius:'8px'}});
   footer.appendChild(div({class:'section-title',style:{marginBottom:'8px'}},'Block totals (planned)'));
   const totRow=div({style:{display:'flex',gap:'0'}});
-  [[totals.km+'km','#60a5fa','TOTAL KM'],[( totals.vert/1000).toFixed(0)+'km','#a29bfe','VERT (000m)'],[totals.hrs+'hr','#ffd166','HOURS']].forEach(([val,col,label])=>{
+  [[totals.km+'km','#60a5fa','TOTAL KM'],[( totals.vert/1000).toFixed(0)+'k','#a29bfe','VERT (000m)'],[fmtHrTot(totals.hrs),'#ffd166','HOURS']].forEach(([val,col,label])=>{
     const cell=div({style:{flex:'1',textAlign:'center'}});
     cell.appendChild(div({style:{fontSize:'20px',fontFamily:"'Bebas Neue',cursive",color:col,lineHeight:'1'}},val));
     cell.appendChild(div({style:{fontSize:'8px',color:'#444',letterSpacing:'0.1em',marginTop:'2px'}},label));
@@ -1425,7 +1533,7 @@ function renderPlan(){
     metaRow.appendChild(span({style:{fontSize:'8px',color:isLogged?'#00ff87':'#4a4a6a',letterSpacing:'0.12em',minWidth:'48px'}},rowLabel));
     [['km',km,target?.km||0],['m',vert,target?.vert||0],['hr',hrs,target?.hrs||0]].forEach(([unit,val,tgt])=>{
       const over=val>tgt&&tgt>0;
-      const fmtVal=unit==='hr'?val.toFixed(1):Math.round(val)>999?(Math.round(val)/1000).toFixed(1)+'k':Math.round(val);
+      const fmtVal=unit==='hr'?fmtHrTot(val):Math.round(val)>999?(Math.round(val)/1000).toFixed(1)+'k':Math.round(val);
       metaRow.appendChild(span({style:{fontSize:'10px',color:over?'#ff6b6b':isLogged&&val>0?col:'#444',flex:'1'}},fmtVal+unit));
     });
     hdrCard.appendChild(metaRow);
@@ -1453,40 +1561,56 @@ function renderPlan(){
     // Collapsed row — show first/main activity label, day totals
     const firstAct=activities[0];
     const mainLabel=firstAct?.label||s.label||'';
-    const showLabel=mainLabel||s.day;
+    const showLabel=(mainLabel||(s.label?s.label:'Rest'))+(activities.length>1?' +'+(activities.length-1):'');
 
-    const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'10px 12px',
+    const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'9px 12px',
       background:isExp?'#111128':dayDone?'#0a120a':'#0a0a1a',
       border:'1px solid '+(isExp?tc+'50':dayDone?'#00ff8725':'#1c1c2e'),
-      borderRadius:isExp?'8px 8px 0 0':'8px',display:'flex',alignItems:'center',gap:'8px',marginBottom:isExp?'0':'6px'},
+      borderRadius:isExp?'8px 8px 0 0':'8px',display:'flex',flexDirection:'column',gap:'4px',marginBottom:isExp?'0':'5px'},
       onclick:()=>{if(isEdit)return;EXPANDED_DAY=isExp?null:dIdx;if(!isExp)EDITING_DAY=null;render();}});
 
-    // Status / type badge
+    // Top line: day/date left — type badges centre — totals/chevron right
+    const topRow=div({style:{display:'flex',alignItems:'center',gap:'6px'}});
+
+    // Done tick or day+date
     if(dayDone){
-      rowBtn.appendChild(span({style:{fontSize:'11px',color:'#00ff87',minWidth:'18px'}},'✓'));
-    } else {
-      rowBtn.appendChild(span({class:'badge',style:{background:tc}},TL[s.type]||'--'));
+      topRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87'}},'✓'));
     }
-    rowBtn.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',minWidth:'26px'}},s.day));
-    rowBtn.appendChild(span({style:{fontSize:'9px',color:'#333',marginRight:'2px'}},fmtDate(slotDateObj(wIdx,s.day))));
-    rowBtn.appendChild(span({style:{fontSize:'12px',color:dayDone?'#55efc4':'#c0c0e0',flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},showLabel||'Rest'));
+    topRow.appendChild(span({style:{fontSize:'9px',color:dayDone?'#444':'#666',fontWeight:'600'}},s.day));
+    topRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},fmtDate(slotDateObj(wIdx,s.day))));
 
-    // Day totals (if any activity logged)
-    if(dayDone && (totals.km>0||totals.hrs>0)){
-      rowBtn.appendChild(span({style:{fontSize:'9px',color:'#555',whiteSpace:'nowrap'}},
-        (totals.km>0?totals.km.toFixed(1)+'k ':'')+
-        (totals.hrs>0?totals.hrs.toFixed(1)+'h':'')
-      ));
-    } else if(!dayDone && s.km>0){
-      rowBtn.appendChild(span({style:{fontSize:'9px',color:'#333'}},s.km+'k'));
+    // Type badges
+    const dispTypes=activities.length>0?[...new Set(activities.map(a=>a.type||s.type))]:[s.type];
+    const bWrap=div({style:{display:'flex',gap:'2px',flex:'1'}});
+    dispTypes.slice(0,4).forEach(t=>{
+      bWrap.appendChild(span({style:{fontSize:'8px',background:TC[t]||'#555',color:'#000',padding:'1px 4px',borderRadius:'2px',fontWeight:'700'}},TL[t]||'--'));
+    });
+    topRow.appendChild(bWrap);
+
+    // Totals or planned km
+    if(dayDone&&(totals.km>0||totals.hrs>0)){
+      topRow.appendChild(span({style:{fontSize:'9px',color:'#555',whiteSpace:'nowrap'}},
+        (totals.km>0?totals.km.toFixed(1)+'k ':'')+fmtHrTot(totals.hrs)));
+    } else if(!dayDone&&(s.km>0||s.hrs>0)){
+      topRow.appendChild(span({style:{fontSize:'9px',color:'#2a2a3a',whiteSpace:'nowrap'}},
+        (s.km>0?s.km+'k ':'')+fmtHms(s.hrs)));
+    }
+    if(isEdited) topRow.appendChild(span({style:{fontSize:'8px',color:'#2a2a4a'}},'ED'));
+    topRow.appendChild(span({style:{fontSize:'10px',color:'#333',flexShrink:'0'}},isExp?'▲':'▼'));
+    rowBtn.appendChild(topRow);
+
+    // Bottom line: activity titles
+    if(activities.length>0){
+      const labels=activities.map(a=>a.label).filter(Boolean);
+      if(labels.length){
+        const titleRow=div({style:{fontSize:'11px',color:dayDone?'#55efc4':'#c0c0e0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingLeft:'0'}},
+          labels.join(' · '));
+        rowBtn.appendChild(titleRow);
+      }
+    } else if(s.label){
+      rowBtn.appendChild(div({style:{fontSize:'11px',color:'#c0c0e0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},s.label));
     }
 
-    // Activity count bubble if multiple
-    if(activities.length>1){
-      rowBtn.appendChild(span({style:{fontSize:'9px',background:'#2a2a4a',color:'#888',padding:'1px 5px',borderRadius:'8px'}},activities.length+''));
-    }
-    if(isEdited) rowBtn.appendChild(span({style:{fontSize:'8px',color:'#555'}},'ED'));
-    rowBtn.appendChild(span({style:{fontSize:'10px',color:'#333'}},isExp?'▲':'▼'));
     wrap.appendChild(rowBtn);
 
     if(isExp){
@@ -1501,7 +1625,7 @@ function renderPlan(){
             span({style:{fontSize:'10px',color:'#333'}},'PLANNED:'),
             span({style:{fontSize:'10px',color:'#555'}},s.km+'km'),
             span({style:{fontSize:'10px',color:'#555'}},s.vert+'m'),
-            span({style:{fontSize:'10px',color:'#555'}},s.hrs+'hr'),
+            span({style:{fontSize:'10px',color:'#555'}},fmtHms(s.hrs)),
           ]));
           pd.appendChild(div({style:{fontSize:'11px',color:'#555',lineHeight:'1.6',marginBottom:'12px',paddingBottom:'10px',borderBottom:'1px solid #1a1a2e'}},s.detail));
         }
@@ -1512,7 +1636,7 @@ function renderPlan(){
           const actRow=div({style:{marginBottom:'10px',padding:'8px',background:'#0d0d20',borderRadius:'6px',border:'1px solid '+(act.completed?'#00ff8720':'#1c1c2e')}});
 
           // Activity header row
-          const actHdr=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:act.completed?'6px':'0'}});
+          const actHdr=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'4px'}});
           actHdr.appendChild(span({style:{fontSize:'9px',background:atc,color:'#000',padding:'1px 5px',borderRadius:'3px',fontWeight:'700'}},TL[act.type||'easy']||'--'));
           actHdr.appendChild(span({style:{fontSize:'12px',color:act.completed?'#55efc4':'#c0c0e0',flex:'1'}},act.label||'Activity'));
           if(act.completed) actHdr.appendChild(span({style:{fontSize:'9px',color:'#00ff87'}},'✓'));
@@ -1556,17 +1680,33 @@ function renderPlan(){
           actHdr.appendChild(actCtrl);
           actRow.appendChild(actHdr);
 
-          // Logged actuals
+          // Logged actuals or planned metrics
           if(act.completed){
-            const actData=div({style:{display:'flex',gap:'10px',flexWrap:'wrap'}});
+            const actData=div({style:{display:'flex',gap:'10px',flexWrap:'wrap',marginBottom:'4px'}});
             if(act.actualKm) actData.appendChild(span({style:{fontSize:'10px',color:'#00ff87'}},act.actualKm+'km'));
             if(act.actualVert) actData.appendChild(span({style:{fontSize:'10px',color:'#00ff87'}},act.actualVert+'m'));
-            if(act.actualHrs) actData.appendChild(span({style:{fontSize:'10px',color:'#00ff87'}},act.actualHrs+'hr'));
+            if(act.actualHrs) actData.appendChild(span({style:{fontSize:'10px',color:'#00ff87'}},fmtHms(parseFloat(act.actualHrs))));
             if(act.perf) actData.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Perf:'+act.perf+' RPE:'+(act.exec||'?')));
             actRow.appendChild(actData);
-            if(act.note) actRow.appendChild(div({style:{fontSize:'10px',color:'#555',marginTop:'4px'}},act.note));
+            if(act.note) actRow.appendChild(div({style:{fontSize:'10px',color:'#555',marginTop:'2px'}},act.note));
           } else {
-            actRow.appendChild(btn({style:{marginTop:'6px',padding:'5px 12px',borderRadius:'5px',fontSize:'10px',background:'#1a1a3a',border:'1px solid #3a3a6a',color:'#e0e0ff'},
+            // Show planned metrics if available
+            const hasPlanned=act.planned&&(act.planned.km||act.planned.hrs);
+            const hasSlotMetrics=!hasPlanned&&(s.km||s.hrs)&&activities.length===1;
+            if(hasPlanned||hasSlotMetrics){
+              const pmRow=div({style:{display:'flex',gap:'10px',marginBottom:'4px'}});
+              const km=act.planned?.km||(hasSlotMetrics?s.km:0);
+              const hrs=act.planned?.hrs||(hasSlotMetrics?s.hrs:0);
+              if(km) pmRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},km+'km'));
+              if(s.vert) pmRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},s.vert+'m'));
+              if(hrs) pmRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},fmtHms(hrs)));
+              actRow.appendChild(pmRow);
+            }
+            // Detail text
+            if(act.detail){
+              actRow.appendChild(div({style:{fontSize:'10px',color:'#444',lineHeight:'1.5',marginBottom:'6px'}},act.detail));
+            }
+            actRow.appendChild(btn({style:{padding:'5px 12px',borderRadius:'5px',fontSize:'10px',background:'#1a1a3a',border:'1px solid #3a3a6a',color:'#e0e0ff'},
               onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'Log this'));
           }
           pd.appendChild(actRow);
@@ -1917,39 +2057,6 @@ function renderTrend(){
   rebuildExt();
   wrap.appendChild(extCard);
 
-  // Coach summary
-  const wIdx=curWeek()-1;
-  const plan=getPlan();
-  const target=TARGETS[wIdx];
-  const wAct=(plan[wIdx]?.days||[]).reduce((acc,_,dIdx)=>{const t=getDayTotals(wIdx,dIdx);acc.km+=t.km;acc.vert+=t.vert;acc.hrs+=t.hrs;return acc;},{km:0,vert:0,hrs:0});
-  const doneDays=(plan[wIdx]?.days||[]).filter((_,dIdx)=>isDayDone(wIdx,dIdx)).length;
-  const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14);
-
-  const summCard=card([],{marginBottom:'14px'});
-  summCard.appendChild(div({class:'section-title'},'Week '+curWeek()+' Coach Summary'));
-  const summText=div({style:{fontSize:'12px',color:'#aaa',lineHeight:'1.7',marginBottom:'10px'}},doneDays===0?'Log sessions first.':'Ready to generate.');
-  summCard.appendChild(summText);
-  const summBtn=btn({class:'btn',style:{width:'auto',display:'inline-block',padding:'8px 14px',fontSize:'11px'},onclick:async()=>{
-    if(doneDays===0) return;
-    summBtn.textContent='GENERATING...'; summBtn.disabled=true;
-    const sessSummaries=(plan[wIdx]?.days||[]).map((_,dIdx)=>{
-      const s=getSession(wIdx,dIdx);
-      const acts=getDayActivities(wIdx,dIdx).filter(a=>a.completed);
-      if(!acts.length) return s.day+' '+(s.label||'Rest')+': NOT DONE';
-      return acts.map(a=>s.day+' '+a.label+': '+(a.actualKm||'?')+'km / '+(a.actualVert||'?')+'m / '+(a.actualHrs||'?')+'hr | Perf:'+(a.perf||'?')+' RPE:'+(a.exec||'?')+' TSS:'+activityTSS(a).toFixed(1)).join('\n');
-    }).join('\n');
-    const readinessSummary=entries.slice(-7).map(([date,e])=>date+': HRV '+(e.hrv||'?')+' RHR '+(e.rhr||'?')+' -> '+(e.decision||'?')).join('\n');
-    const allD2=buildDays(28); const {atl,ctl,ratio}=computeATLCTL(allD2.map(d=>({date:d.ds,tss:d.tss})));
-    const ctx='Week '+curWeek()+' of '+plan.length+' ('+target?.type+') - '+(daysToRace()||'?')+' days to next race\nTarget: '+target?.km+'km/'+target?.vert+'m/'+target?.hrs+'hr\nActual: '+wAct.km.toFixed(1)+'km/'+wAct.vert+'m/'+wAct.hrs.toFixed(1)+'hr ('+doneDays+'/'+(plan[wIdx]?.days.length)+' days)\nATL:'+atl.toFixed(1)+' CTL:'+ctl.toFixed(1)+' Ratio:'+(ratio?ratio.toFixed(2):'n/a')+'\n\nSessions:\n'+sessSummaries+'\n\nReadiness:\n'+readinessSummary;
-    try{
-      const s=await aiCall('You are an experienced ultra trail running coach. Weekly debrief: (1) volume vs target, (2) key session quality via performance/RPE/TSS, (3) load trend using ATL:CTL and readiness data - call out fatigue accumulation or under-recovery, (4) one specific focus next week. 4-6 sentences, no fluff.',ctx);
-      summText.textContent=s;
-    }catch(e){summText.textContent='Error: '+e.message;}
-    summBtn.textContent='REGENERATE'; summBtn.disabled=false;
-  }},doneDays===0?'Log sessions first':'Get Week Summary');
-  summCard.appendChild(summBtn);
-  wrap.appendChild(summCard);
-
   // Recent log
   wrap.appendChild(div({class:'section-title'},'Recent Log'));
   if(!entries.length) wrap.appendChild(div({style:{fontSize:'11px',color:'#333'}},'No entries yet.'));
@@ -2116,50 +2223,6 @@ function renderSettings(){
     importInfo,
   ]));
   wrap.appendChild(bkCard);
-
-  // AI Coach setup card
-  const aiCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
-  aiCard.appendChild(div({class:'section-title'},'AI Coach Setup'));
-  aiCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},
-    'The weekly coach summary requires a free Cloudflare Worker to proxy API calls. '+
-    'Without it the summary button will prompt you to set this up.'));
-
-  // Collapsible instructions
-  const instrToggle=btn({style:{padding:'6px 12px',borderRadius:'5px',fontSize:'10px',background:'#0a0a18',border:'1px solid #2a2a4a',color:'#555',textAlign:'left'}},
-    'Setup instructions ▼');
-  const instrDiv=div({style:{display:'none',fontSize:'10px',color:'#666',lineHeight:'1.8',padding:'10px',background:'#0a0a18',borderRadius:'6px',border:'1px solid #1c1c2e'}});
-  instrDiv.innerHTML='1. Go to <b style="color:#888">workers.cloudflare.com</b> → create a free account<br>'+
-    '2. Create a new Worker, paste this code:<br>'+
-    '<pre style="font-size:9px;color:#aaa;background:#060610;padding:8px;border-radius:4px;overflow-x:auto;margin:4px 0">'+
-    'export default {\n  async fetch(req, env) {\n'+
-    '    if(req.method===\'OPTIONS\') return new Response(null,{headers:{\'Access-Control-Allow-Origin\':\'*\',\'Access-Control-Allow-Headers\':\'*\'}});\n'+
-    '    const {system,message} = await req.json();\n'+
-    '    const r = await fetch(\'https://api.anthropic.com/v1/messages\',{\n'+
-    '      method:\'POST\',\n'+
-    '      headers:{\'Content-Type\':\'application/json\',\'anthropic-version\':\'2023-06-01\',\'x-api-key\':env.ANTHROPIC_KEY},\n'+
-    '      body:JSON.stringify({model:\'claude-sonnet-4-20250514\',max_tokens:1000,system,messages:[{role:\'user\',content:message}]})\n'+
-    '    });\n'+
-    '    const d = await r.json();\n'+
-    '    return new Response(JSON.stringify({text:d.content?.[0]?.text}),{headers:{\'Content-Type\':\'application/json\',\'Access-Control-Allow-Origin\':\'*\'}});\n'+
-    '  }\n}</pre>'+
-    '3. In Worker Settings → Variables → add secret: <b style="color:#888">ANTHROPIC_KEY</b> = your Anthropic API key<br>'+
-    '4. Copy the worker URL (e.g. https://my-worker.username.workers.dev)<br>'+
-    '5. Paste it below and save';
-  instrToggle.addEventListener('click',()=>{
-    const open=instrDiv.style.display==='block';
-    instrDiv.style.display=open?'none':'block';
-    instrToggle.textContent='Setup instructions '+(open?'▼':'▲');
-  });
-  aiCard.appendChild(instrToggle);
-  aiCard.appendChild(instrDiv);
-
-  const proxyWrap=div({});
-  proxyWrap.appendChild(lbl('Worker URL'));
-  const proxyI=inp({class:'inp',type:'url',value:cfgForm.aiProxyUrl||'',placeholder:'https://my-worker.username.workers.dev'});
-  proxyI.addEventListener('input',()=>cfgForm.aiProxyUrl=proxyI.value.trim());
-  proxyWrap.appendChild(proxyI);
-  aiCard.appendChild(proxyWrap);
-  wrap.appendChild(aiCard);
   const totalsCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
   totalsCard.appendChild(div({class:'section-title'},'Daily Totals — Activity Types'));
   totalsCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},'Toggle which activity types contribute to daily km/vert/hr totals and weekly progress bars.'));
