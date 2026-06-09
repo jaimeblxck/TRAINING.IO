@@ -1805,25 +1805,89 @@ function renderTrend(){
     const allD=buildDays(Math.max(extRange,28));
     const {atl,ctl,ratio}=computeATLCTL(allD.map(d=>({date:d.ds,tss:d.tss})));
     const nLogged=allD.filter(d=>d.tss>0).length;
+    // Confidence: CTL is only meaningful once the 28-day EWA has enough history
+    // With k=0.97, after 14 days you have ~34% of the true steady-state value
+    // After 28 days ~58%, after 42 days ~72%. Flag as reliable at 14+ sessions.
+    const isReliable=nLogged>=14;
+    const isBuilding=nLogged>=5&&nLogged<14;
+
     const atlBox=div({style:{marginTop:'10px',padding:'10px',background:'#0a0a18',border:'1px solid #1a1a2e',borderRadius:'6px'}});
-    if(nLogged<7){
-      atlBox.appendChild(span({style:{fontSize:'10px',color:'#333'}},'ATL:CTL — log 7+ sessions to unlock ('+nLogged+' so far)'));
+
+    // Header row with info button
+    const atlHdrRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
+    atlHdrRow.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.12em',textTransform:'uppercase'}},'ATL:CTL Ratio'));
+    const infoBtn=btn({style:{padding:'0 6px',height:'16px',borderRadius:'8px',fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#666',lineHeight:'16px'},
+      onclick:()=>{
+        const existing=document.getElementById('atl-info-modal');
+        if(existing){existing.remove();return;}
+        const modal=div({style:{position:'fixed',inset:'0',background:'rgba(0,0,0,0.85)',zIndex:'200',display:'flex',alignItems:'flex-end',justifyContent:'center'}});
+        modal.id='atl-info-modal';
+        modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+        const sheet=div({style:{width:'100%',maxWidth:'480px',background:'#0d0d1f',borderRadius:'16px 16px 0 0',border:'1px solid #1c1c2e',padding:'20px 20px 40px',maxHeight:'85vh',overflowY:'auto'}});
+        sheet.appendChild(div({style:{width:'36px',height:'4px',background:'#2a2a4a',borderRadius:'2px',margin:'0 auto 16px'}}));
+        sheet.appendChild(div({style:{fontSize:'16px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.06em',color:'#e0e0ff',marginBottom:'14px'}},'About ATL:CTL'));
+        const sections=[
+          ['What it measures',
+           'ATL (Acute Training Load) is your rolling 7-day load — how hard you\'ve been training recently. CTL (Chronic Training Load) is your rolling 28-day load — your fitness baseline. The ratio ATL÷CTL tells you how your current training compares to your recent capacity.'],
+          ['How to read it',
+           '0.8–1.3 → Optimal. You\'re training at or near your fitness level.\n<0.8 → Underloading. You\'re training well below your baseline — detraining risk over time.\n1.3–1.5 → High load. Monitor recovery closely.\n>1.5 → Overreaching. Acute load is significantly above your chronic baseline — risk of injury or illness rises.'],
+          ['Why it needs time',
+           'CTL builds slowly. With fewer than 14 logged sessions, the 28-day baseline hasn\'t had enough data to stabilise, so the ratio will look artificially high even at normal training loads. The more history you have, the more meaningful the number becomes.'],
+          ['TSS formula used here',
+           'Load per session = RPE × hours × vert multiplier. The vert multiplier kicks in above 30m/km elevation density and scales up to 3× for mountain terrain — reflecting the extra physiological cost of vert-heavy runs.'],
+          ['What it isn\'t',
+           'This isn\'t a precise Training Peaks-style TSS — it\'s a proxy. It doesn\'t account for HR zones, swimming, cycling power, or sleep quality. Use it directionally, not as gospel.'],
+        ];
+        sections.forEach(([title,body])=>{
+          const s=div({style:{marginBottom:'14px',paddingBottom:'14px',borderBottom:'1px solid #1a1a2e'}});
+          s.appendChild(div({style:{fontSize:'10px',color:'#b8ff4f',letterSpacing:'0.1em',marginBottom:'5px'}},title.toUpperCase()));
+          body.split('\n').forEach(line=>{
+            s.appendChild(div({style:{fontSize:'11px',color:'#888',lineHeight:'1.7',marginBottom:'2px'}},line));
+          });
+          sheet.appendChild(s);
+        });
+        sheet.appendChild(btn({class:'btn',onclick:()=>modal.remove()},'Close'));
+        modal.appendChild(sheet);
+        document.body.appendChild(modal);
+      }},'?');
+    atlHdrRow.appendChild(infoBtn);
+    atlBox.appendChild(atlHdrRow);
+
+    if(nLogged<5){
+      atlBox.appendChild(div({style:{fontSize:'10px',color:'#333'}},'Log 5+ sessions to begin building baseline ('+nLogged+' so far)'));
     } else {
-      const rc=!ratio?'#555':ratio>1.3?'#ff6b6b':ratio<0.8?'#74b9ff':'#00ff87';
-      const rl=!ratio?'--':ratio>1.5?'Overreaching':ratio>1.3?'High load':ratio<0.8?'Underloading':'Optimal';
-      const ah=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'5px'}});
-      ah.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em'}},'ATL:CTL'));
-      ah.appendChild(span({style:{fontSize:'20px',fontFamily:"'Bebas Neue',cursive",color:rc}},ratio?ratio.toFixed(2):'--'));
-      atlBox.appendChild(ah);
-      atlBox.appendChild(div({style:{fontSize:'10px',color:rc,marginBottom:'5px'}},rl));
-      const ad=div({style:{display:'flex',gap:'14px',marginBottom:'4px'}});
-      ad.appendChild(span({style:{fontSize:'9px',color:'#444'}},'ATL 7d: '+atl.toFixed(1)));
-      ad.appendChild(span({style:{fontSize:'9px',color:'#444'}},'CTL 28d: '+ctl.toFixed(1)));
-      atlBox.appendChild(ad);
-      if(ratio){
-        atlBox.appendChild(div({style:{fontSize:'9px',color:'#333',lineHeight:'1.6'}},
-          ratio>1.3?'Acute load well above chronic baseline. Prioritise recovery.':
-          ratio<0.8?'Training below chronic baseline. Safe to add load if feeling good.':
+      // Confidence bar
+      const confPct=Math.min(100,Math.round(nLogged/28*100));
+      const confRow=div({style:{marginBottom:'8px'}});
+      confRow.appendChild(div({style:{display:'flex',justifyContent:'space-between',marginBottom:'2px'}}),[
+        span({style:{fontSize:'8px',color:'#333'}},'Baseline confidence'),
+        span({style:{fontSize:'8px',color:isReliable?'#00ff87':'#ffd166'}},confPct+'% ('+(isReliable?'reliable':'building')+' — '+nLogged+'/28 days)'),
+      ]);
+      const confTrack=div({class:'pbar-track'});
+      confTrack.appendChild(div({class:'pbar-fill',style:{width:confPct+'%',background:isReliable?'#00ff87':'#ffd166'}}));
+      confRow.appendChild(confTrack);
+      atlBox.appendChild(confRow);
+
+      // Ratio display — greyed out with warning if not reliable
+      const rc=!ratio?'#555':!isReliable?'#555':ratio>1.3?'#ff6b6b':ratio<0.8?'#74b9ff':'#00ff87';
+      const rl=!ratio?'--':!isReliable?'Building...':ratio>1.5?'Overreaching':ratio>1.3?'High load':ratio<0.8?'Underloading':'Optimal';
+      const ratioRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'4px'}});
+      ratioRow.appendChild(span({style:{fontSize:'10px',color:rc}},rl));
+      ratioRow.appendChild(span({style:{fontSize:'22px',fontFamily:"'Bebas Neue',cursive",color:rc}},ratio?ratio.toFixed(2):'--'));
+      atlBox.appendChild(ratioRow);
+
+      const detailRow=div({style:{display:'flex',gap:'16px',marginBottom:'4px'}});
+      detailRow.appendChild(span({style:{fontSize:'9px',color:'#444'}},'ATL (7d): '+atl.toFixed(1)));
+      detailRow.appendChild(span({style:{fontSize:'9px',color:'#444'}},'CTL (28d): '+ctl.toFixed(1)));
+      atlBox.appendChild(detailRow);
+
+      if(!isReliable){
+        atlBox.appendChild(div({style:{fontSize:'9px',color:'#555',lineHeight:'1.6',marginTop:'2px'}},
+          'CTL baseline still building — ratio will stabilise after '+Math.max(0,14-nLogged)+' more sessions. Don\'t act on it yet.'));
+      } else if(ratio){
+        atlBox.appendChild(div({style:{fontSize:'9px',color:'#333',lineHeight:'1.6',marginTop:'2px'}},
+          ratio>1.3?'Acute load well above chronic baseline. Ensure adequate recovery before next hard effort.':
+          ratio<0.8?'Training below chronic baseline. Safe to increase load if feeling good.':
           'Load and recovery in balance.'));
       }
     }
