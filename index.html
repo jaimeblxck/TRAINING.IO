@@ -440,10 +440,10 @@ function getFatigueLoad(){
 }
 
 function getDecision(combined){
-  if(combined>=74) return {label:'GO HARD',short:'up',color:'#00ff87',desc:'All signals green. Execute as planned or push harder.'};
-  if(combined>=55) return {label:'AS PLANNED',short:'right',color:'#b8ff4f',desc:'Solid baseline. Stick to the plan.'};
-  if(combined>=38) return {label:'MODIFY',short:'wave',color:'#ffd166',desc:'Mixed signals. Cut intensity or volume ~20%.'};
-  return {label:'BACK OFF',short:'down',color:'#ff6b6b',desc:'Non-negotiable. Easy movement or full rest only.'};
+  if(combined>=74) return {label:'GO HARD',short:'up',color:'#00c96e',textColor:'#007a42',desc:'All signals green. Execute as planned or push harder.'};
+  if(combined>=55) return {label:'AS PLANNED',short:'right',color:'#a8d800',textColor:'#5a7a00',desc:'Solid baseline. Stick to the plan.'};
+  if(combined>=38) return {label:'MODIFY',short:'wave',color:'#ffd166',textColor:'#b07a00',desc:'Mixed signals. Cut intensity or volume ~20%.'};
+  return {label:'BACK OFF',short:'down',color:'#ff6b6b',textColor:'#c0202a',desc:'Non-negotiable. Easy movement or full rest only.'};
 }
 
 // ============================================================
@@ -664,7 +664,7 @@ function pbar(value,max,color='#b8ff4f'){
   const fill = div({class:'pbar-fill',style:{width:pct+'%',background:value>max&&max>0?'#ff6b6b':color}});
   return div({class:'pbar-track'},[fill]);
 }
-function ring(value,color,label,size=76){
+function ring(value,color,label,size=76,textColor){
   const r=size/2-7, circ=2*Math.PI*r;
   const pct=value!=null?Math.max(0,Math.min(100,value))/100:0;
   const fill=pct*circ;
@@ -685,7 +685,7 @@ function ring(value,color,label,size=76){
   }
   const txt=document.createElementNS('http://www.w3.org/2000/svg','text');
   txt.setAttribute('x',size/2); txt.setAttribute('y',size/2+5); txt.setAttribute('text-anchor','middle');
-  txt.setAttribute('fill',value!=null?color:'#333'); txt.setAttribute('font-size',value!=null?15:10);
+  txt.setAttribute('fill',value!=null?(textColor||color):'#333'); txt.setAttribute('font-size',value!=null?15:10);
   txt.setAttribute('font-family',"'JetBrains Mono',monospace"); txt.setAttribute('font-weight','700');
   txt.textContent=value!=null?Math.round(value):'--';
   svg.appendChild(txt);
@@ -1059,6 +1059,7 @@ function renderToday(){
     badgeTypes.forEach(t=>bwrap.appendChild(span({style:{fontSize:'9px',background:TC[t]||'#555',color:'#000',padding:'2px 5px',borderRadius:'3px',fontWeight:'700'}},TL[t]||'--')));
     hdrRow.appendChild(bwrap);
     hdrRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',flex:'1'}},'TODAY · WK '+(wIdx+1)));
+    hdrRow.appendChild(span({style:{fontSize:'8px',color:'#000',background:'#b8d400',padding:'2px 6px',borderRadius:'3px',fontWeight:'700',letterSpacing:'0.06em'}},'CURRENT'));
     const doneCount=allTodayActs.filter(a=>a.completed).length;
     if(doneCount>0){
       hdrRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87',fontWeight:'700',background:'#00ff8720',padding:'2px 6px',borderRadius:'4px',border:'1px solid #00ff8740'}},doneCount+'/'+allTodayActs.length+' done'));
@@ -1148,22 +1149,22 @@ function renderToday(){
 
     decBanner.innerHTML='';
     if(dec){
-      decBanner.style.background=dec.color+'12';
-      decBanner.style.border='1px solid '+dec.color+'35';
+      decBanner.style.background=dec.color+'18';
+      decBanner.style.border='1px solid '+dec.color+'50';
       decBanner.style.borderLeft='3px solid '+dec.color;
-      decBanner.appendChild(span({style:{fontSize:'20px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.1em',color:dec.color,display:'block'}},dec.label));
+      decBanner.appendChild(span({style:{fontSize:'20px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.1em',color:dec.textColor||dec.color,display:'block'}},dec.label));
       decBanner.appendChild(span({style:{fontSize:'11px',color:'var(--text-mute)',marginTop:'4px',lineHeight:'1.6',display:'block'}},dec.desc));
     } else {
-      decBanner.style.background='#0a0a1a';
-      decBanner.style.border='1px solid #1c1c2e';
-      decBanner.style.borderLeft='1px solid #1c1c2e';
+      decBanner.style.background='var(--bg-card)';
+      decBanner.style.border='1px solid var(--border)';
+      decBanner.style.borderLeft='1px solid var(--border)';
       decBanner.appendChild(span({style:{fontSize:'12px',color:'var(--text-mute)'}},'Enter readings to get today\'s decision'));
     }
 
     // Update rings
     ringsRow.innerHTML='';
     ringsRow.appendChild(ring(rScore,'#60a5fa','Physical'));
-    ringsRow.appendChild(ring(combined,dec?.color||'#333','Combined',88));
+    ringsRow.appendChild(ring(combined,dec?.color||'#333','Combined',88,dec?.textColor));
     ringsRow.appendChild(ring(sScore,'#c084fc','Subjective'));
   }
 
@@ -1199,9 +1200,9 @@ function renderToday(){
   // HRV / RHR inputs
   const grid1=div({class:'grid2',style:{marginBottom:'12px'}});
   const hrvN=parseFloat(hrv);
-  const hrvHint=!isNaN(hrvN)?(hrvN<CFG.hrvLow?{t:'Below range',c:'#ff6b6b'}:hrvN>CFG.hrvHigh?{t:'Above range',c:'#b8ff4f'}:{t:'In range',c:'#00ff87'}):null;
+  const hrvHint=!isNaN(hrvN)?(hrvN<CFG.hrvLow?{t:'Below range',c:'#e05050'}:hrvN>CFG.hrvHigh?{t:'Above range',c:'#2a9d60'}:{t:'In range ✓',c:'#2a9d60'}):null;
   const rhrN=parseFloat(rhr);
-  const rhrHint=!isNaN(rhrN)?(rhrN<CFG.rhrLow?{t:'Below baseline',c:'#b8ff4f'}:rhrN>CFG.rhrHigh?{t:'Elevated',c:'#ff6b6b'}:{t:'Baseline',c:'#00ff87'}):null;
+  const rhrHint=!isNaN(rhrN)?(rhrN<CFG.rhrLow?{t:'Below baseline',c:'#2a9d60'}:rhrN>CFG.rhrHigh?{t:'Elevated',c:'#e05050'}:{t:'Baseline ✓',c:'#2a9d60'}):null;
 
   const hrvF=numInp('HRV',hrv,v=>{hrv=v;updateDecision();},'ms',hrvHint?.t,hrvHint?.c);
   const rhrF=numInp('Resting HR',rhr,v=>{rhr=v;updateDecision();},'bpm',rhrHint?.t,rhrHint?.c);
@@ -1329,12 +1330,15 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
   const btnRow=div({style:{display:'flex',gap:'8px'}});
   const saveBtn=btn({class:'btn btn-ok',style:{flex:'1'},onclick:()=>{
     const updated=[...getDayActivities(wIdx,dIdx)];
+    // Only auto-complete if day is today or in the past
+    const slotDs=slotDate(wIdx,getPlan()[wIdx]?.days[dIdx]?.day||'Mon');
+    const isLoggedDay=slotDs<=today();
     updated[aIdx]={
       id:existing.id||newActId(),
       label, type,
       actualKm:akm, actualVert:avert, actualHrs:parseHms(ahrs)||'',
       perf, exec, note,
-      completed:true, ts:Date.now()
+      completed:isLoggedDay, ts:Date.now()
     };
     saveDayActivities(wIdx,dIdx,updated);
     overlay.remove(); render();
@@ -1434,7 +1438,7 @@ function renderBlock(){
       const rowText=div({style:{flex:'1',minWidth:0}});
       // Date range + badge row
       const dateRow=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'2px'}});
-      dateRow.appendChild(span({style:{fontSize:'10px',color:'#777'}},fmtDate(mon)+' – '+fmtDate(sun)));
+      dateRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-mute)'}},fmtDate(mon)+' – '+fmtDate(sun)));
       if(isCur) dateRow.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'NOW'));
       if(isPast&&hasActuals) dateRow.appendChild(span({style:{fontSize:'8px',color:'#00ff87'}},'✓'));
       rowText.appendChild(dateRow);
@@ -1630,7 +1634,7 @@ function renderPlan(){
 
   // Week header card
   const tc_w=WTC[target?.type]||'#555';
-  const hdrCard=div({style:{marginBottom:'14px',padding:'12px 14px',borderRadius:'8px',background:'#0a0a1a',border:'1px solid #1c1c2e',color:'#e0e0ff'}});
+  const hdrCard=div({style:{marginBottom:'14px',padding:'12px 14px',borderRadius:'8px',background:'#0d1020',border:'1px solid #1c2040',color:'#d0d8ff'}});
   const hdrTop=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'10px'}});
   const hdrLeft=div({});
   const hdrBadges=div({class:'flex',style:{marginBottom:'4px'}});
@@ -1644,7 +1648,7 @@ function renderPlan(){
   hdrLeft.appendChild(div({style:{fontSize:'12px',color:'var(--text)',letterSpacing:'0.04em',marginBottom:'2px'}},
     'TARGET: '+(target?.km||0)+'km · '+(target?.vert||0)+'m · '+(target?.hrs||0)+'hr'));
   hdrTop.appendChild(hdrLeft);
-  hdrTop.appendChild(div({style:{fontSize:'11px',color:'#555',textAlign:'right'}},actuals.done+'/'+week.days.length+'\ndone'));
+  hdrTop.appendChild(div({style:{fontSize:'11px',color:'var(--text-mute)',textAlign:'right'}},actuals.done+'/'+week.days.length+' done'));
   hdrCard.appendChild(hdrTop);
 
   // Progress bars: planned (sum of session km/vert/hrs) vs weekly target
@@ -1717,7 +1721,7 @@ function renderPlan(){
       topRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87'}},'✓'));
     }
     topRow.appendChild(span({style:{fontSize:'9px',color:dayDone?'#444':'#666',fontWeight:'600'}},s.day));
-    topRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},fmtDate(slotDateObj(wIdx,s.day))));
+    topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)'}},fmtDate(slotDateObj(wIdx,s.day))));
 
     // Type badges
     const dispTypes=activities.length>0?[...new Set(activities.map(a=>a.type||s.type))]:[s.type];
@@ -1732,7 +1736,7 @@ function renderPlan(){
       topRow.appendChild(span({style:{fontSize:'9px',color:'#555',whiteSpace:'nowrap'}},
         (totals.km>0?totals.km.toFixed(1)+'k ':'')+fmtHrTot(totals.hrs)));
     } else if(!dayDone&&(s.km>0||s.hrs>0)){
-      topRow.appendChild(span({style:{fontSize:'9px',color:'#2a2a3a',whiteSpace:'nowrap'}},
+      topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',whiteSpace:'nowrap'}},
         (s.km>0?s.km+'k ':'')+fmtHms(s.hrs)));
     }
     if(isEdited) topRow.appendChild(span({style:{fontSize:'8px',color:'#2a2a4a'}},'ED'));
@@ -1773,23 +1777,23 @@ function renderPlan(){
         // Activity list
         activities.forEach((act,aIdx)=>{
           const atc=TC[act.type||'easy']||'#555';
-          const actRow=div({style:{marginBottom:'10px',padding:'8px',background:'var(--bg-elev)',borderRadius:'6px',border:'1px solid '+(act.completed?'#00ff8720':'#1c1c2e')}});
+          const actRow=div({style:{marginBottom:'10px',padding:'8px',background:'var(--bg-card)',borderRadius:'6px',border:'1px solid '+(act.completed?'#00b86440':'var(--border)')}});
 
           // Activity header row
           const actHdr=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'4px'}});
           actHdr.appendChild(span({style:{fontSize:'9px',background:atc,color:'#000',padding:'1px 5px',borderRadius:'3px',fontWeight:'700'}},TL[act.type||'easy']||'--'));
-          actHdr.appendChild(span({style:{fontSize:'12px',color:act.completed?'#55efc4':'#c0c0e0',flex:'1'}},act.label||'Activity'));
+          actHdr.appendChild(span({style:{fontSize:'12px',color:act.completed?'#007a42':'var(--text)',flex:'1'}},act.label||'Activity'));
           if(act.completed) actHdr.appendChild(span({style:{fontSize:'9px',color:'#00ff87'}},'✓'));
 
           // Edit / delete / move buttons
           const actCtrl=div({style:{display:'flex',gap:'4px',marginLeft:'4px'}});
-          actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'#1a1a3a',border:'1px solid #2a2a4a',color:'#888'},
+          actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
             onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'✎'));
 
           // Move to day selector — only for incomplete (future) activities
           if(!act.completed){
             const moveWrap=div({style:{position:'relative',display:'inline-block'}});
-            const moveSel=el('select',{style:{padding:'2px 5px',borderRadius:'4px',fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555',cursor:'pointer',outline:'none'}});
+            const moveSel=el('select',{style:{padding:'2px 5px',borderRadius:'4px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)',cursor:'pointer',outline:'none'}});
             const moveOpt=el('option',{value:''},'↕');
             moveSel.appendChild(moveOpt);
             week.days.forEach((wd,targetDIdx)=>{
@@ -1811,7 +1815,7 @@ function renderPlan(){
             actCtrl.appendChild(moveWrap);
           }
 
-          actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'#1a0a0a',border:'1px solid #2a2a2a',color:'#555'},
+          actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'#e84040'},
             onclick:()=>{
               const updated=activities.filter((_,i)=>i!==aIdx);
               saveDayActivities(wIdx,dIdx,updated);
@@ -1846,14 +1850,14 @@ function renderPlan(){
             if(act.detail){
               actRow.appendChild(div({style:{fontSize:'10px',color:'#444',lineHeight:'1.5',marginBottom:'6px'}},act.detail));
             }
-            actRow.appendChild(btn({style:{padding:'5px 12px',borderRadius:'5px',fontSize:'10px',background:'#1a1a3a',border:'1px solid #3a3a6a',color:'var(--text)'},
+            actRow.appendChild(btn({style:{padding:'5px 12px',borderRadius:'5px',fontSize:'10px',background:'var(--bg-btn)',border:'1px solid var(--border-btn)',color:'var(--text)'},
               onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'Log this'));
           }
           pd.appendChild(actRow);
         });
 
         // Add activity button
-        const addBtn=btn({style:{width:'100%',padding:'8px',borderRadius:'6px',fontSize:'11px',background:'var(--bg-input)',border:'1px dashed #2a2a4a',color:'#555',marginBottom:'10px'},
+        const addBtn=btn({style:{width:'100%',padding:'8px',borderRadius:'6px',fontSize:'11px',background:'var(--bg-input)',border:'1px dashed var(--border-btn)',color:'var(--text-mute)',marginBottom:'10px'},
           onclick:()=>{
             const newAct={id:newActId(),label:'',type:'easy',actualKm:'',actualVert:'',actualHrs:'',perf:'',exec:'',note:'',completed:false,ts:Date.now()};
             const updated=[...activities,newAct];
