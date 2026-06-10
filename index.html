@@ -1397,94 +1397,184 @@ function renderBlock(){
 
     group.weeks.forEach(wIdx=>{
       let t=TARGETS[wIdx];
-      const wn=wIdx+1, isCur=wn===cw, isEd=BLOCK_EDITING===wIdx;
+      const wn=wIdx+1, isCur=wn===cw, isPast=wn<cw, isFuture=wn>cw;
+      const isDone=isPast||isCur; // past or current show actuals
       const tc2=WTC[t.type]||'#555';
       const {mon,sun}=weekDates(wIdx);
+      const isEd=BLOCK_EDITING===wIdx; // only used for future weeks
 
       // Compute actuals
       const actuals=(plan[wIdx]?.days||[]).reduce((acc,_,dIdx)=>{
         const dt=getDayTotals(wIdx,dIdx);
         acc.km+=dt.km; acc.vert+=dt.vert; acc.hrs+=dt.hrs;
         if(isDayDone(wIdx,dIdx)) acc.done++;
+        // Count total activities logged
+        acc.acts+=getDayActivities(wIdx,dIdx).filter(a=>a.completed).length;
         return acc;
-      },{km:0,vert:0,hrs:0,done:0});
+      },{km:0,vert:0,hrs:0,done:0,acts:0});
       const totalDays=plan[wIdx]?.days.length||7;
-      const hasDone=actuals.done>0;
+      const hasActuals=actuals.done>0;
+
+      // For past/current: chevron toggles progress bars; no edit expansion
+      // For future: chevron toggles edit panel
+      const isExpanded=BLOCK_EDITING===wIdx;
+      const toggleExpand=()=>{BLOCK_EDITING=isExpanded?null:wIdx;render();};
 
       const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'9px 12px',
-        marginBottom:isEd||hasDone?'0':'5px',
-        background:isEd?'#111128':isCur?'#0d0d20':'#0a0a1a',
-        border:'1px solid '+(isEd?tc2+'50':isCur?'#2a2a4a':'#1a1a2e'),
-        borderRadius:isEd||hasDone?'8px 8px 0 0':'8px',
+        marginBottom:'0',
+        background:isExpanded?'var(--bg-elev)':isCur?'#0d0d20':'var(--bg-card)',
+        border:'1px solid '+(isExpanded?tc2+'50':isCur?'#2a2a4a':'var(--border)'),
+        borderRadius:'8px 8px 0 0',
         display:'flex',alignItems:'center',gap:'8px'},
-        onclick:()=>{BLOCK_EDITING=isEd?null:wIdx;render();}});
+        onclick:toggleExpand});
 
-      rowBtn.appendChild(span({style:{fontSize:'12px',fontFamily:"'Bebas Neue',cursive",color:isCur?'#e0e0ff':'#555',minWidth:'22px',fontWeight:isCur?'700':'400'}},wn+''));
+      // Week number
+      rowBtn.appendChild(span({style:{fontSize:'12px',fontFamily:"'Bebas Neue',cursive",
+        color:isCur?'#e0e0ff':isPast?'#555':'#888',minWidth:'22px'}},wn+''));
+
       const rowText=div({style:{flex:'1',minWidth:0}});
-      rowText.appendChild(div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'1px'}},[
-        span({style:{fontSize:'10px',color:'#777'}},fmtDate(mon)+' – '+fmtDate(sun)),
-        isCur?span({style:{fontSize:'8px',color:'#b8ff4f'}},'NOW'):null,
-      ]));
-      rowText.appendChild(span({style:{fontSize:'10px',color:'#555'}},t.km+'km · '+(t.vert>=1000?(t.vert/1000).toFixed(1)+'k':t.vert)+'m · '+t.hrs+'hr'+(hasDone?' • '+actuals.done+'/'+totalDays+' done':'')));
-      rowBtn.appendChild(rowText);
-      rowBtn.appendChild(span({style:{fontSize:'11px',color:'#333'}},isEd?'▲':'▼'));
-      wrap.appendChild(rowBtn);
+      // Date range + badge row
+      const dateRow=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'2px'}});
+      dateRow.appendChild(span({style:{fontSize:'10px',color:'#777'}},fmtDate(mon)+' – '+fmtDate(sun)));
+      if(isCur) dateRow.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'NOW'));
+      if(isPast&&hasActuals) dateRow.appendChild(span({style:{fontSize:'8px',color:'#00ff87'}},'✓'));
+      rowText.appendChild(dateRow);
 
-      // Progress bars when week has data
-      if(hasDone){
-        const barsDiv=div({style:{padding:'8px 12px 10px',background:'var(--bg-card)',
-          border:'1px solid var(--border-subtle)',borderTop:'none',
-          borderRadius:isEd?'0':'0 0 8px 8px',marginBottom:isEd?'0':'5px'}});
-        [['KM',actuals.km,t.km,'#60a5fa'],['VERT',actuals.vert,t.vert,'#a29bfe'],['HRS',actuals.hrs,t.hrs,'#ffd166']].forEach(([lb,act,tgt,col])=>{
-          const row=div({style:{marginBottom:'5px'}});
-          const over=act>tgt&&tgt>0;
-          const pct=tgt>0?Math.min(100,Math.round(act/tgt*100)):0;
-          const info=div({style:{display:'flex',justifyContent:'space-between',marginBottom:'2px'}});
-          info.appendChild(span({style:{fontSize:'8px',color:'#444',letterSpacing:'0.1em'}},lb));
-          const actF=lb==='HRS'?act.toFixed(1):lb==='VERT'&&act>=1000?(act/1000).toFixed(1)+'k':Math.round(act);
-          const tgtF=lb==='HRS'?t.hrs:lb==='VERT'&&t.vert>=1000?(t.vert/1000).toFixed(1)+'k':tgt;
-          info.appendChild(span({style:{fontSize:'8px',color:over?'#ff6b6b':'#555'}},actF+'/'+tgtF+(lb==='KM'?'km':lb==='VERT'?'m':'hr')+(over?' ↑':pct===100?' ✓':' '+pct+'%')));
-          row.appendChild(info); row.appendChild(pbar(act,tgt||1,col));
-          barsDiv.appendChild(row);
-        });
-        barsDiv.appendChild(btn({style:{marginTop:'6px',padding:'4px 10px',borderRadius:'4px',fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555'},
-          onclick:()=>{EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;EXPANDED_DAY=null;EDITING_DAY=null;render();}},'View sessions →'));
-        wrap.appendChild(barsDiv);
+      // Summary line — actuals for done weeks, planned for future
+      if(isDone&&hasActuals){
+        const actKmF=Math.round(actuals.km);
+        const actVertF=actuals.vert>=1000?(actuals.vert/1000).toFixed(1)+'k':Math.round(actuals.vert);
+        rowText.appendChild(span({style:{fontSize:'10px',color:isPast?'#555':'#b8ff4f'}},
+          actKmF+'km · '+actVertF+'m · '+fmtHrTot(actuals.hrs)+' · '+actuals.acts+' activities'));
+      } else {
+        rowText.appendChild(span({style:{fontSize:'10px',color:'#444'}},
+          t.km+'km · '+(t.vert>=1000?(t.vert/1000).toFixed(1)+'k':t.vert)+'m · '+fmtHrTot(t.hrs)+' planned'));
       }
 
-      if(isEd){
-        const panel=div({style:{padding:'14px',background:'var(--bg-elev)',border:'1px solid '+tc2+'30',borderTop:'none',borderRadius:'0 0 8px 8px',marginBottom:'5px'}});
-        const typeContainer=div({style:{marginBottom:'12px'}});
-        typeContainer.appendChild(lbl('Week type'));
-        const typeBtnsDiv=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
-        function renderWTBtns(){
-          typeBtnsDiv.innerHTML='';
-          WEEK_TYPES.forEach(wt=>{
-            const wtc=WTC[wt], isA=TARGETS[wIdx].type===wt;
-            const b=btn({style:{padding:'5px 10px',borderRadius:'4px',fontSize:'10px',
-              background:isA?wtc+'30':'#0a0a18',border:'1px solid '+(isA?wtc:'#2a2a4a'),color:isA?wtc:'#555'},
-              onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],type:wt};S.set(SK.targets,TARGETS);renderWTBtns();}},wt);
-            typeBtnsDiv.appendChild(b);
-          });
+      // Second line: Sessions (+ Edit for current week)
+      if(isDone){
+        const actionRow=div({style:{display:'flex',gap:'6px',marginTop:'4px'}});
+        actionRow.appendChild(btn({style:{padding:'2px 8px',borderRadius:'4px',fontSize:'9px',
+          background:'var(--bg-input)',border:'1px solid var(--border)',color:'var(--text-mute)',cursor:'pointer'},
+          onclick:e=>{e.stopPropagation();EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;EXPANDED_DAY=null;EDITING_DAY=null;render();}},'Sessions →'));
+        if(isCur){
+          actionRow.appendChild(btn({style:{padding:'2px 8px',borderRadius:'4px',fontSize:'9px',
+            background:'var(--bg-input)',border:'1px solid var(--border)',color:'var(--text-mute)',cursor:'pointer'},
+            onclick:e=>{e.stopPropagation();BLOCK_EDITING=isExpanded?null:wIdx;render();}},'Edit targets'));
         }
-        renderWTBtns();
-        typeContainer.appendChild(typeBtnsDiv);
-        panel.appendChild(typeContainer);
-
-        let form={...TARGETS[wIdx]};
-        const ng=div({class:'grid3',style:{marginBottom:'12px'}});
-        [['Target km',form.km,'km',v=>form.km=parseFloat(v)||0],['Target vert',form.vert,'m',v=>form.vert=parseFloat(v)||0],['Target hrs',form.hrs,'hr',v=>form.hrs=parseFloat(v)||0]].forEach(([lb,val,unit,cb])=>ng.appendChild(numInp(lb,val,cb,unit)));
-        panel.appendChild(ng);
-
-        const btnsRow=div({style:{display:'flex',gap:'8px'}});
-        btnsRow.appendChild(btn({style:{padding:'8px 12px',borderRadius:'6px',fontSize:'10px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#666'},
-          onclick:()=>{EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;render();}},'View sessions'));
-        btnsRow.appendChild(btn({class:'btn btn-ok',style:{padding:'9px 16px'},
-          onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],...form};S.set(SK.targets,TARGETS);BLOCK_EDITING=null;render();}},'Save'));
-        btnsRow.appendChild(btn({class:'btn-sm btn-ghost',onclick:()=>{BLOCK_EDITING=null;render();}},'Cancel'));
-        panel.appendChild(btnsRow);
-        wrap.appendChild(panel);
+        rowText.appendChild(actionRow);
       }
+
+      rowBtn.appendChild(rowText);
+
+      // Right side chevron — for done weeks only (future weeks use full row tap)
+      if(isDone){
+        rowBtn.appendChild(btn({style:{padding:'4px 6px',borderRadius:'4px',fontSize:'11px',
+          background:'transparent',border:'none',color:'#333',flexShrink:'0',cursor:'pointer'},
+          onclick:e=>{e.stopPropagation();BLOCK_EDITING=isExpanded?null:wIdx;render();}},isExpanded?'▲':'▼'));
+      } else {
+        rowBtn.appendChild(span({style:{fontSize:'11px',color:'#333',flexShrink:'0'}},isExpanded?'▲':'▼'));
+      }
+
+      // Wrapper for row + panels — rounded bottom depends on whether expanded
+      const rowWrap=div({style:{marginBottom:'5px'}});
+      rowWrap.style.borderRadius='8px';
+      rowBtn.style.borderRadius=isExpanded?'8px 8px 0 0':'8px';
+      rowWrap.appendChild(rowBtn);
+
+      // Expanded content
+      if(isExpanded){
+        if(isDone){
+          // Past/current expanded: progress bars (current week also gets edit form if triggered)
+          const barsDiv=div({style:{padding:'10px 12px 12px',background:'var(--bg-card)',
+            border:'1px solid var(--border)',borderTop:'none',borderRadius:'0 0 8px 8px'}});
+
+          if(!hasActuals){
+            barsDiv.appendChild(span({style:{fontSize:'10px',color:'var(--text-mute)'}},'No sessions logged this week yet.'));
+          } else {
+            [['KM',actuals.km,t.km,'#60a5fa'],
+             ['VERT',actuals.vert,t.vert,'#a29bfe'],
+             ['HRS',actuals.hrs,t.hrs,'#ffd166']].forEach(([lb,act,tgt,col])=>{
+              const row=div({style:{marginBottom:'6px'}});
+              const over=act>tgt&&tgt>0;
+              const pct=tgt>0?Math.min(100,Math.round(act/tgt*100)):0;
+              const info=div({style:{display:'flex',justifyContent:'space-between',marginBottom:'2px'}});
+              info.appendChild(span({style:{fontSize:'8px',color:'var(--text-mute)',letterSpacing:'0.1em'}},lb));
+              const actF=lb==='HRS'?fmtHrTot(act):lb==='VERT'&&act>=1000?(act/1000).toFixed(1)+'k':Math.round(act);
+              const tgtF=lb==='HRS'?fmtHrTot(t.hrs):lb==='VERT'&&t.vert>=1000?(t.vert/1000).toFixed(1)+'k':t[lb.toLowerCase()]||tgt;
+              info.appendChild(span({style:{fontSize:'8px',color:over?'#ff6b6b':'var(--text-mute)'}},
+                actF+' / '+tgtF+(lb==='KM'?'km':lb==='VERT'?'m':'')+(over?' ↑':pct===100?' ✓':' '+pct+'%')));
+              row.appendChild(info); row.appendChild(pbar(act,tgt||1,col));
+              barsDiv.appendChild(row);
+            });
+          }
+          rowWrap.appendChild(barsDiv);
+
+          // Current week: also show target edit form below bars
+          if(isCur){
+            const editPanel=div({style:{padding:'12px',background:'var(--bg-elev)',
+              border:'1px solid '+tc2+'30',borderTop:'none',borderRadius:'0 0 8px 8px',
+              marginTop:'-8px',paddingTop:'16px'}});
+            editPanel.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',marginBottom:'10px'}},'ADJUST TARGETS'));
+            let form={...TARGETS[wIdx]};
+            const ng=div({class:'grid3',style:{marginBottom:'10px'}});
+            [['Target km',form.km,'km',v=>form.km=parseFloat(v)||0],
+             ['Target vert',form.vert,'m',v=>form.vert=parseFloat(v)||0],
+             ['Target hrs',form.hrs,'hr',v=>form.hrs=parseFloat(v)||0]
+            ].forEach(([lb,val,unit,cb])=>ng.appendChild(numInp(lb,val,cb,unit)));
+            editPanel.appendChild(ng);
+            const ebtns=div({style:{display:'flex',gap:'8px'}});
+            ebtns.appendChild(btn({class:'btn btn-ok',style:{padding:'8px 14px'},
+              onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],...form};S.set(SK.targets,TARGETS);BLOCK_EDITING=null;render();}},'Save'));
+            ebtns.appendChild(btn({class:'btn-sm btn-ghost',onclick:()=>{BLOCK_EDITING=null;render();}},'Cancel'));
+            editPanel.appendChild(ebtns);
+            rowWrap.appendChild(editPanel);
+          }
+
+        } else {
+          // Future: edit panel
+          const panel=div({style:{padding:'14px',background:'var(--bg-elev)',
+            border:'1px solid '+tc2+'30',borderTop:'none',borderRadius:'0 0 8px 8px'}});
+          const typeContainer=div({style:{marginBottom:'12px'}});
+          typeContainer.appendChild(lbl('Week type'));
+          const typeBtnsDiv=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
+          function renderWTBtns(){
+            typeBtnsDiv.innerHTML='';
+            WEEK_TYPES.forEach(wt=>{
+              const wtc=WTC[wt], isA=TARGETS[wIdx].type===wt;
+              const b=btn({style:{padding:'5px 10px',borderRadius:'4px',fontSize:'10px',
+                background:isA?wtc+'30':'var(--bg-input)',border:'1px solid '+(isA?wtc:'var(--border)'),
+                color:isA?wtc:'var(--text-mute)'},
+                onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],type:wt};S.set(SK.targets,TARGETS);renderWTBtns();}},wt);
+              typeBtnsDiv.appendChild(b);
+            });
+          }
+          renderWTBtns();
+          typeContainer.appendChild(typeBtnsDiv);
+          panel.appendChild(typeContainer);
+
+          let form={...TARGETS[wIdx]};
+          const ng=div({class:'grid3',style:{marginBottom:'12px'}});
+          [['Target km',form.km,'km',v=>form.km=parseFloat(v)||0],
+           ['Target vert',form.vert,'m',v=>form.vert=parseFloat(v)||0],
+           ['Target hrs',form.hrs,'hr',v=>form.hrs=parseFloat(v)||0]
+          ].forEach(([lb,val,unit,cb])=>ng.appendChild(numInp(lb,val,cb,unit)));
+          panel.appendChild(ng);
+
+          const btnsRow=div({style:{display:'flex',gap:'8px'}});
+          btnsRow.appendChild(btn({style:{padding:'8px 12px',borderRadius:'6px',fontSize:'10px',
+            background:'var(--bg-input)',border:'1px solid var(--border)',color:'var(--text-mute)'},
+            onclick:()=>{EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;render();}},'View sessions'));
+          btnsRow.appendChild(btn({class:'btn btn-ok',style:{padding:'9px 16px'},
+            onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],...form};S.set(SK.targets,TARGETS);BLOCK_EDITING=null;render();}},'Save'));
+          btnsRow.appendChild(btn({class:'btn-sm btn-ghost',
+            onclick:()=>{BLOCK_EDITING=null;render();}},'Cancel'));
+          panel.appendChild(btnsRow);
+          rowWrap.appendChild(panel);
+        }
+      }
+
+      wrap.appendChild(rowWrap);
     });
   });
 
