@@ -169,6 +169,18 @@ function fmtHms(hrs){
   const m=Math.round((hrs-h)*60);
   return h+':'+(m<10?'0':'')+m;
 }
+// Parse h:mm or decimal hours input → decimal hours
+function parseHms(val){
+  if(!val||val==='') return '';
+  const s=String(val).trim();
+  if(s.includes(':')){
+    const [h,m]=s.split(':');
+    const hrs=parseInt(h)||0;
+    const mins=parseInt(m)||0;
+    return hrs+mins/60;
+  }
+  return parseFloat(s)||0;
+}
 // Format hours as x.x for totals (e.g. 3.5 -> "3.5hr")
 function fmtHrTot(hrs){
   if(!hrs||isNaN(hrs)||hrs<=0) return '0hr';
@@ -1288,12 +1300,18 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
     ]));
   }
 
-  // Actual inputs
+  // Actual inputs — time shown as h:mm, accepts h:mm or decimal
   const actGrid=div({class:'grid3',style:{marginBottom:'12px'}});
-  [['km',akm,v=>akm=v,'km'],['m',avert,v=>avert=v,'m'],['hr',ahrs,v=>ahrs=v,'hr']].forEach(([unit,val,cb,u])=>{
-    const i=inp({type:'number',value:val,placeholder:'0',style:{background:'var(--bg-input)',border:'1px solid #22223a',color:'var(--text)',padding:'7px 8px',borderRadius:'5px',fontSize:'13px',outline:'none',width:'100%'}});
+  [['km',akm,v=>akm=v,'number','km'],
+   ['m',avert,v=>avert=v,'number','m'],
+   ['h:mm',ahrs?fmtHms(parseFloat(ahrs)||0):'',v=>ahrs=v,'text','time']
+  ].forEach(([unit,val,cb,itype,u])=>{
+    const isTime=u==='time';
+    const i=inp({type:itype,value:val,placeholder:isTime?'h:mm':'0',
+      style:{background:'var(--bg-input)',border:'1px solid #22223a',color:'var(--text)',
+        padding:'7px 8px',borderRadius:'5px',fontSize:'13px',outline:'none',width:'100%'}});
     i.addEventListener('input',()=>cb(i.value));
-    actGrid.appendChild(div({},[lbl(u),i]));
+    actGrid.appendChild(div({},[lbl(unit),i]));
   });
   sheet.appendChild(actGrid);
 
@@ -1315,7 +1333,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
     updated[aIdx]={
       id:existing.id||newActId(),
       label, type,
-      actualKm:akm, actualVert:avert, actualHrs:ahrs,
+      actualKm:akm, actualVert:avert, actualHrs:parseHms(ahrs)||'',
       perf, exec, note,
       completed:true, ts:Date.now()
     };
