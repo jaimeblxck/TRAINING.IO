@@ -1048,7 +1048,7 @@ function renderToday(){
     const primaryType=allTodayActs[0]?.type||todaySess?.type||'easy';
     const primaryTc=TC[primaryType]||'#555';
 
-    const sessCard=div({style:{padding:'12px 14px',marginBottom:'16px',background:'var(--bg-card)',border:'1px solid '+primaryTc+'30',borderRadius:'8px'}});
+    const sessCard=div({style:{padding:'12px 14px',marginBottom:'16px',background:'var(--bg-card)',border:'1px solid '+primaryTc+'40',borderRadius:'8px'}});
 
     // Header: type badges + day label + done count
     const hdrRow=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'8px'}});
@@ -1058,39 +1058,38 @@ function renderToday(){
     const bwrap=div({style:{display:'flex',gap:'2px'}});
     badgeTypes.forEach(t=>bwrap.appendChild(span({style:{fontSize:'9px',background:TC[t]||'#555',color:'#000',padding:'2px 5px',borderRadius:'3px',fontWeight:'700'}},TL[t]||'--')));
     hdrRow.appendChild(bwrap);
-    hdrRow.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em',flex:'1'}},'TODAY · WK '+(wIdx+1)));
+    hdrRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',flex:'1'}},'TODAY · WK '+(wIdx+1)));
     const doneCount=allTodayActs.filter(a=>a.completed).length;
     if(doneCount>0){
-      hdrRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87'}},doneCount+'/'+allTodayActs.length+' done'));
+      hdrRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87',fontWeight:'700',background:'#00ff8720',padding:'2px 6px',borderRadius:'4px',border:'1px solid #00ff8740'}},doneCount+'/'+allTodayActs.length+' done'));
     }
     sessCard.appendChild(hdrRow);
 
     if(hasActs){
-      // List each activity with its own log button
       allTodayActs.forEach((act,aIdx)=>{
         const atc=TC[act.type||'easy']||'#555';
         const actRow=div({style:{
           padding:'8px 0',
-          borderTop:aIdx>0?'1px solid #111':'none',
+          borderTop:aIdx>0?'1px solid var(--border-subtle)':'none',
         }});
 
-        // Main row — tappable for detail
         const mainLine=div({style:{display:'flex',alignItems:'center',gap:'8px',cursor:'pointer'}});
         mainLine.appendChild(span({style:{fontSize:'8px',background:atc,color:'#000',padding:'1px 5px',borderRadius:'2px',fontWeight:'700',flexShrink:'0'}},TL[act.type||'easy']||'--'));
 
         const actInfo=div({style:{flex:'1',minWidth:'0'}});
-        actInfo.appendChild(div({style:{fontSize:'12px',color:act.completed?'#55efc4':'#c0c0e0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},act.label||'Activity'));
+        // Title: muted when not completed (detail text), bright when completed — swapped from before
+        actInfo.appendChild(div({style:{fontSize:'11px',color:act.completed?'var(--text-mute)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:act.completed?'400':'600'}},act.label||'Activity'));
 
-        // Planned or actual metrics line
+        // Planned or actual metrics — use accent colour for actuals, readable muted for planned
         const hasActuals=act.completed&&(act.actualKm||act.actualHrs);
         const hasPlanned=act.planned&&(act.planned.km||act.planned.hrs);
         if(hasActuals){
-          actInfo.appendChild(div({style:{fontSize:'9px',color:'#555',marginTop:'1px'}},
+          actInfo.appendChild(div({style:{fontSize:'10px',color:'#00ff87',marginTop:'2px',fontWeight:'600'}},
             (act.actualKm?act.actualKm+'km ':'')+
             (act.actualVert?act.actualVert+'m ':'')+
             fmtHms(parseFloat(act.actualHrs||0))));
         } else if(hasPlanned){
-          actInfo.appendChild(div({style:{fontSize:'9px',color:'#2a2a3a',marginTop:'1px'}},
+          actInfo.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',marginTop:'2px'}},
             (act.planned.km?act.planned.km+'km ':'')+
             fmtHms(act.planned.hrs||0)));
         }
@@ -1153,12 +1152,12 @@ function renderToday(){
       decBanner.style.border='1px solid '+dec.color+'35';
       decBanner.style.borderLeft='3px solid '+dec.color;
       decBanner.appendChild(span({style:{fontSize:'20px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.1em',color:dec.color,display:'block'}},dec.label));
-      decBanner.appendChild(span({style:{fontSize:'11px',color:'#888',marginTop:'4px',lineHeight:'1.6',display:'block'}},dec.desc));
+      decBanner.appendChild(span({style:{fontSize:'11px',color:'var(--text-mute)',marginTop:'4px',lineHeight:'1.6',display:'block'}},dec.desc));
     } else {
       decBanner.style.background='#0a0a1a';
       decBanner.style.border='1px solid #1c1c2e';
       decBanner.style.borderLeft='1px solid #1c1c2e';
-      decBanner.appendChild(span({style:{fontSize:'12px',color:'#333'}},'Enter readings to get today\'s decision'));
+      decBanner.appendChild(span({style:{fontSize:'12px',color:'var(--text-mute)'}},'Enter readings to get today\'s decision'));
     }
 
     // Update rings
@@ -1611,7 +1610,11 @@ function renderPlan(){
   plan.forEach((_,i)=>{
     const wn=i+1, active=wn===EDIT_WEEK, isCur=wn===curWeek();
     const t=TARGETS[i]; const pc=WTC[t?.type]||'#555';
-    const b=btn({class:'week-btn'+(active?' active':''),style:{background:active?pc+'22':'#0e0e1f',border:'1px solid '+(active?pc:isCur?'#3a3a5a':'#1c1c2e'),color:active?pc:isCur?'#888':'#444',fontWeight:active?'700':'400'},
+    const b=btn({class:'week-btn'+(active?' active':''),style:{
+      background:active?pc+'22':'var(--bg-input)',
+      border:'1px solid '+(active?pc:isCur?'var(--border-btn)':'var(--border)'),
+      color:active?pc:isCur?'var(--text-mute)':'var(--text-dim)',
+      fontWeight:active?'700':'400'},
       onclick:()=>{EDIT_WEEK=wn;EXPANDED_DAY=null;EDITING_DAY=null;render();}},'W'+wn);
     weekSel.appendChild(b);
   });
@@ -1627,7 +1630,7 @@ function renderPlan(){
 
   // Week header card
   const tc_w=WTC[target?.type]||'#555';
-  const hdrCard=card([],{marginBottom:'14px'});
+  const hdrCard=div({style:{marginBottom:'14px',padding:'12px 14px',borderRadius:'8px',background:'#0a0a1a',border:'1px solid #1c1c2e',color:'#e0e0ff'}});
   const hdrTop=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'10px'}});
   const hdrLeft=div({});
   const hdrBadges=div({class:'flex',style:{marginBottom:'4px'}});
@@ -1661,7 +1664,7 @@ function renderPlan(){
     [['km',km,target?.km||0],['m',vert,target?.vert||0],['hr',hrs,target?.hrs||0]].forEach(([unit,val,tgt])=>{
       const over=val>tgt&&tgt>0;
       const fmtVal=unit==='hr'?fmtHrTot(val):Math.round(val)>999?(Math.round(val)/1000).toFixed(1)+'k':Math.round(val);
-      metaRow.appendChild(span({style:{fontSize:'10px',color:over?'#ff6b6b':isLogged&&val>0?col:'#444',flex:'1'}},fmtVal+unit));
+      metaRow.appendChild(span({style:{fontSize:'10px',color:over?'#ff6b6b':isLogged&&val>0?col:'#444',flex:'1'}},fmtVal+(unit==='hr'?'':unit)));
     });
     hdrCard.appendChild(metaRow);
     if(isLogged){
@@ -1681,9 +1684,20 @@ function renderPlan(){
     const dayDone=isDayDone(wIdx,dIdx);
     const totals=getDayTotals(wIdx,dIdx);
     const isEdited=!!EDITS['w'+wIdx+'-d'+dIdx];
-    const isExp=EXPANDED_DAY===dIdx, isEdit=EDITING_DAY===dIdx;
+    const isExp=EXPANDED_DAY===dIdx;
     const tc=TC[s.type]||'#555';
     const dateStr=slotDate(wIdx,s.day);
+
+    // Day-level planned totals derived from activities (activities ARE the plan)
+    const dayPlannedKm=activities.length>0
+      ?activities.reduce((sum,a)=>sum+parseFloat(a.planned?.km||0),0)||s.km
+      :s.km;
+    const dayPlannedVert=activities.length>0
+      ?activities.reduce((sum,a)=>sum+parseFloat(a.planned?.vert||0),0)||s.vert
+      :s.vert;
+    const dayPlannedHrs=activities.length>0
+      ?activities.reduce((sum,a)=>sum+parseFloat(a.planned?.hrs||0),0)||s.hrs
+      :s.hrs;
 
     // Collapsed row — show first/main activity label, day totals
     const firstAct=activities[0];
@@ -1691,11 +1705,10 @@ function renderPlan(){
     const showLabel=(mainLabel||(s.label?s.label:'Rest'))+(activities.length>1?' +'+(activities.length-1):'');
 
     const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'9px 12px',
-      background:isExp?'#111128':dayDone?'#0a120a':'#0a0a1a',
-      border:'1px solid '+(isExp?tc+'50':dayDone?'#00ff8725':'#1c1c2e'),
+      background:isExp?'var(--bg-elev)':dayDone?'#0a120a':'var(--bg-card)',
+      border:'1px solid '+(isExp?tc+'50':dayDone?'#00ff8725':'var(--border)'),
       borderRadius:isExp?'8px 8px 0 0':'8px',display:'flex',flexDirection:'column',gap:'4px',marginBottom:isExp?'0':'5px'},
-      onclick:()=>{if(isEdit)return;EXPANDED_DAY=isExp?null:dIdx;if(!isExp)EDITING_DAY=null;render();}});
-
+      onclick:()=>{EXPANDED_DAY=isExp?null:dIdx;render();}});
     // Top line: day/date left — type badges centre — totals/chevron right
     const topRow=div({style:{display:'flex',alignItems:'center',gap:'6px'}});
 
@@ -1742,19 +1755,19 @@ function renderPlan(){
 
     if(isExp){
       const panel=div({style:{background:'var(--bg-elev)',border:'1px solid '+tc+'30',borderTop:'none',borderRadius:'0 0 8px 8px',marginBottom:'6px'}});
+      const pd=div({style:{padding:'12px'}});
 
-      if(!isEdit){
-        const pd=div({style:{padding:'12px'}});
-
-        // Planned session info
-        if(s.label){
-          pd.appendChild(div({style:{display:'flex',gap:'12px',marginBottom:'6px'}},[
-            span({style:{fontSize:'10px',color:'#333'}},'PLANNED:'),
-            span({style:{fontSize:'10px',color:'#555'}},s.km+'km'),
-            span({style:{fontSize:'10px',color:'#555'}},s.vert+'m'),
-            span({style:{fontSize:'10px',color:'#555'}},fmtHms(s.hrs)),
-          ]));
-          pd.appendChild(div({style:{fontSize:'11px',color:'#555',lineHeight:'1.6',marginBottom:'12px',paddingBottom:'10px',borderBottom:'1px solid var(--border-subtle)'}},s.detail));
+        // Planned totals derived from activities (activities are the plan)
+        if(dayPlannedKm>0||dayPlannedHrs>0){
+          const planRow=div({style:{display:'flex',gap:'12px',marginBottom:'8px',padding:'6px 8px',background:'var(--bg-input)',borderRadius:'4px'}});
+          planRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em'}},'PLANNED'));
+          if(dayPlannedKm) planRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-dim)'}},dayPlannedKm.toFixed(1)+'km'));
+          if(dayPlannedVert) planRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-dim)'}},dayPlannedVert+'m'));
+          if(dayPlannedHrs) planRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-dim)'}},fmtHms(dayPlannedHrs)));
+          pd.appendChild(planRow);
+        } else if(s.label&&!activities.length){
+          // No activities yet — show slot-level detail
+          pd.appendChild(div({style:{fontSize:'11px',color:'var(--text-mute)',lineHeight:'1.6',marginBottom:'10px',paddingBottom:'8px',borderBottom:'1px solid var(--border-subtle)'}},s.detail));
         }
 
         // Activity list
@@ -1851,48 +1864,15 @@ function renderPlan(){
           }},'+ Add activity');
         pd.appendChild(addBtn);
 
-        // Plan edit / reset buttons
-        const btnRow=div({style:{display:'flex',gap:'8px'}});
-        btnRow.appendChild(btn({class:'btn-sm',onclick:()=>{EDITING_DAY=dIdx;render();}},'✎ Edit plan'));
-        if(isEdited) btnRow.appendChild(btn({class:'btn-sm btn-danger',onclick:()=>{delete EDITS['w'+wIdx+'-d'+dIdx];S.set(SK.edits,EDITS);render();}},'↺ Reset'));
-        pd.appendChild(btnRow);
-        panel.appendChild(pd);
-
-      } else {
-        // Plan edit form
-        let ef={label:s.label,type:s.type,detail:s.detail,km:s.km,vert:s.vert,hrs:s.hrs};
-        const ed=div({style:{padding:'12px',display:'flex',flexDirection:'column',gap:'10px'}});
-        const li=inp({class:'inp',type:'text',value:ef.label});
-        li.addEventListener('input',()=>ef.label=li.value);
-        ed.appendChild(div({},[lbl('Session name'),li]));
-        const typeBtnsContainer=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
-        function renderPlanTypeBtns(){
-          typeBtnsContainer.innerHTML='';
-          Object.keys(TL).forEach(t=>{
-            const isA=ef.type===t; const col=TC[t]||'#555';
-            const b=btn({style:{padding:'5px 9px',borderRadius:'4px',fontSize:'9px',
-              background:isA?col+'30':'#0a0a18',border:'1px solid '+(isA?col:'#2a2a4a'),color:isA?col:'#555'},
-              onclick:()=>{ef.type=t;renderPlanTypeBtns();}},TL[t]);
-            typeBtnsContainer.appendChild(b);
-          });
+        // Reset button if manually edited
+        if(isEdited){
+          const btnRow=div({style:{display:'flex',gap:'8px'}});
+          btnRow.appendChild(btn({class:'btn-sm btn-danger',onclick:()=>{delete EDITS['w'+wIdx+'-d'+dIdx];S.set(SK.edits,EDITS);render();}},'↺ Reset day'));
+          pd.appendChild(btnRow);
         }
-        renderPlanTypeBtns();
-        ed.appendChild(div({},[lbl('Type'),typeBtnsContainer]));
-        const ng=div({class:'grid3'});
-        [['km',ef.km,'km',v=>ef.km=parseFloat(v)||0],['vert',ef.vert,'m',v=>ef.vert=parseFloat(v)||0],['hrs',ef.hrs,'hr',v=>ef.hrs=parseFloat(v)||0]].forEach(([lb,val,unit,cb])=>{
-          ng.appendChild(numInp(lb,val,cb,unit));
-        });
-        ed.appendChild(ng);
-        const di=el('textarea',{class:'inp',rows:'2'},ef.detail);
-        di.addEventListener('input',()=>ef.detail=di.value);
-        ed.appendChild(div({},[lbl('Detail'),di]));
-        const sbtn=btn({class:'btn btn-ok',style:{marginBottom:'0'},onclick:()=>{EDITS['w'+wIdx+'-d'+dIdx]=ef;S.set(SK.edits,EDITS);EDITING_DAY=null;render();}},'Save');
-        const cbtn=btn({class:'btn-sm btn-ghost',onclick:()=>{EDITING_DAY=null;render();}},'Cancel');
-        ed.appendChild(div({style:{display:'flex',gap:'8px'}},[sbtn,cbtn]));
-        panel.appendChild(ed);
-      }
-      wrap.appendChild(panel);
-    }
+        panel.appendChild(pd);
+        wrap.appendChild(panel);
+      }  // end if(isExp)
   });
 
   return wrap;
