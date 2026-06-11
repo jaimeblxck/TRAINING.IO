@@ -377,6 +377,55 @@ function getDayTotals(wIdx,dIdx){
       return acc;
     },{km:0,vert:0,hrs:0});
 }
+// Get the effective km/vert/hrs for an activity — actual if logged, planned if not
+function actEffective(a){
+  const pf=v=>{ const n=parseFloat(v); return isNaN(n)?0:n; };
+  if(a.completed){
+    return {km:pf(a.actualKm), vert:pf(a.actualVert), hrs:pf(a.actualHrs)};
+  }
+  // Unlogged: planned fields (TP import) take priority, then any pre-filled actuals
+  return {
+    km:  pf(a.planned?.km)  || pf(a.actualKm),
+    vert:pf(a.planned?.vert)|| pf(a.actualVert),
+    hrs: pf(a.planned?.hrs) || pf(a.actualHrs),
+  };
+}
+
+// Sum effective metrics across all activities for a day (for display — all types)
+function getDayPlanned(wIdx,dIdx,filterByCountTypes=false){
+  const acts=getDayActivities(wIdx,dIdx);
+  const countTypes=CFG.countTypes||DEFAULT_COUNT_TYPES;
+  const eligible=filterByCountTypes
+    ?acts.filter(a=>countTypes.includes(a.type||'easy'))
+    :acts;
+
+  // Try activities first
+  if(eligible.length>0){
+    const result=eligible.reduce((acc,a)=>{
+      const e=actEffective(a);
+      acc.km+=e.km; acc.vert+=e.vert; acc.hrs+=e.hrs;
+      return acc;
+    },{km:0,vert:0,hrs:0});
+    if(result.km>0||result.hrs>0) return result;
+  }
+
+  // Always try EDITS/session slot as fallback (covers old imports & manual edits)
+  const s=getSession(wIdx,dIdx);
+  const sk=parseFloat(s?.km)||0, sv=parseFloat(s?.vert)||0, sh=parseFloat(s?.hrs)||0;
+  if(sk>0||sh>0) return {km:sk,vert:sv,hrs:sh};
+
+  // Last resort: unfiltered activities (catches strength days with km=0 but hrs>0)
+  if(filterByCountTypes&&acts.length>0){
+    const r2=acts.reduce((acc,a)=>{
+      const e=actEffective(a);
+      acc.km+=e.km; acc.vert+=e.vert; acc.hrs+=e.hrs;
+      return acc;
+    },{km:0,vert:0,hrs:0});
+    if(r2.km>0||r2.hrs>0) return r2;
+  }
+
+  return {km:0,vert:0,hrs:0};
+}
 // Is any activity on this day completed?
 function isDayDone(wIdx,dIdx){
   return getDayActivities(wIdx,dIdx).some(a=>a.completed);
@@ -1634,28 +1683,28 @@ function renderPlan(){
 
   // Week header card
   const tc_w=WTC[target?.type]||'#555';
-  const hdrCard=div({style:{marginBottom:'14px',padding:'12px 14px',borderRadius:'8px',background:'#0d1020',border:'1px solid #1c2040',color:'#d0d8ff'}});
+  const hdrCard=div({style:{marginBottom:'14px',padding:'12px 14px',borderRadius:'8px',background:'#0d1020',border:'1px solid #1c2040'}});
   const hdrTop=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'10px'}});
   const hdrLeft=div({});
   const hdrBadges=div({class:'flex',style:{marginBottom:'4px'}});
   hdrBadges.appendChild(span({style:{fontSize:'9px',background:tc_w+'25',border:'1px solid '+tc_w+'40',color:tc_w,padding:'2px 7px',borderRadius:'3px'}},target?.type||'--'));
-  hdrBadges.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.14em',textTransform:'uppercase'}},'Week '+EDIT_WEEK));
+  hdrBadges.appendChild(span({style:{fontSize:'9px',color:'#4a6080',letterSpacing:'0.14em',textTransform:'uppercase'}},'Week '+EDIT_WEEK));
   const {mon:pwMon,sun:pwSun}=weekDates(wIdx);
-  hdrBadges.appendChild(span({style:{fontSize:'9px',color:'#555'}},fmtDate(pwMon)+' - '+fmtDate(pwSun)));
+  hdrBadges.appendChild(span({style:{fontSize:'9px',color:'#4a6080'}},fmtDate(pwMon)+' - '+fmtDate(pwSun)));
   if(EDIT_WEEK===curWeek()) hdrBadges.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'CURRENT'));
   hdrLeft.appendChild(hdrBadges);
-  // Target line — clean "TARGET: 95km · 3500m · 13hr" format
-  hdrLeft.appendChild(div({style:{fontSize:'12px',color:'var(--text)',letterSpacing:'0.04em',marginBottom:'2px'}},
+  // Target line — always light text since card is always dark
+  hdrLeft.appendChild(div({style:{fontSize:'12px',color:'#c0ccee',letterSpacing:'0.04em',marginBottom:'2px'}},
     'TARGET: '+(target?.km||0)+'km · '+(target?.vert||0)+'m · '+(target?.hrs||0)+'hr'));
   hdrTop.appendChild(hdrLeft);
-  hdrTop.appendChild(div({style:{fontSize:'11px',color:'var(--text-mute)',textAlign:'right'}},actuals.done+'/'+week.days.length+' done'));
+  hdrTop.appendChild(div({style:{fontSize:'11px',color:'#6080a0',textAlign:'right'}},actuals.done+'/'+week.days.length+' done'));
   hdrCard.appendChild(hdrTop);
 
   // Progress bars: planned (sum of session km/vert/hrs) vs weekly target
   // This lets user see: how much is planned this week vs what the target asks for
   const planned=week.days.reduce((acc,_,dIdx)=>{
-    const s=getSession(wIdx,dIdx);
-    if(s&&s.label){acc.km+=s.km||0;acc.vert+=s.vert||0;acc.hrs+=s.hrs||0;}
+    const dp=getDayPlanned(wIdx,dIdx,true); // filter by countTypes for weekly totals
+    acc.km+=dp.km||0; acc.vert+=dp.vert||0; acc.hrs+=dp.hrs||0;
     return acc;
   },{km:0,vert:0,hrs:0});
 
@@ -1664,11 +1713,11 @@ function renderPlan(){
     const isLogged=rowIdx===0;
     const col=isLogged?'#00ff87':'#60a5fa';
     const metaRow=div({style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'4px'}});
-    metaRow.appendChild(span({style:{fontSize:'8px',color:isLogged?'#00ff87':'#4a4a6a',letterSpacing:'0.12em',minWidth:'48px'}},rowLabel));
+    metaRow.appendChild(span({style:{fontSize:'8px',color:isLogged?'#00c875':'#4a6080',letterSpacing:'0.12em',minWidth:'48px'}},rowLabel));
     [['km',km,target?.km||0],['m',vert,target?.vert||0],['hr',hrs,target?.hrs||0]].forEach(([unit,val,tgt])=>{
       const over=val>tgt&&tgt>0;
       const fmtVal=unit==='hr'?fmtHrTot(val):Math.round(val)>999?(Math.round(val)/1000).toFixed(1)+'k':Math.round(val);
-      metaRow.appendChild(span({style:{fontSize:'10px',color:over?'#ff6b6b':isLogged&&val>0?col:'#444',flex:'1'}},fmtVal+(unit==='hr'?'':unit)));
+      metaRow.appendChild(span({style:{fontSize:'10px',color:over?'#e84040':isLogged&&val>0?'#00c875':val>0?'#8aa0c0':'#4a6080',flex:'1'}},fmtVal+(unit==='hr'?'':unit)));
     });
     hdrCard.appendChild(metaRow);
     if(isLogged){
@@ -1692,16 +1741,9 @@ function renderPlan(){
     const tc=TC[s.type]||'#555';
     const dateStr=slotDate(wIdx,s.day);
 
-    // Day-level planned totals derived from activities (activities ARE the plan)
-    const dayPlannedKm=activities.length>0
-      ?activities.reduce((sum,a)=>sum+parseFloat(a.planned?.km||0),0)||s.km
-      :s.km;
-    const dayPlannedVert=activities.length>0
-      ?activities.reduce((sum,a)=>sum+parseFloat(a.planned?.vert||0),0)||s.vert
-      :s.vert;
-    const dayPlannedHrs=activities.length>0
-      ?activities.reduce((sum,a)=>sum+parseFloat(a.planned?.hrs||0),0)||s.hrs
-      :s.hrs;
+    // Day-level planned totals for expanded panel
+    const _dp=getDayPlanned(wIdx,dIdx,false);
+    const dayPlannedKm=_dp.km, dayPlannedVert=_dp.vert, dayPlannedHrs=_dp.hrs;
 
     // Collapsed row — show first/main activity label, day totals
     const firstAct=activities[0];
@@ -1731,15 +1773,15 @@ function renderPlan(){
     });
     topRow.appendChild(bWrap);
 
-    // Totals or planned km
+    // Totals right side: actuals if done, planned if future
     if(dayDone&&(totals.km>0||totals.hrs>0)){
-      topRow.appendChild(span({style:{fontSize:'9px',color:'#555',whiteSpace:'nowrap'}},
-        (totals.km>0?totals.km.toFixed(1)+'k ':'')+fmtHrTot(totals.hrs)));
-    } else if(!dayDone&&(s.km>0||s.hrs>0)){
       topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',whiteSpace:'nowrap'}},
-        (s.km>0?s.km+'k ':'')+fmtHms(s.hrs)));
+        (totals.km>0?Math.round(totals.km)+'k ':'')+fmtHrTot(totals.hrs)));
+    } else if(!dayDone){
+      const dp=getDayPlanned(wIdx,dIdx,false);
+      const dpStr=(dp.km>0?dp.km+'k ':'')+fmtHms(dp.hrs);
+      if(dpStr.trim()) topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-faint)',whiteSpace:'nowrap'}},dpStr));
     }
-    if(isEdited) topRow.appendChild(span({style:{fontSize:'8px',color:'#2a2a4a'}},'ED'));
     topRow.appendChild(span({style:{fontSize:'10px',color:'#333',flexShrink:'0'}},isExp?'▲':'▼'));
     rowBtn.appendChild(topRow);
 
@@ -1747,7 +1789,7 @@ function renderPlan(){
     if(activities.length>0){
       const labels=activities.map(a=>a.label).filter(Boolean);
       if(labels.length){
-        const titleRow=div({style:{fontSize:'11px',color:dayDone?'#55efc4':'#c0c0e0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',paddingLeft:'0'}},
+        const titleRow=div({style:{fontSize:'11px',color:dayDone?'#007a42':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
           labels.join(' · '));
         rowBtn.appendChild(titleRow);
       }
@@ -1834,24 +1876,21 @@ function renderPlan(){
             actRow.appendChild(actData);
             if(act.note) actRow.appendChild(div({style:{fontSize:'10px',color:'#555',marginTop:'2px'}},act.note));
           } else {
-            // Show planned metrics if available
-            const hasPlanned=act.planned&&(act.planned.km||act.planned.hrs);
-            const hasSlotMetrics=!hasPlanned&&(s.km||s.hrs)&&activities.length===1;
-            if(hasPlanned||hasSlotMetrics){
-              const pmRow=div({style:{display:'flex',gap:'10px',marginBottom:'4px'}});
-              const km=act.planned?.km||(hasSlotMetrics?s.km:0);
-              const hrs=act.planned?.hrs||(hasSlotMetrics?s.hrs:0);
-              if(km) pmRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},km+'km'));
-              if(s.vert) pmRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},s.vert+'m'));
-              if(hrs) pmRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},fmtHms(hrs)));
-              actRow.appendChild(pmRow);
+            // Show planned metrics and detail — no Log button for future days
+            const pmRow=div({style:{display:'flex',gap:'10px',marginBottom:'4px',flexWrap:'wrap'}});
+            const plannedKm=act.planned?.km||(activities.length===1?s.km:0);
+            const plannedVert=act.planned?.vert||(activities.length===1?s.vert:0);
+            const plannedHrs=act.planned?.hrs||(activities.length===1?s.hrs:0);
+            if(plannedKm) pmRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-dim)'}},plannedKm+'km'));
+            if(plannedVert) pmRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-dim)'}},plannedVert+'m'));
+            if(plannedHrs) pmRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-dim)'}},fmtHms(plannedHrs)));
+            if(pmRow.children.length) actRow.appendChild(pmRow);
+            if(act.detail) actRow.appendChild(div({style:{fontSize:'10px',color:'var(--text-mute)',lineHeight:'1.6',marginTop:'2px'}},act.detail));
+            // Only show Log button for today or past
+            if(dateStr<=today()){
+              actRow.appendChild(btn({style:{marginTop:'6px',padding:'5px 12px',borderRadius:'5px',fontSize:'10px',background:'var(--bg-btn)',border:'1px solid var(--border-btn)',color:'var(--text)'},
+                onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'Log this'));
             }
-            // Detail text
-            if(act.detail){
-              actRow.appendChild(div({style:{fontSize:'10px',color:'#444',lineHeight:'1.5',marginBottom:'6px'}},act.detail));
-            }
-            actRow.appendChild(btn({style:{padding:'5px 12px',borderRadius:'5px',fontSize:'10px',background:'var(--bg-btn)',border:'1px solid var(--border-btn)',color:'var(--text)'},
-              onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'Log this'));
           }
           pd.appendChild(actRow);
         });
