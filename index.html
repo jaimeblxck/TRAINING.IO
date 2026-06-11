@@ -49,8 +49,11 @@ select option{background:var(--bg-input);color:var(--text);}
 .tab-bar{display:flex;margin:16px 20px;background:var(--bg-card);border-radius:8px;padding:3px;border:1px solid var(--border-subtle);}
 .tab{flex:1;padding:8px 0;background:transparent;border:none;color:var(--text-dim);border-radius:6px;cursor:pointer;font-size:10px;letter-spacing:0.06em;transition:all 0.2s;}
 .tab.active{background:var(--bg-tab-active);color:var(--text);}
-.pbar-track{height:4px;background:var(--track);border-radius:2px;overflow:hidden;margin-top:2px;}
-.pbar-fill{height:100%;border-radius:2px;transition:width 0.4s;}
+.pbar-track{height:6px;background:var(--track);border-radius:3px;overflow:hidden;margin-top:2px;position:relative;}
+.pbar-fill{height:100%;border-radius:3px;transition:width 0.4s;}
+body.light .pbar-track{background:transparent;overflow:visible;}
+body.light .pbar-track::before{content:'';position:absolute;inset:0;border-radius:3px;border:1.5px solid var(--pbar-color,#888);opacity:0.3;}
+body.light .pbar-fill{opacity:0.6;}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;display:flex;align-items:flex-end;justify-content:center;}
 .modal{width:100%;max-width:480px;background:var(--bg-modal);border-radius:16px 16px 0 0;border:1px solid var(--border);border-bottom:none;padding:20px 20px 44px;max-height:90vh;overflow-y:auto;}
 .modal-handle{width:36px;height:4px;background:var(--border-input);border-radius:2px;margin:0 auto 18px;}
@@ -709,9 +712,12 @@ function card(children,extraStyle={}){
   return c;
 }
 function pbar(value,max,color='#b8ff4f'){
-  const pct = max>0?Math.min(100,(value/max)*100):0;
-  const fill = div({class:'pbar-fill',style:{width:pct+'%',background:value>max&&max>0?'#ff6b6b':color}});
-  return div({class:'pbar-track'},[fill]);
+  const pct=max>0?Math.min(100,(value/max)*100):0;
+  const barColor=value>max&&max>0?'#e84040':color;
+  const fill=div({class:'pbar-fill',style:{width:pct+'%',background:barColor}});
+  const track=div({class:'pbar-track'},[fill]);
+  track.style.setProperty('--pbar-color',barColor);
+  return track;
 }
 function ring(value,color,label,size=76,textColor){
   const r=size/2-7, circ=2*Math.PI*r;
@@ -2027,6 +2033,7 @@ function renderTrend(){
 
   function buildChart(days,loadH,readyH,compact){
     const maxTSS=Math.max(...days.map(d=>d.tss),0.1);
+    const logMax=Math.log1p(maxTSS);
     const gap=compact?2:4;
     const wrap2=div({style:{marginBottom:'4px'}});
     const chart=div({style:{display:'flex',gap:gap+'px',alignItems:'stretch'}});
@@ -2037,7 +2044,7 @@ function renderTrend(){
       // Load bar (up)
       const lc=div({style:{height:loadH+'px',display:'flex',flexDirection:'column',justifyContent:'flex-end'}});
       if(day.tss>0){
-        const bh=Math.max(2,Math.round((day.tss/maxTSS)*loadH));
+        const bh=Math.max(2,Math.round((Math.log1p(day.tss)/logMax)*loadH));
         // Get dominant activity type colour
         const pd=new Date(day.ds+'T12:00:00');
         const diffD=Math.floor((pd-getBlockMonday())/86400000);
@@ -2086,7 +2093,48 @@ function renderTrend(){
   const days7=buildDays(7);
   const maxTSS7=Math.max(...days7.map(d=>d.tss),0.1);
   const roll7=card([],{marginBottom:'14px'});
-  roll7.appendChild(div({class:'section-title',style:{marginBottom:'8px'}},'7-Day Load & Readiness'));
+  const roll7Hdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
+  roll7Hdr.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'7-Day Load & Readiness'));
+  roll7Hdr.appendChild(btn({style:{padding:'0 6px',height:'16px',borderRadius:'8px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)',lineHeight:'16px'},
+    onclick:()=>{
+      const existing=document.getElementById('trend-info-modal');
+      if(existing){existing.remove();return;}
+      const modal=div({style:{position:'fixed',inset:'0',background:'rgba(0,0,0,0.85)',zIndex:'200',display:'flex',alignItems:'flex-end',justifyContent:'center'}});
+      modal.id='trend-info-modal';
+      modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+      const sheet=div({style:{width:'100%',maxWidth:'480px',background:'var(--bg-modal)',borderRadius:'16px 16px 0 0',border:'1px solid var(--border)',padding:'20px 20px 44px',maxHeight:'90vh',overflowY:'auto'}});
+      sheet.appendChild(div({style:{width:'36px',height:'4px',background:'var(--border-input)',borderRadius:'2px',margin:'0 auto 16px'}}));
+      sheet.appendChild(div({style:{fontSize:'16px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.06em',color:'var(--text)',marginBottom:'16px'}},'Reading the Chart'));
+
+      const sections=[
+        ['Two rows, one story',
+         'The top bars show training load (TSS — RPE × hours × vert multiplier). The bottom bars show readiness (how recovered you were that day based on HRV, RHR, sleep, and mood). Reading them together reveals how your body is responding to the work.'],
+        ['Top-heavy — load bars tall, readiness bars short',
+         'You\'re accumulating fatigue. This is expected during a build phase. Watch for consecutive days of low readiness — if the bottom bars stay flat for 3+ days, your recovery isn\'t keeping pace. Consider a down day or backing off intensity.'],
+        ['Bottom-heavy — readiness bars tall, load bars short',
+         'You\'re well recovered but not training much. Fine during taper or after a race. If this persists mid-block it may indicate under-training — your body has capacity left to absorb more load.'],
+        ['Balanced — moderate bars both sides',
+         'The ideal training state: consistent load with adequate recovery between sessions. Look for a pattern where hard days (tall top bars) are followed by green readiness a day or two later.'],
+        ['Lag between load and readiness',
+         'A big load day (Saturday long run) typically shows suppressed readiness 1–2 days later (Monday). This lag is normal and healthy. If readiness doesn\'t bounce back within 48–72hrs after a big effort, it may signal accumulated fatigue or external stress.'],
+        ['About log scale',
+         'Load bars use a logarithmic scale so that a monster day (5hr mountain run) doesn\'t visually crush your everyday sessions. A very tall bar is genuinely a big day — but the scale makes normal sessions readable too.'],
+        ['TSS formula',
+         'TSS = RPE (0–10) × hours × vert multiplier. The vert multiplier kicks in above 30m/km elevation density and scales up to 3× for steep mountain terrain, reflecting the extra physiological cost of climbing.'],
+      ];
+
+      sections.forEach(([title,body])=>{
+        const s=div({style:{marginBottom:'14px',paddingBottom:'14px',borderBottom:'1px solid var(--border-subtle)'}});
+        s.appendChild(div({style:{fontSize:'10px',color:'#b8d400',letterSpacing:'0.1em',marginBottom:'5px',textTransform:'uppercase'}},title));
+        s.appendChild(div({style:{fontSize:'11px',color:'var(--text-mute)',lineHeight:'1.7'}},body));
+        sheet.appendChild(s);
+      });
+
+      sheet.appendChild(btn({class:'btn',onclick:()=>modal.remove()},'Close'));
+      modal.appendChild(sheet);
+      document.body.appendChild(modal);
+    }},'?'));
+  roll7.appendChild(roll7Hdr);
   roll7.appendChild(buildChart(days7,44,26,false));
   const peak7=days7.reduce((a,b)=>b.tss>a.tss?b:a,{tss:0,ds:''});
   if(peak7.tss>0.1){
@@ -2184,7 +2232,8 @@ function renderTrend(){
         span({style:{fontSize:'8px',color:isReliable?'#00ff87':'#ffd166'}},confPct+'% ('+(isReliable?'reliable':'building')+' — '+nLogged+'/28 days)'),
       ]);
       const confTrack=div({class:'pbar-track'});
-      confTrack.appendChild(div({class:'pbar-fill',style:{width:confPct+'%',background:isReliable?'#00ff87':'#ffd166'}}));
+      confTrack.style.setProperty('--pbar-color',isReliable?'#00c875':'#ffd166');
+      confTrack.appendChild(div({class:'pbar-fill',style:{width:confPct+'%',background:isReliable?'#00c875':'#ffd166'}}));
       confRow.appendChild(confTrack);
       atlBox.appendChild(confRow);
 
