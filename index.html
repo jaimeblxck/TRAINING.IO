@@ -1605,7 +1605,7 @@ function renderBlock(){
           typeContainer.appendChild(typeBtnsDiv);
           panel.appendChild(typeContainer);
 
-          let form={...TARGETS[wIdx]};
+          let form={km:TARGETS[wIdx].km, vert:TARGETS[wIdx].vert, hrs:TARGETS[wIdx].hrs};
           const ng=div({class:'grid3',style:{marginBottom:'12px'}});
           [['Target km',form.km,'km',v=>form.km=parseFloat(v)||0],
            ['Target vert',form.vert,'m',v=>form.vert=parseFloat(v)||0],
@@ -1618,7 +1618,8 @@ function renderBlock(){
             background:'var(--bg-input)',border:'1px solid var(--border)',color:'var(--text-mute)'},
             onclick:()=>{EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;render();}},'View sessions'));
           btnsRow.appendChild(btn({class:'btn btn-ok',style:{padding:'9px 16px'},
-            onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],...form};S.set(SK.targets,TARGETS);BLOCK_EDITING=null;render();}},'Save'));
+            // type is already on TARGETS[wIdx] from button tap — only merge km/vert/hrs from form
+            onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],km:form.km,vert:form.vert,hrs:form.hrs};S.set(SK.targets,TARGETS);BLOCK_EDITING=null;render();}},'Save'));
           btnsRow.appendChild(btn({class:'btn-sm btn-ghost',
             onclick:()=>{BLOCK_EDITING=null;render();}},'Cancel'));
           panel.appendChild(btnsRow);
