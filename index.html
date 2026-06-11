@@ -792,7 +792,6 @@ const TYPE_KEY = {
 function planToCSV(){
   const plan=getPlan();
 
-  // Legend block at top so blank-plan users understand the format
   const legend=[
     '# TRAINING OS - PLAN EXPORT',
     '# Generated: '+new Date().toLocaleString(),
@@ -800,9 +799,9 @@ function planToCSV(){
     '# Block start (Monday): '+localDateStr(getBlockMonday()),
     '#',
     '# HOW TO USE:',
-    '# - Edit session rows below in Numbers / Excel / Google Sheets',
+    '# - One row per activity. Multiple activities on the same day = multiple rows with the same date.',
     '# - Keep the header row (week,date,day,...) intact',
-    '# - Leave blank rows as-is for rest days, or fill them in',
+    '# - Leave days with no activities blank (just omit rows for that day)',
     '# - Import back via Settings > Plan Export / Import',
     '#',
     '# ACTIVITY TYPES (use exactly as shown in the "type" column):',
@@ -812,31 +811,46 @@ function planToCSV(){
     '#',
   ];
 
-  // Column header
-  const header='week,date,day,week_type,session_name,type,km,vert_m,hrs,notes';
-
+  const header='week,date,day,week_type,activity_name,type,km,vert_m,hrs,notes';
   const rows=[];
+
   plan.forEach((wk,wIdx)=>{
     const t=TARGETS[wIdx]||{};
+    let weekHasRows=false;
     wk.days.forEach((d,dIdx)=>{
-      const s=getSession(wIdx,dIdx)||d;
       const dateStr=slotDate(wIdx,d.day);
-      const hasContent=s.label&&s.label.trim()!=='';
-      rows.push([
-        wIdx+1,
-        dateStr,
-        d.day,
-        t.type||'BUILD',
-        '"'+(s.label||'').replace(/"/g,"'")+'"',
-        hasContent?s.type:'',
-        hasContent?(s.km||0):'',
-        hasContent?(s.vert||0):'',
-        hasContent?(s.hrs||0):'',
-        '"'+(s.detail||'').replace(/"/g,"'")+'"',
-      ].join(','));
+      const acts=getDayActivities(wIdx,dIdx);
+      const s=getSession(wIdx,dIdx);
+
+      if(acts.length>0){
+        // One row per activity
+        acts.forEach(act=>{
+          const km=act.completed?parseFloat(act.actualKm||0):parseFloat(act.planned?.km||0)||0;
+          const vert=act.completed?parseFloat(act.actualVert||0):parseFloat(act.planned?.vert||0)||s.vert||0;
+          const hrs=act.completed?parseFloat(act.actualHrs||0):parseFloat(act.planned?.hrs||0)||0;
+          rows.push([
+            wIdx+1, dateStr, d.day, t.type||'BUILD',
+            '"'+(act.label||'').replace(/"/g,"'")+'"',
+            act.type||'easy',
+            km||'', vert||'', hrs||'',
+            '"'+(act.detail||'').replace(/"/g,"'")+'"',
+          ].join(','));
+          weekHasRows=true;
+        });
+      } else if(s&&s.label){
+        // Session in EDITS but no RUNS activities — export as single row
+        rows.push([
+          wIdx+1, dateStr, d.day, t.type||'BUILD',
+          '"'+s.label.replace(/"/g,"'")+'"',
+          s.type||'easy',
+          s.km||'', s.vert||'', s.hrs||'',
+          '"'+(s.detail||'').replace(/"/g,"'")+'"',
+        ].join(','));
+        weekHasRows=true;
+      }
+      // Empty days — omit (no row)
     });
-    // Blank separator row between weeks
-    rows.push('');
+    if(weekHasRows) rows.push(''); // blank separator between weeks
   });
 
   return [...legend, header, ...rows].join('\n');
@@ -844,15 +858,16 @@ function planToCSV(){
 
 function csvToEdits(csv){
   const plan=getPlan();
-  // Strip comment lines and blanks
   const lines=csv.split('\n').filter(l=>l.trim()&&!l.trim().startsWith('#'));
-  if(!lines.length) return {};
+  if(!lines.length) return {edits:{},importedCount:0};
 
-  // Find header row
   const headerIdx=lines.findIndex(l=>l.toLowerCase().includes('week')&&l.toLowerCase().includes('date')&&l.toLowerCase().includes('day'));
   const startIdx=headerIdx>=0?headerIdx+1:1;
 
   const edits={};
+  const newRuns={...RUNS};
+  // Track activities per slot so we can append multiple rows for same day
+  const slotActivities={}; // key -> [{label,type,km,vert,hrs,detail}]
   let importedCount=0;
 
   for(let i=startIdx;i<lines.length;i++){
@@ -864,71 +879,85 @@ function csvToEdits(csv){
     let cur='', inQ=false;
     for(let c=0;c<line.length;c++){
       const ch=line[c];
-      if(ch==='"'){ inQ=!inQ; }
-      else if(ch===','&&!inQ){ cols.push(cur.trim()); cur=''; }
-      else { cur+=ch; }
+      if(ch==='"'){inQ=!inQ;}
+      else if(ch===','&&!inQ){cols.push(cur.trim());cur='';}
+      else{cur+=ch;}
     }
     cols.push(cur.trim());
-
     if(cols.length<3) continue;
 
-    // Support both old format (week,day,...) and new (week,date,day,...)
-    let wk, dateStr, dayName, weekType, label, type, km, vert, hrs, detail;
-
+    let wk,dateStr,dayName,weekType,label,type,km,vert,hrs,detail;
     const hasDate=cols[1]&&cols[1].match(/^\d{4}-\d{2}-\d{2}$/);
     if(hasDate){
-      // New format: week,date,day,week_type,session_name,type,km,vert_m,hrs,notes
-      wk=parseInt(cols[0]);
-      dateStr=cols[1];
-      dayName=cols[2];
+      wk=parseInt(cols[0]); dateStr=cols[1]; dayName=cols[2];
       weekType=(cols[3]||'').toUpperCase();
       label=(cols[4]||'').replace(/^"|"$/g,'').trim();
       type=(cols[5]||'easy').trim().toLowerCase()||'easy';
-      km=parseFloat(cols[6])||0;
-      vert=parseFloat(cols[7])||0;
-      hrs=parseFloat(cols[8])||0;
+      km=parseFloat(cols[6])||0; vert=parseFloat(cols[7])||0; hrs=parseFloat(cols[8])||0;
       detail=(cols[9]||'').replace(/^"|"$/g,'').trim();
     } else {
-      // Old format: week,day,label,type,km,vert,hrs,detail
-      wk=parseInt(cols[0]);
-      dayName=cols[1];
+      wk=parseInt(cols[0]); dayName=cols[1];
       label=(cols[2]||'').replace(/^"|"$/g,'').trim();
       type=(cols[3]||'easy').trim().toLowerCase()||'easy';
-      km=parseFloat(cols[4])||0;
-      vert=parseFloat(cols[5])||0;
-      hrs=parseFloat(cols[6])||0;
+      km=parseFloat(cols[4])||0; vert=parseFloat(cols[5])||0; hrs=parseFloat(cols[6])||0;
       detail=(cols[7]||'').replace(/^"|"$/g,'').trim();
     }
 
-    if(!label) continue; // skip empty sessions
-
-    // Auto-upgrade type based on km
+    if(!label) continue;
     type=autoUpgradeType(type,km);
-
-    // Validate type
     if(!TYPE_KEY[type]) type='easy';
 
     const wIdx=wk-1;
     if(!plan[wIdx]) continue;
 
-    // Match by date string first (most accurate), fall back to day name
     let dIdx=-1;
-    if(dateStr){
-      dIdx=plan[wIdx].days.findIndex((_,di)=>slotDate(wIdx,plan[wIdx].days[di].day)===dateStr);
-    }
+    if(dateStr) dIdx=plan[wIdx].days.findIndex((_,di)=>slotDate(wIdx,plan[wIdx].days[di].day)===dateStr);
     if(dIdx<0) dIdx=plan[wIdx].days.findIndex(d=>d.day===dayName);
     if(dIdx<0) continue;
 
-    // Apply week type to TARGETS if present
     if(weekType&&WEEK_TYPES.includes(weekType)&&TARGETS[wIdx]){
       TARGETS[wIdx]={...TARGETS[wIdx],type:weekType};
     }
 
-    edits['w'+wIdx+'-d'+dIdx]={label,type,detail,km,vert,hrs};
+    const key='w'+wIdx+'-d'+dIdx;
+    if(!slotActivities[key]) slotActivities[key]={wIdx,dIdx,acts:[]};
+    slotActivities[key].acts.push({label,type,km,vert,hrs,detail});
     importedCount++;
   }
 
-  // Save updated targets if week types were in the CSV
+  // Write all collected activities into RUNS and set EDITS slot summary
+  Object.entries(slotActivities).forEach(([key,{wIdx,dIdx,acts}])=>{
+    const slotDs=slotDate(wIdx,plan[wIdx].days[dIdx].day);
+    const isPast=slotDs<=today();
+    const existing=newRuns[key]||[];
+    const existingLabels=new Set(existing.map(a=>a.label));
+
+    const toAdd=acts.filter(a=>!existingLabels.has(a.label)).map(a=>({
+      id:newActId(),
+      label:a.label, type:a.type, detail:a.detail,
+      actualKm:'', actualVert:'', actualHrs:'',
+      perf:'', exec:'', note:'',
+      completed:false,
+      ts:Date.now(),
+      planned:{km:a.km, vert:a.vert, hrs:a.hrs},
+    }));
+
+    if(toAdd.length) newRuns[key]=[...existing,...toAdd];
+
+    // Set EDITS slot to primary activity for label/type display
+    const primary=acts[0];
+    const totalKm=acts.reduce((s,a)=>s+a.km,0);
+    const totalVert=acts.reduce((s,a)=>s+a.vert,0);
+    const totalHrs=acts.reduce((s,a)=>s+a.hrs,0);
+    edits[key]={
+      label:acts.length>1?acts.map(a=>a.label).join(' + '):primary.label,
+      type:primary.type,
+      detail:primary.detail,
+      km:totalKm, vert:totalVert, hrs:totalHrs,
+    };
+  });
+
+  RUNS=newRuns; S.set(SK.runs,RUNS);
   S.set(SK.targets,TARGETS);
   return {edits,importedCount};
 }
