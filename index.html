@@ -1752,7 +1752,7 @@ function renderPlan(){
     const barColor=over?'#e84040':col;
     const pct=tgt>0?Math.min(100,(act/tgt)*100):0;
     const barWrap=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'4px'}});
-    const track=div({style:{flex:'1',height:'6px',borderRadius:'3px',background:'var(--track)',overflow:'hidden',position:'relative'}});
+    const track=div({class:'pbar-track',style:{flex:'1',height:'6px',borderRadius:'3px',overflow:'hidden',position:'relative'}});
     track.style.setProperty('--pbar-color',barColor);
     const fill=div({style:{width:pct+'%',height:'100%',borderRadius:'3px',background:barColor,transition:'width 0.4s'}});
     track.appendChild(fill);
