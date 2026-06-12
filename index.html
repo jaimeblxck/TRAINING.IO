@@ -1077,7 +1077,7 @@ function renderHeader(){
 function renderTabs(){
   const bar=document.getElementById('tabs');
   bar.innerHTML='';
-  const tabs=[{id:'today',label:'TODAY'},{id:'plan',label:'PLAN'},{id:'block',label:'BLOCK'},{id:'trend',label:'TREND'},{id:'settings',label:'...'}];
+  const tabs=[{id:'today',label:'TODAY'},{id:'plan',label:'PLAN'},{id:'block',label:'BLOCK'},{id:'trend',label:'TREND'},{id:'settings',label:'⚙'}];
   tabs.forEach(t=>{
     const b=btn({class:'tab'+(ACTIVE_TAB===t.id?' active':''),onclick:()=>{ACTIVE_TAB=t.id;EXPANDED_DAY=null;EDITING_DAY=null;render();}},t.label);
     if(t.id==='settings') b.style.fontSize='16px';
@@ -2339,84 +2339,11 @@ function renderSettings(){
   wrap.appendChild(apCard);
 
   // Config card
+  // ── Section 1: Configuration (HRV/RHR + block dates) ─────────
   const cfgCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'12px'});
   cfgCard.appendChild(div({class:'section-title'},'Configuration'));
 
-  // Block dates — stacked to avoid overflow on narrow screens
-  const dg=div({style:{display:'flex',flexDirection:'column',gap:'10px'}});
-  const bsI=inp({class:'inp',type:'date',value:cfgForm.blockStartStr});
-  bsI.addEventListener('input',()=>{cfgForm.blockStartStr=bsI.value;updateWeeksPreview();});
-  const beI=inp({class:'inp',type:'date',value:cfgForm.blockEndStr||''});
-  beI.addEventListener('input',()=>{cfgForm.blockEndStr=beI.value;updateWeeksPreview();});
-  dg.appendChild(div({},[lbl('Block start'),bsI]));
-  dg.appendChild(div({},[lbl('Block end (optional)'),beI]));
-  cfgCard.appendChild(dg);
-
-  const weeksInfo=div({style:{padding:'8px 10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'6px',fontSize:'10px',color:'#555',marginTop:'8px'}},'');
-  function updateWeeksPreview(){
-    const startOk=validDateStr(cfgForm.blockStartStr);
-    const endOk=validDateStr(cfgForm.blockEndStr)||getRaces().length>0;
-    if(!startOk){weeksInfo.textContent='Set block start date';weeksInfo.style.color='#555';return;}
-    const savedCFG={...CFG};
-    Object.assign(CFG,cfgForm);
-    const tw=totalWeeks(), bm=getBlockMonday(), be=getBlockEnd();
-    Object.assign(CFG,savedCFG);
-    weeksInfo.textContent=tw+' weeks · '+fmtDate(bm)+' to '+fmtDate(be);
-    weeksInfo.style.color='#888';
-  }
-  updateWeeksPreview();
-  cfgCard.appendChild(weeksInfo);
-
-  // Races editor
-  cfgCard.appendChild(div({style:{marginTop:'14px',marginBottom:'4px',fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.14em',textTransform:'uppercase'}},'Races'));
-  const racesContainer=div({});
-
-  function renderRacesEditor(){
-    racesContainer.innerHTML='';
-    const races=cfgForm.races&&cfgForm.races.length?cfgForm.races:[{name:'',date:'',dist:''}];
-    races.forEach((r,i)=>{
-      const raceCard=div({style:{padding:'10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'7px',marginBottom:'8px'}});
-      // Name row
-      const nameI=inp({class:'inp',type:'text',value:r.name,placeholder:'Race name'});
-      nameI.addEventListener('input',()=>{cfgForm.races[i].name=nameI.value;});
-      raceCard.appendChild(div({style:{marginBottom:'8px'}}),[]);
-      raceCard.querySelector('div').appendChild(lbl('Race name'));
-      raceCard.querySelector('div').appendChild(nameI);
-      // Date + dist row
-      const row2=div({style:{display:'flex',gap:'8px',alignItems:'flex-end'}});
-      const dateWrap=div({style:{flex:'1',minWidth:0}});
-      dateWrap.appendChild(lbl('Date'));
-      const dateI=inp({class:'inp',type:'date',value:r.date});
-      dateI.addEventListener('input',()=>{cfgForm.races[i].date=dateI.value;updateWeeksPreview();});
-      dateWrap.appendChild(dateI);
-      row2.appendChild(dateWrap);
-      const distWrap=div({style:{width:'80px',flexShrink:'0'}});
-      distWrap.appendChild(lbl('Distance'));
-      const distI=inp({class:'inp',type:'text',value:r.dist||'',placeholder:'50km'});
-      distI.style.fontSize='12px';
-      distI.addEventListener('input',()=>{cfgForm.races[i].dist=distI.value;});
-      distWrap.appendChild(distI);
-      row2.appendChild(distWrap);
-      const delBtn=btn({style:{padding:'6px 9px',borderRadius:'5px',background:'#1a0a0a',border:'1px solid #2a1a1a',color:'#ff6b6b',fontSize:'13px',flexShrink:'0',alignSelf:'flex-end'},
-        onclick:()=>{cfgForm.races.splice(i,1);renderRacesEditor();}},'\u00d7');
-      row2.appendChild(delBtn);
-      raceCard.appendChild(row2);
-      racesContainer.appendChild(raceCard);
-    });
-    const addBtn=btn({style:{padding:'8px 12px',borderRadius:'5px',fontSize:'10px',background:'var(--bg-input)',border:'1px dashed #2a2a4a',color:'#555',width:'100%'},
-      onclick:()=>{if(!cfgForm.races)cfgForm.races=[];cfgForm.races.push({name:'',date:'',dist:''});renderRacesEditor();}},
-      '+ Add race');
-    racesContainer.appendChild(addBtn);
-  }
-  // Initialise cfgForm.races if missing
-  if(!cfgForm.races){
-    cfgForm.races=validDateStr(cfgForm.raceDateStr)?[{name:cfgForm.raceName||'Race',date:cfgForm.raceDateStr,dist:''}]:[];
-  }
-  renderRacesEditor();
-  cfgCard.appendChild(racesContainer);
-
-  // Backwards-compat: keep raceDateStr/raceName in sync with first race on save
-
+  // HRV / RHR
   const hg=div({class:'grid2'});
   const hvlI=inp({class:'inp',type:'number',value:cfgForm.hrvLow});
   hvlI.addEventListener('input',()=>cfgForm.hrvLow=parseFloat(hvlI.value)||45);
@@ -2435,29 +2362,123 @@ function renderSettings(){
   rg.appendChild(div({},[lbl('RHR high (bpm)'),rhI]));
   cfgCard.appendChild(rg);
 
+  // Block dates
+  const dg=div({style:{display:'flex',flexDirection:'column',gap:'10px'}});
+  const bsI=inp({class:'inp',type:'date',value:cfgForm.blockStartStr});
+  bsI.addEventListener('input',()=>{cfgForm.blockStartStr=bsI.value;updateWeeksPreview();});
+  const beI=inp({class:'inp',type:'date',value:cfgForm.blockEndStr||''});
+  beI.addEventListener('input',()=>{cfgForm.blockEndStr=beI.value;updateWeeksPreview();});
+  dg.appendChild(div({},[lbl('Block start'),bsI]));
+  dg.appendChild(div({},[lbl('Block end (optional)'),beI]));
+  cfgCard.appendChild(dg);
+
+  const weeksInfo=div({style:{padding:'8px 10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'6px',fontSize:'10px',color:'#555'}},'');
+  function updateWeeksPreview(){
+    if(!validDateStr(cfgForm.blockStartStr)){weeksInfo.textContent='Set block start date';weeksInfo.style.color='#555';return;}
+    const savedCFG={...CFG};
+    Object.assign(CFG,cfgForm);
+    const tw=totalWeeks(), bm=getBlockMonday(), be=getBlockEnd();
+    Object.assign(CFG,savedCFG);
+    weeksInfo.textContent=tw+' weeks · '+fmtDate(bm)+' to '+fmtDate(be);
+    weeksInfo.style.color='#888';
+  }
+  updateWeeksPreview();
+  cfgCard.appendChild(weeksInfo);
+
   const savCfgBtn=btn({class:'btn',onclick:()=>{
     if(!validDateStr(cfgForm.blockStartStr)){
       savCfgBtn.textContent='Invalid block start'; savCfgBtn.style.color='#ff6b6b';
       setTimeout(()=>{savCfgBtn.textContent='Save Config';savCfgBtn.style.color='';savCfgBtn.style.borderColor='';},2000);
       return;
     }
-    // Sync legacy fields from first race
-    const validRaces=(cfgForm.races||[]).filter(r=>r.name&&validDateStr(r.date));
-    cfgForm.races=validRaces;
-    if(validRaces.length){
-      const lastRace=validRaces[validRaces.length-1];
-      cfgForm.raceDateStr=lastRace.date;
-      cfgForm.raceName=lastRace.name;
-      // Default blockEndStr to Sunday after last race if not set
-      if(!validDateStr(cfgForm.blockEndStr)) cfgForm.blockEndStr='';
-    }
-    CFG=cfgForm; S.set(SK.cfg,CFG);
+    CFG.hrvLow=cfgForm.hrvLow; CFG.hrvHigh=cfgForm.hrvHigh;
+    CFG.rhrLow=cfgForm.rhrLow; CFG.rhrHigh=cfgForm.rhrHigh;
+    CFG.blockStartStr=cfgForm.blockStartStr; CFG.blockEndStr=cfgForm.blockEndStr;
+    S.set(SK.cfg,CFG);
     syncTargets();
     savCfgBtn.textContent='SAVED'; savCfgBtn.style.color='#00ff87'; savCfgBtn.style.borderColor='#00ff87';
     setTimeout(()=>render(),800);
   }},'Save Config');
   cfgCard.appendChild(savCfgBtn);
   wrap.appendChild(cfgCard);
+
+  // ── Section 2: Races (auto-save on change, confirm on delete) ─
+  const racesCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
+  racesCard.appendChild(div({class:'section-title'},'Races'));
+
+  if(!cfgForm.races){
+    cfgForm.races=validDateStr(cfgForm.raceDateStr)?[{name:cfgForm.raceName||'Race',date:cfgForm.raceDateStr,dist:''}]:[];
+  }
+
+  function saveRaces(){
+    const validRaces=(cfgForm.races||[]).filter(r=>r.name&&validDateStr(r.date));
+    if(validRaces.length){
+      const lastRace=validRaces[validRaces.length-1];
+      CFG.raceDateStr=lastRace.date; CFG.raceName=lastRace.name;
+    }
+    CFG.races=cfgForm.races; S.set(SK.cfg,CFG);
+    syncTargets();
+    updateWeeksPreview();
+  }
+
+  const racesContainer=div({});
+  function renderRacesEditor(){
+    racesContainer.innerHTML='';
+    if(!cfgForm.races||!cfgForm.races.length){
+      cfgForm.races=[{name:'',date:'',dist:''}];
+    }
+    cfgForm.races.forEach((r,i)=>{
+      const raceCard=div({style:{padding:'10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'7px',marginBottom:'8px'}});
+      // Name
+      const nameI=inp({class:'inp',type:'text',value:r.name,placeholder:'Race name'});
+      nameI.addEventListener('input',()=>{cfgForm.races[i].name=nameI.value; saveRaces();});
+      const nameWrap=div({style:{marginBottom:'8px'}});
+      nameWrap.appendChild(lbl('Race name')); nameWrap.appendChild(nameI);
+      raceCard.appendChild(nameWrap);
+      // Date + dist + delete
+      const row2=div({style:{display:'flex',gap:'8px',alignItems:'flex-end'}});
+      const dateWrap=div({style:{flex:'1',minWidth:0}});
+      dateWrap.appendChild(lbl('Date'));
+      const dateI=inp({class:'inp',type:'date',value:r.date});
+      dateI.addEventListener('input',()=>{cfgForm.races[i].date=dateI.value; saveRaces();});
+      dateWrap.appendChild(dateI);
+      row2.appendChild(dateWrap);
+      const distWrap=div({style:{width:'80px',flexShrink:'0'}});
+      distWrap.appendChild(lbl('Distance'));
+      const distI=inp({class:'inp',type:'text',value:r.dist||'',placeholder:'50km'});
+      distI.style.fontSize='12px';
+      distI.addEventListener('input',()=>{cfgForm.races[i].dist=distI.value; saveRaces();});
+      distWrap.appendChild(distI);
+      row2.appendChild(distWrap);
+      const delBtn=btn({style:{padding:'6px 9px',borderRadius:'5px',background:'#1a0a0a',border:'1px solid #2a1a1a',color:'#ff6b6b',fontSize:'13px',flexShrink:'0',alignSelf:'flex-end'},
+        onclick:()=>{
+          // Inline confirm — replaces native confirm() which is blocked in some contexts
+          const existing=raceCard.querySelector('.race-del-confirm');
+          if(existing){existing.remove();return;}
+          const confirmRow=div({class:'race-del-confirm',style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'8px',padding:'8px',background:'#1a0a0a',borderRadius:'5px',border:'1px solid #2a1a1a'}});
+          confirmRow.appendChild(span({style:{fontSize:'10px',color:'#ff6b6b',flex:'1'}},'Remove '+(r.name||'this race')+'?'));
+          confirmRow.appendChild(btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',background:'#ff6b6b',border:'none',color:'#000',fontWeight:'700'},
+            onclick:()=>{cfgForm.races.splice(i,1); saveRaces(); renderRacesEditor();}},'Yes, remove'));
+          confirmRow.appendChild(btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
+            onclick:()=>confirmRow.remove()},'Cancel'));
+          raceCard.appendChild(confirmRow);
+        }},'\u00d7');
+      row2.appendChild(delBtn);
+      raceCard.appendChild(row2);
+      racesContainer.appendChild(raceCard);
+    });
+    // Add race button
+    racesContainer.appendChild(btn({style:{padding:'8px 12px',borderRadius:'5px',fontSize:'10px',background:'var(--bg-input)',border:'1px dashed var(--border-btn)',color:'var(--text-mute)',width:'100%'},
+      onclick:()=>{
+        if(!cfgForm.races) cfgForm.races=[];
+        cfgForm.races.push({name:'',date:'',dist:''});
+        saveRaces();
+        renderRacesEditor();
+      }},'+ Add race'));
+  }
+  renderRacesEditor();
+  racesCard.appendChild(racesContainer);
+  wrap.appendChild(racesCard);
 
   // Backup card
   const bkCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
@@ -2512,30 +2533,75 @@ function renderSettings(){
   totalsCard.appendChild(toggleGrid);
   wrap.appendChild(totalsCard);
 
+  // CSV Plan Export / Import — above TP iCal
+  const csvCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
+  csvCard.appendChild(div({class:'section-title'},'Plan Export / Import'));
+  csvCard.appendChild(btn({class:'btn',onclick:()=>download(planToCSV(),'training-plan.csv','text/csv')},'Export plan as CSV'));
+  const csvInfo=div({style:{fontSize:'11px',color:'#555'}});
+  const csvI=inp({type:'file',accept:'.csv',style:{display:'none'}});
+  csvI.addEventListener('change',()=>{
+    const file=csvI.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const result=csvToEdits(ev.target.result);
+        EDITS=result.edits; S.set(SK.edits,EDITS);
+        csvInfo.textContent='Imported '+result.importedCount+' sessions.';
+        csvInfo.style.color='#00ff87';
+      }catch(e){csvInfo.textContent='CSV import failed: '+e.message;csvInfo.style.color='#ff6b6b';}
+    };
+    reader.readAsText(file);
+  });
+  csvCard.appendChild(div({style:{fontSize:'9px',color:'#555',lineHeight:'1.6'}},'Export first for correct column format. Edit in Numbers or Excel, then import back.'));
+  csvCard.appendChild(div({},[btn({class:'btn',onclick:()=>csvI.click()},'Import CSV plan'),csvI,csvInfo]));
+
+  // Export Block CSV — logged activities only
+  const blockCsvBtn=btn({class:'btn',onclick:()=>{
+    const plan=getPlan();
+    const rows=['week,date,day,week_type,activity_name,type,km,vert_m,hrs,rpe,perf,note'];
+    plan.forEach((wk,wIdx)=>{
+      const t=TARGETS[wIdx]||{};
+      wk.days.forEach((d,dIdx)=>{
+        const dateStr=slotDate(wIdx,d.day);
+        getDayActivities(wIdx,dIdx).filter(a=>a.completed).forEach(a=>{
+          rows.push([
+            wIdx+1, dateStr, d.day, t.type||'BUILD',
+            '"'+(a.label||'').replace(/"/g,"'")+'"',
+            a.type||'easy',
+            a.actualKm||0, a.actualVert||0,
+            parseFloat(a.actualHrs||0).toFixed(2),
+            a.exec||'', a.perf||'',
+            '"'+(a.note||'').replace(/"/g,"'")+'"',
+          ].join(','));
+        });
+      });
+    });
+    if(rows.length<2){alert('No logged activities to export yet.');return;}
+    download(rows.join('\n'),'training-block-logged.csv','text/csv');
+  }},'Export logged block as CSV');
+  csvCard.appendChild(blockCsvBtn);
+  csvCard.appendChild(div({style:{fontSize:'9px',color:'#555',lineHeight:'1.6'}},'Exports all completed activities with actual km/vert/hrs. Use for post-block analysis.'));
+  wrap.appendChild(csvCard);
+
   // TrainingPeaks iCal card
   const tpCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
-
   const tpHdrRow=div({style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'2px'}});
   tpHdrRow.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'TrainingPeaks Calendar'));
-  const tpHelpBtn=btn({style:{padding:'0 6px',height:'18px',borderRadius:'9px',fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#888',lineHeight:'18px'},onclick:showTPInstructions},'?');
+  const tpHelpBtn=btn({style:{padding:'0 6px',height:'18px',borderRadius:'9px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)',lineHeight:'18px'},onclick:showTPInstructions},'?');
   tpHdrRow.appendChild(tpHelpBtn);
   tpCard.appendChild(tpHdrRow);
-
   tpCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},'Paste raw iCal text from your iOS Shortcut. Tap ? for setup instructions.'));
-
   const icsStatus=div({style:{fontSize:'11px',minHeight:'16px'}});
   const icsTa=el('textarea',{class:'inp',rows:'4',placeholder:'Paste iCal text here (BEGIN:VCALENDAR...)'},'');
   icsTa.style.fontFamily='monospace';
   icsTa.style.fontSize='10px';
   icsTa.style.color='#555';
   tpCard.appendChild(icsTa);
-
   const tpBtnRow=div({style:{display:'flex',gap:'8px'}});
   tpBtnRow.appendChild(btn({class:'btn btn-ok',style:{flex:'1'},onclick:()=>{
     const text=icsTa.value.trim();
     if(!text){icsStatus.textContent='Paste iCal text first.';icsStatus.style.color='#ff6b6b';return;}
     if(!text.includes('BEGIN:VCALENDAR')){icsStatus.textContent='Not valid iCal — check you copied the full calendar text.';icsStatus.style.color='#ff6b6b';return;}
-    // Clear sample plan sessions before importing
     clearSamplePlan();
     const result=applyICSToEdits(text);
     icsStatus.textContent=result.msg+(hasSamplePlan()?'':' Sample plan cleared.');
@@ -2545,8 +2611,6 @@ function renderSettings(){
   tpBtnRow.appendChild(btn({class:'btn-sm btn-ghost',onclick:showTPInstructions},'How?'));
   tpCard.appendChild(tpBtnRow);
   tpCard.appendChild(icsStatus);
-
-  // Sample plan controls
   if(hasSamplePlan()){
     const sampleRow=div({style:{display:'flex',alignItems:'center',gap:'10px',borderTop:'1px solid var(--border-subtle)',paddingTop:'8px'}});
     sampleRow.appendChild(span({style:{fontSize:'10px',color:'#555',flex:'1'}},'Sample plan loaded (weeks 1–4)'));
@@ -2559,43 +2623,7 @@ function renderSettings(){
     sampleRow.appendChild(btn({class:'btn-sm',style:{fontSize:'9px'},onclick:()=>{applySamplePlan();render();}},'Restore sample plan'));
     tpCard.appendChild(sampleRow);
   }
-
   wrap.appendChild(tpCard);
-
-  // CSV card
-  const csvCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
-  csvCard.appendChild(div({class:'section-title'},'Plan Export / Import'));
-  csvCard.appendChild(btn({class:'btn',onclick:()=>download(planToCSV(),'training-plan.csv','text/csv')},'Export plan as CSV'));
-
-  const csvInfo=div({style:{fontSize:'11px',color:'#555'}});
-  const csvI=inp({type:'file',accept:'.csv',style:{display:'none'}});
-  csvI.addEventListener('change',()=>{
-    const file=csvI.files[0]; if(!file) return;
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      try{
-        const result=csvToEdits(ev.target.result);
-        EDITS=result.edits; S.set(SK.edits,EDITS);
-        csvInfo.textContent='Imported '+result.importedCount+' sessions from CSV.';
-        csvInfo.style.color='#00ff87';
-      }catch(e){csvInfo.textContent='CSV import failed: '+e.message;csvInfo.style.color='#ff6b6b';}
-    };
-    reader.readAsText(file);
-  });
-  csvCard.appendChild(div({style:{fontSize:'9px',color:'#555',lineHeight:'1.6'}},'Export first for correct column format. Edit in Numbers or Excel, then import back.'));
-  csvCard.appendChild(div({},[btn({class:'btn',onclick:()=>csvI.click()},'Import CSV plan'),csvI,csvInfo]));
-  wrap.appendChild(csvCard);
-
-  // Reset card
-  const resetCard=card([],{display:'flex',flexDirection:'column',gap:'10px'});
-  resetCard.appendChild(div({class:'section-title'},'Reset'));
-  resetCard.appendChild(btn({class:'btn btn-danger',onclick:()=>{
-    if(confirm('Reset all plan edits?')){EDITS={};S.set(SK.edits,{});render();}
-  }},'Reset plan edits'));
-  resetCard.appendChild(btn({class:'btn btn-danger',onclick:()=>{
-    if(confirm('Reset block targets to defaults?')){TARGETS=buildTargets();S.set(SK.targets,TARGETS);render();}
-  }},'Reset block targets'));
-  wrap.appendChild(resetCard);
 
   wrap.appendChild(div({style:{marginTop:'20px',fontSize:'9px',color:'#333',lineHeight:'1.8'}},'All data in browser storage. Export regularly to avoid loss on browser clear.\nSafari: Share > Add to Home Screen for full-screen app.'));
 
