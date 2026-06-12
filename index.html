@@ -82,7 +82,7 @@ body.light .pbar-fill{opacity:0.6;}
 // DATA & CONFIG
 // ============================================================
 const SK = {cfg:'utmb_cfg_v1',log:'utmb_log_v1',edits:'utmb_edits_v2',targets:'utmb_targets_v1',runs:'utmb_runs_v3'};
-const WTC = {RECOVERY:'#55efc4',BUILD:'#ffd166',SHARPEN:'#ff9f43',DELOAD:'#74b9ff',RACE:'#fd79a8'};
+const WTC = {BUILD:'#ffd166',PEAK:'#ff6b35',SHARPEN:'#ff9f43',TAPER:'#a29bfe',RACE:'#fd79a8',DELOAD:'#74b9ff',RECOVERY:'#55efc4'};
 const TC = {strength:'#7b9cff',intervals:'#ff9f43',easy:'#55efc4',long:'#a29bfe',race:'#fd79a8',ride:'#06b6d4',walk:'#94a3b8',sauna:'#fb923c',other:'#636e72'};
 const TL = {strength:'STR',intervals:'INT',easy:'EASY',long:'LONG',race:'RACE',ride:'RIDE',walk:'WALK',sauna:'SAUNA',other:'OTHER'};
 // For display/toggle: run types consolidated, rest removed, ride added
@@ -97,7 +97,7 @@ const COUNT_TOGGLE_GROUPS = [
   {id:'other', label:'OTHER',    color:'#636e72', types:['other']},
 ];
 const DEFAULT_COUNT_TYPES = ['intervals','easy','long','race','strength'];
-const WEEK_TYPES = ['RECOVERY','BUILD','SHARPEN','DELOAD','RACE'];
+const WEEK_TYPES = ['BUILD','PEAK','SHARPEN','TAPER','RACE','DELOAD','RECOVERY'];
 
 const DEF_CFG = {
   hrvLow:45, hrvHigh:70, rhrLow:45, rhrHigh:50,
@@ -130,11 +130,12 @@ const DEF_TARGETS = [
   {week:5, type:'BUILD',    km:97,  vert:4000, hrs:13},
   {week:6, type:'BUILD',    km:102, vert:4500, hrs:14},
   {week:7, type:'BUILD',    km:102, vert:5000, hrs:15},
-  {week:8, type:'SHARPEN',  km:107, vert:5500, hrs:16},
-  {week:9, type:'SHARPEN',  km:110, vert:5800, hrs:16},
-  {week:10,type:'RACE',     km:110, vert:6000, hrs:16},
-  {week:11,type:'DELOAD',   km:80,  vert:3000, hrs:11},
-  {week:12,type:'DELOAD',   km:45,  vert:1200, hrs:6},
+  {week:8, type:'PEAK',     km:107, vert:5500, hrs:16},
+  {week:9, type:'PEAK',     km:110, vert:5800, hrs:16},
+  {week:10,type:'SHARPEN',  km:95,  vert:5000, hrs:14},
+  {week:11,type:'TAPER',    km:70,  vert:3000, hrs:10},
+  {week:12,type:'TAPER',    km:45,  vert:1500, hrs:6},
+  {week:13,type:'RACE',     km:30,  vert:500,  hrs:4},
 ];
 
 // ============================================================
@@ -1730,39 +1731,48 @@ function renderPlan(){
   if(EDIT_WEEK===curWeek()) hdrBadges.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'CURRENT'));
   hdrLeft.appendChild(hdrBadges);
   // Target line — always light text since card is always dark
-  hdrLeft.appendChild(div({style:{fontSize:'12px',color:'#c0ccee',letterSpacing:'0.04em',marginBottom:'2px'}},
+  hdrLeft.appendChild(div({style:{fontSize:'12px',color:'#c0ccee',letterSpacing:'0.04em',marginBottom:'8px'}},
     'TARGET: '+(target?.km||0)+'km · '+(target?.vert||0)+'m · '+(target?.hrs||0)+'hr'));
   hdrTop.appendChild(hdrLeft);
   hdrTop.appendChild(div({style:{fontSize:'11px',color:'#6080a0',textAlign:'right'}},actuals.done+'/'+week.days.length+' done'));
   hdrCard.appendChild(hdrTop);
 
-  // Progress bars: planned (sum of session km/vert/hrs) vs weekly target
-  // This lets user see: how much is planned this week vs what the target asks for
+  // Progress bars — sit between TARGET and metrics rows
   const planned=week.days.reduce((acc,_,dIdx)=>{
-    const dp=getDayPlanned(wIdx,dIdx,true); // filter by countTypes for weekly totals
+    const dp=getDayPlanned(wIdx,dIdx,true);
     acc.km+=dp.km||0; acc.vert+=dp.vert||0; acc.hrs+=dp.hrs||0;
     return acc;
   },{km:0,vert:0,hrs:0});
 
-  [['LOGGED',actuals.km,actuals.vert,actuals.hrs],
-   ['PLANNED',planned.km,planned.vert,planned.hrs]].forEach(([rowLabel,km,vert,hrs],rowIdx)=>{
-    const isLogged=rowIdx===0;
-    const col=isLogged?'#00ff87':'#60a5fa';
-    const metaRow=div({style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'4px'}});
-    metaRow.appendChild(span({style:{fontSize:'8px',color:isLogged?'#00c875':'#4a6080',letterSpacing:'0.12em',minWidth:'48px'}},rowLabel));
-    [['km',km,target?.km||0],['m',vert,target?.vert||0],['hr',hrs,target?.hrs||0]].forEach(([unit,val,tgt])=>{
-      const over=val>tgt&&tgt>0;
-      const fmtVal=unit==='hr'?fmtHrTot(val):Math.round(val)>999?(Math.round(val)/1000).toFixed(1)+'k':Math.round(val);
-      metaRow.appendChild(span({style:{fontSize:'10px',color:over?'#e84040':isLogged&&val>0?'#00c875':val>0?'#8aa0c0':'#4a6080',flex:'1'}},fmtVal+(unit==='hr'?'':unit)));
+  [['#00ff87','km',actuals.km,target?.km||0],
+   ['#55efc4','vert',actuals.vert,target?.vert||0],
+   ['#b8ff4f','hrs',actuals.hrs,target?.hrs||0]
+  ].forEach(([col,unit,act,tgt])=>{
+    const over=act>tgt&&tgt>0;
+    const barColor=over?'#e84040':col;
+    const pct=tgt>0?Math.min(100,(act/tgt)*100):0;
+    const barWrap=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'4px'}});
+    const track=div({style:{flex:'1',height:'6px',borderRadius:'3px',background:'var(--track)',overflow:'hidden',position:'relative'}});
+    track.style.setProperty('--pbar-color',barColor);
+    const fill=div({style:{width:pct+'%',height:'100%',borderRadius:'3px',background:barColor,transition:'width 0.4s'}});
+    track.appendChild(fill);
+    barWrap.appendChild(track);
+    barWrap.appendChild(span({style:{fontSize:'8px',color:barColor,minWidth:'22px',textAlign:'right',flexShrink:'0'}},unit));
+    hdrCard.appendChild(barWrap);
+  });
+
+  // PLANNED + LOGGED as explicit flex rows — guaranteed alignment
+  [['PLANNED',planned.km,planned.vert,planned.hrs,'#4a6080','#8aa0c0'],
+   ['LOGGED',actuals.km,actuals.vert,actuals.hrs,'#00c875','#00c875']
+  ].forEach(([label,km,vert,hrs,lblCol,valCol])=>{
+    const row=div({style:{display:'flex',alignItems:'baseline',gap:'0',marginTop:'5px'}});
+    row.appendChild(span({style:{fontSize:'8px',color:lblCol,letterSpacing:'0.1em',minWidth:'58px',flexShrink:'0'}},label));
+    const fmtKm=Math.round(km)>999?(Math.round(km)/1000).toFixed(1)+'k':Math.round(km)+'km';
+    const fmtVert=Math.round(vert)>999?(Math.round(vert)/1000).toFixed(1)+'k':Math.round(vert)+'m';
+    [fmtKm,fmtVert,fmtHrTot(hrs)].forEach(v=>{
+      row.appendChild(span({style:{fontSize:'10px',color:valCol,flex:'1'}},v));
     });
-    hdrCard.appendChild(metaRow);
-    if(isLogged){
-      // Logged progress bar vs target
-      [['KM',actuals.km,target?.km,'#00ff87'],['VERT',actuals.vert,target?.vert,'#55efc4'],['HRS',actuals.hrs,target?.hrs,'#b8ff4f']].forEach(([lb,act,tgt,barCol])=>{
-        hdrCard.appendChild(pbar(act,tgt||1,barCol));
-      });
-      hdrCard.appendChild(div({style:{height:'6px'}}));
-    }
+    hdrCard.appendChild(row);
   });
   wrap.appendChild(hdrCard);
 
