@@ -432,7 +432,8 @@ function getDayPlanned(wIdx,dIdx,filterByCountTypes=false){
 }
 // Is any activity on this day completed?
 function isDayDone(wIdx,dIdx){
-  return getDayActivities(wIdx,dIdx).some(a=>a.completed);
+  const acts=getDayActivities(wIdx,dIdx);
+  return acts.length>0 && acts.every(a=>a.completed);
 }
 // Generate a unique id for a new activity
 function newActId(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
@@ -1159,18 +1160,16 @@ function renderToday(){
           borderTop:aIdx>0?'1px solid var(--border-subtle)':'none',
         }});
 
-        const mainLine=div({style:{display:'flex',alignItems:'center',gap:'8px',cursor:'pointer'}});
+        const mainLine=div({style:{display:'flex',alignItems:'center',gap:'8px'}});
         mainLine.appendChild(span({style:{fontSize:'8px',background:atc,color:'#000',padding:'1px 5px',borderRadius:'2px',fontWeight:'700',flexShrink:'0'}},TL[act.type||'easy']||'--'));
 
-        const actInfo=div({style:{flex:'1',minWidth:'0'}});
-        // Title: muted when not completed (detail text), bright when completed — swapped from before
+        const actInfo=div({style:{flex:'1',minWidth:'0',cursor:'pointer'}});
         actInfo.appendChild(div({style:{fontSize:'11px',color:act.completed?'var(--text-mute)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:act.completed?'400':'600'}},act.label||'Activity'));
 
-        // Planned or actual metrics — use accent colour for actuals, readable muted for planned
         const hasActuals=act.completed&&(act.actualKm||act.actualHrs);
         const hasPlanned=act.planned&&(act.planned.km||act.planned.hrs);
         if(hasActuals){
-          actInfo.appendChild(div({style:{fontSize:'10px',color:'#00ff87',marginTop:'2px',fontWeight:'600'}},
+          actInfo.appendChild(div({style:{fontSize:'10px',color:'#00c96e',marginTop:'2px',fontWeight:'600'}},
             (act.actualKm?act.actualKm+'km ':'')+
             (act.actualVert?act.actualVert+'m ':'')+
             fmtHms(parseFloat(act.actualHrs||0))));
@@ -1181,22 +1180,36 @@ function renderToday(){
         }
         mainLine.appendChild(actInfo);
 
-        // Log button
-        mainLine.appendChild(btn({style:{padding:'5px 10px',borderRadius:'5px',fontSize:'10px',flexShrink:'0',
-          background:act.completed?'#0a1a0a':'#1a1a3a',
-          border:'1px solid '+(act.completed?'#00ff8740':'#3a3a6a'),
-          color:act.completed?'#00ff87':'#e0e0ff'},
-          onclick:e=>{e.stopPropagation();showActivityModal(wIdx,dIdx,aIdx,todaySess);}},
+        // Button group: Log/Edit + Unlog
+        const btnGroup=div({style:{display:'flex',gap:'4px',flexShrink:'0'}});
+
+        btnGroup.appendChild(btn({style:{padding:'5px 10px',borderRadius:'5px',fontSize:'10px',
+          background:act.completed?'#00c96e18':'var(--bg-btn)',
+          border:'1px solid '+(act.completed?'#00c96e50':'var(--border-btn)'),
+          color:act.completed?'#007a42':'var(--text)'},
+          onclick:()=>showActivityModal(wIdx,dIdx,aIdx,todaySess)},
           act.completed?'✓ Edit':'Log'));
 
+        if(act.completed){
+          btnGroup.appendChild(btn({style:{padding:'5px 7px',borderRadius:'5px',fontSize:'10px',
+            background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
+            title:'Unlog — revert to planned',
+            onclick:()=>{
+              const updated=[...getDayActivities(wIdx,dIdx)];
+              updated[aIdx]={...updated[aIdx],completed:false};
+              saveDayActivities(wIdx,dIdx,updated);
+              render();
+            }},'↩'));
+        }
+
+        mainLine.appendChild(btnGroup);
         actRow.appendChild(mainLine);
 
-        // Detail — expandable inline (tap row to show/hide)
+        // Detail — expandable on tap of actInfo only
         const hasDetail=act.detail&&act.detail.trim();
         if(hasDetail){
-          const detailDiv=div({style:{display:'none',fontSize:'10px',color:'#555',lineHeight:'1.6',marginTop:'6px',paddingTop:'6px',borderTop:'1px solid var(--border-subtle)'}},act.detail);
-          mainLine.style.cursor='pointer';
-          mainLine.addEventListener('click',()=>{
+          const detailDiv=div({style:{display:'none',fontSize:'10px',color:'var(--text-mute)',lineHeight:'1.6',marginTop:'6px',paddingTop:'6px',borderTop:'1px solid var(--border-subtle)'}},act.detail);
+          actInfo.addEventListener('click',()=>{
             detailDiv.style.display=detailDiv.style.display==='none'?'block':'none';
           });
           actRow.appendChild(detailDiv);
@@ -1204,14 +1217,29 @@ function renderToday(){
 
         sessCard.appendChild(actRow);
       });
+
+      // + Add activity to today (creates unlogged planned entry)
+      sessCard.appendChild(btn({style:{width:'100%',marginTop:'8px',padding:'7px',borderRadius:'6px',
+        fontSize:'10px',background:'var(--bg-input)',border:'1px dashed var(--border-btn)',
+        color:'var(--text-mute)'},
+        onclick:()=>{
+          const newAct={id:newActId(),label:'',type:'easy',detail:'',
+            actualKm:'',actualVert:'',actualHrs:'',perf:'',exec:'',note:'',
+            completed:false,ts:Date.now(),planned:{km:0,hrs:0}};
+          const existing=getDayActivities(wIdx,dIdx);
+          saveDayActivities(wIdx,dIdx,[...existing,newAct]);
+          // Open modal immediately to fill in details
+          showActivityModal(wIdx,dIdx,existing.length,todaySess);
+        }},'+ Add activity'));
+
     } else if(todaySess){
       // Fallback: no activities in RUNS yet, show plan session with single log button
       sessCard.appendChild(div({style:{fontSize:'13px',color:'var(--text)',marginBottom:'3px'}},todaySess.label));
-      sessCard.appendChild(div({style:{fontSize:'11px',color:'#555',lineHeight:'1.5',marginBottom:'8px'}},todaySess.detail));
+      sessCard.appendChild(div({style:{fontSize:'11px',color:'var(--text-mute)',lineHeight:'1.5',marginBottom:'8px'}},todaySess.detail));
       sessCard.appendChild(div({style:{display:'flex',gap:'12px',marginBottom:'8px'}},[
-        span({style:{fontSize:'10px',color:'#444'}},todaySess.km+'km'),
-        span({style:{fontSize:'10px',color:'#444'}},todaySess.vert+'m'),
-        span({style:{fontSize:'10px',color:'#444'}},fmtHms(todaySess.hrs)),
+        span({style:{fontSize:'10px',color:'var(--text-dim)'}},todaySess.km+'km'),
+        span({style:{fontSize:'10px',color:'var(--text-dim)'}},todaySess.vert+'m'),
+        span({style:{fontSize:'10px',color:'var(--text-dim)'}},fmtHms(todaySess.hrs)),
       ]));
       sessCard.appendChild(btn({class:'btn-sm',onclick:()=>showRunModal(wIdx,dIdx,todaySess,null)},'Log this session'));
     }
@@ -1415,7 +1443,6 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
   const btnRow=div({style:{display:'flex',gap:'8px'}});
   const saveBtn=btn({class:'btn btn-ok',style:{flex:'1'},onclick:()=>{
     const updated=[...getDayActivities(wIdx,dIdx)];
-    // Only auto-complete if day is today or in the past
     const slotDs=slotDate(wIdx,getPlan()[wIdx]?.days[dIdx]?.day||'Mon');
     const isLoggedDay=slotDs<=today();
     updated[aIdx]={
@@ -1428,8 +1455,21 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
     saveDayActivities(wIdx,dIdx,updated);
     overlay.remove(); render();
   }},'SAVE');
+  btnRow.appendChild(saveBtn);
+
+  // Unlog — only shown if currently completed
+  if(existing.completed){
+    btnRow.appendChild(btn({class:'btn-sm',style:{background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
+      onclick:()=>{
+        const updated=[...getDayActivities(wIdx,dIdx)];
+        updated[aIdx]={...updated[aIdx],completed:false};
+        saveDayActivities(wIdx,dIdx,updated);
+        overlay.remove(); render();
+      }},'↩ Unlog'));
+  }
+
   const closeBtn=btn({class:'btn-sm btn-ghost',onclick:()=>overlay.remove()},'Close');
-  btnRow.appendChild(saveBtn); btnRow.appendChild(closeBtn);
+  btnRow.appendChild(closeBtn);
   sheet.appendChild(btnRow);
 
   overlay.appendChild(sheet);
@@ -1797,8 +1837,8 @@ function renderPlan(){
     const showLabel=(mainLabel||(s.label?s.label:'Rest'))+(activities.length>1?' +'+(activities.length-1):'');
 
     const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'9px 12px',
-      background:isExp?'var(--bg-elev)':dayDone?'#0a120a':'var(--bg-card)',
-      border:'1px solid '+(isExp?tc+'50':dayDone?'#00ff8725':'var(--border)'),
+      background:isExp?'var(--bg-elev)':dayDone?'#00c96e12':'var(--bg-card)',
+      border:'1px solid '+(isExp?tc+'50':dayDone?'#00c96e40':'var(--border)'),
       borderRadius:isExp?'8px 8px 0 0':'8px',display:'flex',flexDirection:'column',gap:'4px',marginBottom:isExp?'0':'5px'},
       onclick:()=>{EXPANDED_DAY=isExp?null:dIdx;render();}});
     // Top line: day/date left — type badges centre — totals/chevron right
@@ -1806,9 +1846,9 @@ function renderPlan(){
 
     // Done tick or day+date
     if(dayDone){
-      topRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87'}},'✓'));
+      topRow.appendChild(span({style:{fontSize:'9px',color:'#007a42',fontWeight:'700'}},'✓'));
     }
-    topRow.appendChild(span({style:{fontSize:'9px',color:dayDone?'#444':'#666',fontWeight:'600'}},s.day));
+    topRow.appendChild(span({style:{fontSize:'9px',color:dayDone?'#007a42':'var(--text-dim)',fontWeight:'600'}},s.day));
     topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)'}},fmtDate(slotDateObj(wIdx,s.day))));
 
     // Type badges
@@ -1871,7 +1911,7 @@ function renderPlan(){
           const actHdr=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'4px'}});
           actHdr.appendChild(span({style:{fontSize:'9px',background:atc,color:'#000',padding:'1px 5px',borderRadius:'3px',fontWeight:'700'}},TL[act.type||'easy']||'--'));
           actHdr.appendChild(span({style:{fontSize:'12px',color:act.completed?'#007a42':'var(--text)',flex:'1'}},act.label||'Activity'));
-          if(act.completed) actHdr.appendChild(span({style:{fontSize:'9px',color:'#00ff87'}},'✓'));
+          if(act.completed) actHdr.appendChild(span({style:{fontSize:'9px',color:'#007a42',fontWeight:'700'}},'✓'));
 
           // Edit / delete / move buttons
           const actCtrl=div({style:{display:'flex',gap:'4px',marginLeft:'4px'}});
@@ -1953,12 +1993,6 @@ function renderPlan(){
           }},'+ Add activity');
         pd.appendChild(addBtn);
 
-        // Reset button if manually edited
-        if(isEdited){
-          const btnRow=div({style:{display:'flex',gap:'8px'}});
-          btnRow.appendChild(btn({class:'btn-sm btn-danger',onclick:()=>{delete EDITS['w'+wIdx+'-d'+dIdx];S.set(SK.edits,EDITS);render();}},'↺ Reset day'));
-          pd.appendChild(btnRow);
-        }
         panel.appendChild(pd);
         wrap.appendChild(panel);
       }  // end if(isExp)
