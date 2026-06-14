@@ -83,10 +83,10 @@ body.light .pbar-fill{opacity:0.6;}
 // ============================================================
 const SK = {cfg:'utmb_cfg_v1',log:'utmb_log_v1',edits:'utmb_edits_v2',targets:'utmb_targets_v1',runs:'utmb_runs_v3'};
 const WTC = {BUILD:'#ffd166',PEAK:'#ff6b35',SHARPEN:'#ff9f43',TAPER:'#a29bfe',RACE:'#fd79a8',DELOAD:'#74b9ff',RECOVERY:'#55efc4'};
-const TC = {strength:'#7b9cff',intervals:'#ff9f43',easy:'#55efc4',long:'#a29bfe',race:'#fd79a8',ride:'#06b6d4',walk:'#94a3b8',sauna:'#fb923c',other:'#636e72'};
-const TL = {strength:'STR',intervals:'INT',easy:'EASY',long:'LONG',race:'RACE',ride:'RIDE',walk:'WALK',sauna:'SAUNA',other:'OTHER'};
+const TC = {strength:'#7b9cff',intervals:'#ff9f43',easy:'#55efc4',long:'#a29bfe',race:'#fd79a8',ride:'#06b6d4',walk:'#94a3b8',sauna:'#fb923c',other:'#636e72',rest:'#3a3a4a'};
+const TL = {strength:'STR',intervals:'INT',easy:'EASY',long:'LONG',race:'RACE',ride:'RIDE',walk:'WALK',sauna:'SAUNA',other:'OTHER',rest:'REST'};
 // For display/toggle: run types consolidated, rest removed, ride added
-const ALL_TYPES = ['strength','intervals','easy','long','race','ride','walk','sauna','other'];
+const ALL_TYPES = ['strength','intervals','easy','long','race','ride','walk','sauna','other','rest'];
 // Count types use 'run' as a meta-group (intervals+easy+long+race) plus strength and ride
 const COUNT_TOGGLE_GROUPS = [
   {id:'run',   label:'RUN',      color:'#a29bfe', types:['intervals','easy','long','race']},
@@ -797,6 +797,7 @@ const TYPE_KEY = {
   walk:      'Walk',
   sauna:     'Sauna / heat session',
   other:     'Other / cross training',
+  rest:       'Rest / travel / off day',
 };
 
 function planToCSV(){
@@ -1837,7 +1838,7 @@ function renderPlan(){
     const firstAct=activities[0];
     const mainLabel=activities.length>0
       ?(firstAct?.label||s.label||'')
-      :'No activities planned';
+      :'';
     const showLabel=mainLabel+(activities.length>1?' +'+(activities.length-1):'');
 
     const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'9px 12px',
@@ -1875,16 +1876,13 @@ function renderPlan(){
     topRow.appendChild(span({style:{fontSize:'10px',color:'#333',flexShrink:'0'}},isExp?'▲':'▼'));
     rowBtn.appendChild(topRow);
 
-    // Bottom line: activity titles
+    // Bottom line: activity titles — only shown when activities exist
     if(activities.length>0){
       const labels=activities.map(a=>a.label).filter(Boolean);
       if(labels.length){
-        const titleRow=div({style:{fontSize:'11px',color:dayDone?'#007a42':activities.length===0?'var(--text-mute)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
-          labels.join(' · '));
-        rowBtn.appendChild(titleRow);
+        rowBtn.appendChild(div({style:{fontSize:'11px',color:dayDone?'#007a42':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+          labels.join(' · ')));
       }
-    } else if(s.label){
-      rowBtn.appendChild(div({style:{fontSize:'11px',color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},s.label));
     }
 
     wrap.appendChild(rowBtn);
@@ -1901,9 +1899,6 @@ function renderPlan(){
           if(dayPlannedVert) planRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-dim)'}},dayPlannedVert+'m'));
           if(dayPlannedHrs) planRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-dim)'}},fmtHms(dayPlannedHrs)));
           pd.appendChild(planRow);
-        } else if(s.label&&!activities.length){
-          // No activities yet -- show slot-level detail
-          pd.appendChild(div({style:{fontSize:'11px',color:'var(--text-mute)',lineHeight:'1.6',marginBottom:'10px',paddingBottom:'8px',borderBottom:'1px solid var(--border-subtle)'}},s.detail));
         }
 
         // Activity list
