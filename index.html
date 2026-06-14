@@ -116,7 +116,7 @@ const DEF_CFG = {
 // BASE_PLAN: empty day slots. Sessions only populate from TP iCal import or manual edits.
 const DAYS_OF_WEEK=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 function makeEmptyWeek(wNum){
-  return {week:wNum,days:DAYS_OF_WEEK.map(day=>({day,label:'',type:'easy',detail:'',km:0,vert:0,hrs:0}))};
+  return {week:wNum,days:DAYS_OF_WEEK.map(day=>({day,label:'',type:'rest',detail:'',km:0,vert:0,hrs:0}))};
 }
 const BASE_PLAN=Array.from({length:12},(_,i)=>makeEmptyWeek(i+1));
 // Default targets -- match the 4-week sample plan structure.
@@ -398,12 +398,14 @@ function actEffective(a){
 // Sum effective metrics across all activities for a day (for display -- all types)
 function getDayPlanned(wIdx,dIdx,filterByCountTypes=false){
   const acts=getDayActivities(wIdx,dIdx);
+  // If no activities at all, day is empty — no planned metrics
+  if(acts.length===0) return {km:0,vert:0,hrs:0};
+
   const countTypes=CFG.countTypes||DEFAULT_COUNT_TYPES;
   const eligible=filterByCountTypes
     ?acts.filter(a=>countTypes.includes(a.type||'easy'))
     :acts;
 
-  // Try activities first
   if(eligible.length>0){
     const result=eligible.reduce((acc,a)=>{
       const e=actEffective(a);
@@ -413,12 +415,12 @@ function getDayPlanned(wIdx,dIdx,filterByCountTypes=false){
     if(result.km>0||result.hrs>0) return result;
   }
 
-  // Always try EDITS/session slot as fallback (covers old imports & manual edits)
+  // Activities exist but all return zero effective values
+  // Fall back to EDITS slot only if activities exist (not empty day)
   const s=getSession(wIdx,dIdx);
   const sk=parseFloat(s?.km)||0, sv=parseFloat(s?.vert)||0, sh=parseFloat(s?.hrs)||0;
   if(sk>0||sh>0) return {km:sk,vert:sv,hrs:sh};
 
-  // Last resort: unfiltered activities (catches strength days with km=0 but hrs>0)
   if(filterByCountTypes&&acts.length>0){
     const r2=acts.reduce((acc,a)=>{
       const e=actEffective(a);
@@ -1140,7 +1142,7 @@ function renderToday(){
     const hdrRow=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'8px'}});
     const badgeTypes=hasActs
       ?[...new Set(allTodayActs.map(a=>a.type||todaySess?.type||'easy'))]
-      :[todaySess?.type||'easy'];
+      :[];
     const bwrap=div({style:{display:'flex',gap:'2px'}});
     badgeTypes.forEach(t=>bwrap.appendChild(span({style:{fontSize:'9px',background:TC[t]||'#555',color:'#000',padding:'2px 5px',borderRadius:'3px',fontWeight:'700'}},TL[t]||'--')));
     hdrRow.appendChild(bwrap);
@@ -1833,8 +1835,10 @@ function renderPlan(){
 
     // Collapsed row -- show first/main activity label, day totals
     const firstAct=activities[0];
-    const mainLabel=firstAct?.label||s.label||'';
-    const showLabel=(mainLabel||(s.label?s.label:'Rest'))+(activities.length>1?' +'+(activities.length-1):'');
+    const mainLabel=activities.length>0
+      ?(firstAct?.label||s.label||'')
+      :'No activities planned';
+    const showLabel=mainLabel+(activities.length>1?' +'+(activities.length-1):'');
 
     const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'9px 12px',
       background:isExp?'var(--bg-elev)':dayDone?'#00c96e12':'var(--bg-card)',
@@ -1852,7 +1856,7 @@ function renderPlan(){
     topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)'}},fmtDate(slotDateObj(wIdx,s.day))));
 
     // Type badges
-    const dispTypes=activities.length>0?[...new Set(activities.map(a=>a.type||s.type))]:[s.type];
+    const dispTypes=activities.length>0?[...new Set(activities.map(a=>a.type||s.type))]:[];
     const bWrap=div({style:{display:'flex',gap:'2px',flex:'1'}});
     dispTypes.slice(0,4).forEach(t=>{
       bWrap.appendChild(span({style:{fontSize:'8px',background:TC[t]||'#555',color:'#000',padding:'1px 4px',borderRadius:'2px',fontWeight:'700'}},TL[t]||'--'));
@@ -1875,7 +1879,7 @@ function renderPlan(){
     if(activities.length>0){
       const labels=activities.map(a=>a.label).filter(Boolean);
       if(labels.length){
-        const titleRow=div({style:{fontSize:'11px',color:dayDone?'#007a42':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
+        const titleRow=div({style:{fontSize:'11px',color:dayDone?'#007a42':activities.length===0?'var(--text-mute)':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
           labels.join(' · '));
         rowBtn.appendChild(titleRow);
       }
