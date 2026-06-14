@@ -2041,15 +2041,24 @@ function dateTSS(dateStr){
 
 // ATL: exponentially weighted 7-day load (k=0.87)
 // CTL: exponentially weighted 28-day load (k=0.97)
+// When history is short, CTL is underestimated. We blend actual CTL with a
+// projected steady-state CTL to give meaningful signal before 28+ days.
 function computeATLCTL(days){
-  // days: array of {date, tss} sorted oldest first
   let atl=0, ctl=0;
   const kAtl=0.87, kCtl=0.97;
   days.forEach(({tss})=>{
     atl = atl*kAtl + tss*(1-kAtl);
     ctl = ctl*kCtl + tss*(1-kCtl);
   });
-  return {atl,ctl,ratio:ctl>0?atl/ctl:null};
+  const n=days.length;
+  // Projected steady-state CTL based on average recent daily TSS
+  const recentDays=days.slice(-14);
+  const avgTSS=recentDays.reduce((s,d)=>s+d.tss,0)/Math.max(recentDays.length,1);
+  const ctlSteadyState=avgTSS/(1-kCtl); // what CTL would be if this load continued
+  // Blend: weight toward actual CTL as history grows (full weight at 42+ days)
+  const historyWeight=Math.min(1, n/42);
+  const ctlBlended=ctl*historyWeight + ctlSteadyState*(1-historyWeight);
+  return {atl, ctl:ctlBlended, ctlRaw:ctl, ratio:ctlBlended>0?atl/ctlBlended:null};
 }
 
 // ============================================================
@@ -2195,7 +2204,7 @@ function renderTrend(){
       const peakDay=days.reduce((a,b)=>b.tss>a.tss?b:a,{tss:0,ds:''});
       if(peakDay.tss>0.1){
         const ptl=div({style:{display:'flex',justifyContent:'space-between',marginTop:'6px'}});
-        ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Peak: '+peakDay.ds.slice(5).replace('-',' ')+' · '+peakDay.tss.toFixed(1)+' TSS'));
+        ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Peak: '+fmtDate(new Date(peakDay.ds+'T12:00:00'))+' · '+peakDay.tss.toFixed(1)+' TSS'));
         ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Week: '+days.reduce((s,d)=>s+d.tss,0).toFixed(1)+' TSS'));
         loadBody.appendChild(ptl);
       }
@@ -2205,7 +2214,7 @@ function renderTrend(){
     const allD=buildDays(Math.max(loadRange,28));
     const {atl,ctl,ratio}=computeATLCTL(allD.map(d=>({date:d.ds,tss:d.tss})));
     const nLogged=allD.filter(d=>d.tss>0).length;
-    const isReliable=nLogged>=14;
+    const isReliable=nLogged>=7;
 
     const atlBox=div({style:{marginTop:'10px',padding:'10px',background:'var(--bg-input)',border:'1px solid var(--border-subtle)',borderRadius:'6px'}});
 
@@ -2223,7 +2232,7 @@ function renderTrend(){
         sheet.appendChild(div({style:{fontSize:'16px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.06em',color:'var(--text)',marginBottom:'14px'}},'About ATL:CTL'));
         const asections=[
           ['What it measures','ATL (Acute Training Load) is your rolling 7-day load -- how hard you\'ve been training recently. CTL (Chronic Training Load) is your rolling 28-day load -- your fitness baseline. The ratio ATL/CTL tells you how your current training compares to your recent capacity.'],
-          ['How to read it','0.8-1.3 -> Optimal. You\'re training at or near your fitness level.\n<0.8 -> Underloading. You\'re training well below your baseline -- detraining risk over time.\n1.3-1.5 -> High load. Monitor recovery closely.\n>1.5 -> Overreaching. Acute load is significantly above your chronic baseline -- risk of injury or illness rises.'],
+          ['How to read it','0.7-1.4 -> Optimal for trail running. Training at or near your fitness level.\n<0.7 -> Underloading. Training well below baseline.\n1.4-1.8 -> High load. Monitor recovery, HRV and sleep closely.\n>1.8 -> Overreaching. Acute load well above chronic baseline.\n\nTrail thresholds are wider than road/cycling (where 1.3 is typical) because vert and terrain is already factored into RPE, and mountain runners absorb higher relative loads.'],
           ['Why it needs time','CTL builds slowly. With fewer than 14 logged sessions, the 28-day baseline hasn\'t had enough data to stabilise, so the ratio will look artificially high even at normal training loads.'],
           ['TSS formula used here','Load per session = RPE x hours x vert multiplier. The vert multiplier kicks in above 30m/km elevation density and scales up to 3x for mountain terrain.'],
         ];
@@ -2257,8 +2266,8 @@ function renderTrend(){
       confRow.appendChild(confTrack);
       atlBox.appendChild(confRow);
 
-      const rc=!ratio?'#555':!isReliable?'#555':ratio>1.3?'#ff6b6b':ratio<0.8?'#74b9ff':'#00ff87';
-      const rl=!ratio?'--':!isReliable?'Building...':ratio>1.5?'Overreaching':ratio>1.3?'High load':ratio<0.8?'Underloading':'Optimal';
+      const rc=!ratio?'#555':!isReliable?'#555':ratio>1.8?'#ff6b6b':ratio>1.4?'#ffd166':ratio<0.7?'#74b9ff':'#00ff87';
+      const rl=!ratio?'--':!isReliable?'Building...':ratio>1.8?'Overreaching':ratio>1.4?'High load -- monitor':ratio<0.7?'Underloading':'Optimal';
       const ratioRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'4px'}});
       ratioRow.appendChild(span({style:{fontSize:'10px',color:rc}},rl));
       ratioRow.appendChild(span({style:{fontSize:'22px',fontFamily:"'Bebas Neue',cursive",color:rc}},ratio?ratio.toFixed(2):'--'));
@@ -2266,17 +2275,19 @@ function renderTrend(){
 
       const detailRow=div({style:{display:'flex',gap:'16px',marginBottom:'4px'}});
       detailRow.appendChild(span({style:{fontSize:'9px',color:'#444'}},'ATL (7d): '+atl.toFixed(1)));
-      detailRow.appendChild(span({style:{fontSize:'9px',color:'#444'}},'CTL (28d): '+ctl.toFixed(1)));
+      detailRow.appendChild(span({style:{fontSize:'9px',color:'#444'}},'CTL (28d): '+ctl.toFixed(1)+(nLogged<42?' est.':'')));
       atlBox.appendChild(detailRow);
 
       if(!isReliable){
         atlBox.appendChild(div({style:{fontSize:'9px',color:'#555',lineHeight:'1.6',marginTop:'2px'}},
-          'CTL baseline still building -- ratio will stabilise after '+Math.max(0,14-nLogged)+' more sessions. Don\'t act on it yet.'));
+          'Log 7+ sessions to unlock ratio ('+nLogged+' so far).'));
       } else if(ratio){
+        const projNote=nLogged<42?' CTL estimated from current load trend.':'';
         atlBox.appendChild(div({style:{fontSize:'9px',color:'#333',lineHeight:'1.6',marginTop:'2px'}},
-          ratio>1.3?'Acute load well above chronic baseline. Ensure adequate recovery before next hard effort.':
-          ratio<0.8?'Training below chronic baseline. Safe to increase load if feeling good.':
-          'Load and recovery in balance.'));
+          (ratio>1.8?'Acute load well above chronic baseline. Prioritise recovery.':
+          ratio>1.4?'Load is elevated -- watch HRV and sleep. Normal for a build week with big vert.':
+          ratio<0.7?'Training below chronic baseline. Safe to increase load if feeling good.':
+          'Load and recovery in balance.')+projNote));
       }
     }
     loadBody.appendChild(atlBox);
