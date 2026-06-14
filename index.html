@@ -102,9 +102,9 @@ const WEEK_TYPES = ['BUILD','PEAK','SHARPEN','TAPER','RACE','DELOAD','RECOVERY']
 const DEF_CFG = {
   hrvLow:45, hrvHigh:70, rhrLow:45, rhrHigh:50,
   blockStartStr:'2026-06-06',
-  blockEndStr:'2026-09-01',   // Sunday on or after last race — controls block length
-  raceDateStr:'2026-08-28',   // kept for backward compat — mirrors races[0].date
-  raceName:'UTMB 2026',       // kept for backward compat — mirrors races[0].name
+  blockEndStr:'2026-09-01',   // Sunday on or after last race -- controls block length
+  raceDateStr:'2026-08-28',   // kept for backward compat -- mirrors races[0].date
+  raceName:'UTMB 2026',       // kept for backward compat -- mirrors races[0].name
   races:[
     {name:'Woodford to Glenbrook',  date:'2026-06-21', dist:'25km'},
     {name:'UTMB 2026',              date:'2026-08-28', dist:'171km'},
@@ -119,7 +119,7 @@ function makeEmptyWeek(wNum){
   return {week:wNum,days:DAYS_OF_WEEK.map(day=>({day,label:'',type:'easy',detail:'',km:0,vert:0,hrs:0}))};
 }
 const BASE_PLAN=Array.from({length:12},(_,i)=>makeEmptyWeek(i+1));
-// Default targets — match the 4-week sample plan structure.
+// Default targets -- match the 4-week sample plan structure.
 // These expand to totalWeeks() when block is longer than 4 weeks.
 const DEF_TARGETS = [
   {week:1, type:'RECOVERY', km:70,  vert:2100, hrs:11},
@@ -173,7 +173,7 @@ function fmtHms(hrs){
   const m=Math.round((hrs-h)*60);
   return h+':'+(m<10?'0':'')+m;
 }
-// Parse h:mm or decimal hours input → decimal hours
+// Parse h:mm or decimal hours input -> decimal hours
 function parseHms(val){
   if(!val||val==='') return '';
   const s=String(val).trim();
@@ -199,14 +199,14 @@ function localDateStr(d){
 }
 function today(){ return localDateStr(new Date()); }
 
-// Validate a date string — returns true only for complete YYYY-MM-DD
+// Validate a date string -- returns true only for complete YYYY-MM-DD
 function validDateStr(s){
   if(!s||!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const d=new Date(s+'T00:00:00');
   return !isNaN(d.getTime());
 }
 
-// Find the Monday on or before a given date — true week anchor
+// Find the Monday on or before a given date -- true week anchor
 function getBlockMonday(){
   const str=validDateStr(CFG.blockStartStr)?CFG.blockStartStr:'2026-06-06';
   const bs=new Date(str+'T00:00:00');
@@ -257,7 +257,7 @@ function fmtToday(){
   return days[d.getDay()]+' '+d.getDate()+' '+months[d.getMonth()]+' '+d.getFullYear();
 }
 
-// Get the actual calendar date string (YYYY-MM-DD) for a plan slot — uses local time
+// Get the actual calendar date string (YYYY-MM-DD) for a plan slot -- uses local time
 function slotDate(wIdx, dayName){
   const {mon}=weekDates(wIdx);
   const targetDow={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6}[dayName]??0;
@@ -331,7 +331,7 @@ function buildTargets(){
   return out;
 }
 
-// Ensure TARGETS always matches current totalWeeks — trims or extends as needed
+// Ensure TARGETS always matches current totalWeeks -- trims or extends as needed
 function syncTargets(){
   const tw=totalWeeks();
   if(TARGETS.length===tw) return;
@@ -364,7 +364,7 @@ function saveDayActivities(wIdx,dIdx,activities){
   RUNS['w'+wIdx+'-d'+dIdx]=activities;
   S.set(SK.runs,RUNS);
 }
-// Compat shim — returns first completed activity (for fatigue/RPE lookups)
+// Compat shim -- returns first completed activity (for fatigue/RPE lookups)
 function getRunLog(wIdx,dIdx){
   const acts=getDayActivities(wIdx,dIdx);
   return acts.find(a=>a.completed)||acts[0]||null;
@@ -381,7 +381,7 @@ function getDayTotals(wIdx,dIdx){
       return acc;
     },{km:0,vert:0,hrs:0});
 }
-// Get the effective km/vert/hrs for an activity — actual if logged, planned if not
+// Get the effective km/vert/hrs for an activity -- actual if logged, planned if not
 function actEffective(a){
   const pf=v=>{ const n=parseFloat(v); return isNaN(n)?0:n; };
   if(a.completed){
@@ -395,7 +395,7 @@ function actEffective(a){
   };
 }
 
-// Sum effective metrics across all activities for a day (for display — all types)
+// Sum effective metrics across all activities for a day (for display -- all types)
 function getDayPlanned(wIdx,dIdx,filterByCountTypes=false){
   const acts=getDayActivities(wIdx,dIdx);
   const countTypes=CFG.countTypes||DEFAULT_COUNT_TYPES;
@@ -459,7 +459,7 @@ function scoreSub(legs,mood,mot){
   if(!vals.length) return null;
   return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length/5*100);
 }
-// 7-day weighted fatigue load — more recent days weighted more heavily
+// 7-day weighted fatigue load -- more recent days weighted more heavily
 // RPE/perf scores cast a recovery shadow that decays over days
 function getFatigueLoad(){
   const weights=[1.0,0.85,0.7,0.55,0.4,0.28,0.15]; // today-1 to today-7
@@ -846,7 +846,7 @@ function planToCSV(){
           weekHasRows=true;
         });
       } else if(s&&s.label){
-        // Session in EDITS but no RUNS activities — export as single row
+        // Session in EDITS but no RUNS activities -- export as single row
         rows.push([
           wIdx+1, dateStr, d.day, t.type||'BUILD',
           '"'+s.label.replace(/"/g,"'")+'"',
@@ -856,7 +856,7 @@ function planToCSV(){
         ].join(','));
         weekHasRows=true;
       }
-      // Empty days — omit (no row)
+      // Empty days -- omit (no row)
     });
     if(weekHasRows) rows.push(''); // blank separator between weeks
   });
@@ -1017,7 +1017,7 @@ function showTPInstructions(){
   });
 
   sheet.appendChild(div({style:{padding:'12px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'6px',marginBottom:'16px',fontSize:'10px',color:'#555',lineHeight:'1.8'}},
-    'Tip: If your TP link starts with webcal://, change it to https:// in the Shortcut URL field — both work but https is more reliable in Shortcuts.'
+    'Tip: If your TP link starts with webcal://, change it to https:// in the Shortcut URL field -- both work but https is more reliable in Shortcuts.'
   ));
 
   sheet.appendChild(btn({class:'btn',onclick:()=>overlay.remove()},'Got it'));
@@ -1065,7 +1065,7 @@ function renderHeader(){
   const pillRow=div({style:{display:'flex',gap:'6px',marginTop:'10px',flexWrap:'wrap'}});
   pillRow.appendChild(span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#888',padding:'3px 8px',borderRadius:'4px'}},'WK '+cw+'/'+tw));
   pillRow.appendChild(span({style:{fontSize:'9px',background:phColor+'18',border:'1px solid '+phColor+'35',color:phColor,padding:'3px 8px',borderRadius:'4px'}},phase));
-  pillRow.appendChild(span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555',padding:'3px 8px',borderRadius:'4px'}},fmtDate(wMon)+' – '+fmtDate(wSun)));
+  pillRow.appendChild(span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555',padding:'3px 8px',borderRadius:'4px'}},fmtDate(wMon)+' - '+fmtDate(wSun)));
   // Show second upcoming race if exists
   if(upcomingRaces.length>1){
     const r2=upcomingRaces[1];
@@ -1124,7 +1124,7 @@ function renderToday(){
     return {rScore,sScore,combined};
   }
 
-  // Today's session card — shown first so it's closest to the data inputs
+  // Today's session card -- shown first so it's closest to the data inputs
   const sessCardWrap=div({});
   if(todaySess||(dIdx>=0&&getDayActivities(wIdx,dIdx).length>0)){
     const allTodayActs=dIdx>=0?getDayActivities(wIdx,dIdx):[];
@@ -1193,7 +1193,7 @@ function renderToday(){
         if(act.completed){
           btnGroup.appendChild(btn({style:{padding:'5px 7px',borderRadius:'5px',fontSize:'10px',
             background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
-            title:'Unlog — revert to planned',
+            title:'Unlog -- revert to planned',
             onclick:()=>{
               const updated=[...getDayActivities(wIdx,dIdx)];
               updated[aIdx]={...updated[aIdx],completed:false};
@@ -1205,7 +1205,7 @@ function renderToday(){
         mainLine.appendChild(btnGroup);
         actRow.appendChild(mainLine);
 
-        // Detail — expandable on tap of actInfo only
+        // Detail -- expandable on tap of actInfo only
         const hasDetail=act.detail&&act.detail.trim();
         if(hasDetail){
           const detailDiv=div({style:{display:'none',fontSize:'10px',color:'var(--text-mute)',lineHeight:'1.6',marginTop:'6px',paddingTop:'6px',borderTop:'1px solid var(--border-subtle)'}},act.detail);
@@ -1292,7 +1292,7 @@ function renderToday(){
     // Check yesterday's daily log first
     if(LOG[ydStr]?.rpe) rpe=LOG[ydStr].rpe;
     else {
-      // Use yesterday's activity RPE (exec field) — highest RPE across all activities
+      // Use yesterday's activity RPE (exec field) -- highest RPE across all activities
       const ydDow=yd.getDay();
       const ydPlan=getPlan();
       const ydWIdx=Math.max(0,Math.floor((yd-getBlockMonday())/(7*86400000)));
@@ -1380,7 +1380,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
   hdrDiv.appendChild(div({},[lbl('Activity name'),labelI]));
   sheet.appendChild(hdrDiv);
 
-  // Type selector — uses a container we can re-render on selection
+  // Type selector -- uses a container we can re-render on selection
   const typeDiv=div({style:{marginBottom:'14px'}});
   typeDiv.appendChild(lbl('Type'));
   const typeBtns=div({style:{display:'flex',gap:'5px',flexWrap:'wrap'}});
@@ -1413,7 +1413,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
     ]));
   }
 
-  // Actual inputs — time shown as h:mm, accepts h:mm or decimal
+  // Actual inputs -- time shown as h:mm, accepts h:mm or decimal
   const actGrid=div({class:'grid3',style:{marginBottom:'12px'}});
   [['km',akm,v=>akm=v,'number','km'],
    ['m',avert,v=>avert=v,'number','m'],
@@ -1457,7 +1457,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
   }},'SAVE');
   btnRow.appendChild(saveBtn);
 
-  // Unlog — only shown if currently completed
+  // Unlog -- only shown if currently completed
   if(existing.completed){
     btnRow.appendChild(btn({class:'btn-sm',style:{background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
       onclick:()=>{
@@ -1477,7 +1477,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
 }
 
 // ============================================================
-// RUN MODAL — now wraps showActivityModal for TODAY tab compat
+// RUN MODAL -- now wraps showActivityModal for TODAY tab compat
 // ============================================================
 // ============================================================
 function showRunModal(wIdx,dIdx,session,existing){
@@ -1502,7 +1502,7 @@ function renderBlock(){
   // Header
   const hdrRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'16px'}});
   hdrRow.appendChild(div({class:'section-title',style:{marginBottom:'0'}},totalWeeks()+'-Week Block'));
-  hdrRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},fmtDate(getBlockMonday())+' – '+fmtDate(getBlockEnd())));
+  hdrRow.appendChild(span({style:{fontSize:'9px',color:'#333'}},fmtDate(getBlockMonday())+' - '+fmtDate(getBlockEnd())));
   wrap.appendChild(hdrRow);
 
   // Group weeks by phase
@@ -1563,12 +1563,12 @@ function renderBlock(){
       const rowText=div({style:{flex:'1',minWidth:0}});
       // Date range + badge row
       const dateRow=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'2px'}});
-      dateRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-mute)'}},fmtDate(mon)+' – '+fmtDate(sun)));
+      dateRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-mute)'}},fmtDate(mon)+' - '+fmtDate(sun)));
       if(isCur) dateRow.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'NOW'));
       if(isPast&&hasActuals) dateRow.appendChild(span({style:{fontSize:'8px',color:'#00ff87'}},'✓'));
       rowText.appendChild(dateRow);
 
-      // Summary line — actuals for done weeks, planned for future
+      // Summary line -- actuals for done weeks, planned for future
       if(isDone&&hasActuals){
         const actKmF=Math.round(actuals.km);
         const actVertF=actuals.vert>=1000?(actuals.vert/1000).toFixed(1)+'k':Math.round(actuals.vert);
@@ -1584,7 +1584,7 @@ function renderBlock(){
         const actionRow=div({style:{display:'flex',gap:'6px',marginTop:'4px'}});
         actionRow.appendChild(btn({style:{padding:'2px 8px',borderRadius:'4px',fontSize:'9px',
           background:'var(--bg-input)',border:'1px solid var(--border)',color:'var(--text-mute)',cursor:'pointer'},
-          onclick:e=>{e.stopPropagation();EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;EXPANDED_DAY=null;EDITING_DAY=null;render();}},'Sessions →'));
+          onclick:e=>{e.stopPropagation();EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;EXPANDED_DAY=null;EDITING_DAY=null;render();}},'Sessions ->'));
         if(isCur){
           actionRow.appendChild(btn({style:{padding:'2px 8px',borderRadius:'4px',fontSize:'9px',
             background:'var(--bg-input)',border:'1px solid var(--border)',color:'var(--text-mute)',cursor:'pointer'},
@@ -1595,7 +1595,7 @@ function renderBlock(){
 
       rowBtn.appendChild(rowText);
 
-      // Right side chevron — for done weeks only (future weeks use full row tap)
+      // Right side chevron -- for done weeks only (future weeks use full row tap)
       if(isDone){
         rowBtn.appendChild(btn({style:{padding:'4px 6px',borderRadius:'4px',fontSize:'11px',
           background:'transparent',border:'none',color:'#333',flexShrink:'0',cursor:'pointer'},
@@ -1604,7 +1604,7 @@ function renderBlock(){
         rowBtn.appendChild(span({style:{fontSize:'11px',color:'#333',flexShrink:'0'}},isExpanded?'▲':'▼'));
       }
 
-      // Wrapper for row + panels — rounded bottom depends on whether expanded
+      // Wrapper for row + panels -- rounded bottom depends on whether expanded
       const rowWrap=div({style:{marginBottom:'5px'}});
       rowWrap.style.borderRadius='8px';
       rowBtn.style.borderRadius=isExpanded?'8px 8px 0 0':'8px';
@@ -1694,7 +1694,7 @@ function renderBlock(){
             background:'var(--bg-input)',border:'1px solid var(--border)',color:'var(--text-mute)'},
             onclick:()=>{EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;render();}},'View sessions'));
           btnsRow.appendChild(btn({class:'btn btn-ok',style:{padding:'9px 16px'},
-            // type is already on TARGETS[wIdx] from button tap — only merge km/vert/hrs from form
+            // type is already on TARGETS[wIdx] from button tap -- only merge km/vert/hrs from form
             onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],km:form.km,vert:form.vert,hrs:form.hrs};S.set(SK.targets,TARGETS);BLOCK_EDITING=null;render();}},'Save'));
           btnsRow.appendChild(btn({class:'btn-sm btn-ghost',
             onclick:()=>{BLOCK_EDITING=null;render();}},'Cancel'));
@@ -1770,14 +1770,14 @@ function renderPlan(){
   hdrBadges.appendChild(span({style:{fontSize:'9px',color:'#4a6080'}},fmtDate(pwMon)+' - '+fmtDate(pwSun)));
   if(EDIT_WEEK===curWeek()) hdrBadges.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'CURRENT'));
   hdrLeft.appendChild(hdrBadges);
-  // Target line — always light text since card is always dark
+  // Target line -- always light text since card is always dark
   hdrLeft.appendChild(div({style:{fontSize:'12px',color:'#c0ccee',letterSpacing:'0.04em',marginBottom:'8px'}},
     'TARGET: '+(target?.km||0)+'km · '+(target?.vert||0)+'m · '+(target?.hrs||0)+'hr'));
   hdrTop.appendChild(hdrLeft);
   hdrTop.appendChild(div({style:{fontSize:'11px',color:'#6080a0',textAlign:'right'}},actuals.done+'/'+week.days.length+' done'));
   hdrCard.appendChild(hdrTop);
 
-  // Progress bars — sit between TARGET and metrics rows
+  // Progress bars -- sit between TARGET and metrics rows
   const planned=week.days.reduce((acc,_,dIdx)=>{
     const dp=getDayPlanned(wIdx,dIdx,true);
     acc.km+=dp.km||0; acc.vert+=dp.vert||0; acc.hrs+=dp.hrs||0;
@@ -1801,7 +1801,7 @@ function renderPlan(){
     hdrCard.appendChild(barWrap);
   });
 
-  // PLANNED + LOGGED as explicit flex rows — guaranteed alignment
+  // PLANNED + LOGGED as explicit flex rows -- guaranteed alignment
   [['PLANNED',planned.km,planned.vert,planned.hrs,'#4a6080','#8aa0c0'],
    ['LOGGED',actuals.km,actuals.vert,actuals.hrs,'#00c875','#00c875']
   ].forEach(([label,km,vert,hrs,lblCol,valCol])=>{
@@ -1831,7 +1831,7 @@ function renderPlan(){
     const _dp=getDayPlanned(wIdx,dIdx,false);
     const dayPlannedKm=_dp.km, dayPlannedVert=_dp.vert, dayPlannedHrs=_dp.hrs;
 
-    // Collapsed row — show first/main activity label, day totals
+    // Collapsed row -- show first/main activity label, day totals
     const firstAct=activities[0];
     const mainLabel=firstAct?.label||s.label||'';
     const showLabel=(mainLabel||(s.label?s.label:'Rest'))+(activities.length>1?' +'+(activities.length-1):'');
@@ -1841,7 +1841,7 @@ function renderPlan(){
       border:'1px solid '+(isExp?tc+'50':dayDone?'#00c96e40':'var(--border)'),
       borderRadius:isExp?'8px 8px 0 0':'8px',display:'flex',flexDirection:'column',gap:'4px',marginBottom:isExp?'0':'5px'},
       onclick:()=>{EXPANDED_DAY=isExp?null:dIdx;render();}});
-    // Top line: day/date left — type badges centre — totals/chevron right
+    // Top line: day/date left -- type badges centre -- totals/chevron right
     const topRow=div({style:{display:'flex',alignItems:'center',gap:'6px'}});
 
     // Done tick or day+date
@@ -1898,7 +1898,7 @@ function renderPlan(){
           if(dayPlannedHrs) planRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-dim)'}},fmtHms(dayPlannedHrs)));
           pd.appendChild(planRow);
         } else if(s.label&&!activities.length){
-          // No activities yet — show slot-level detail
+          // No activities yet -- show slot-level detail
           pd.appendChild(div({style:{fontSize:'11px',color:'var(--text-mute)',lineHeight:'1.6',marginBottom:'10px',paddingBottom:'8px',borderBottom:'1px solid var(--border-subtle)'}},s.detail));
         }
 
@@ -1918,7 +1918,7 @@ function renderPlan(){
           actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
             onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'✎'));
 
-          // Move to day selector — only for incomplete (future) activities
+          // Move to day selector -- only for incomplete (future) activities
           if(!act.completed){
             const moveWrap=div({style:{position:'relative',display:'inline-block'}});
             const moveSel=el('select',{style:{padding:'2px 5px',borderRadius:'4px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)',cursor:'pointer',outline:'none'}});
@@ -1962,7 +1962,7 @@ function renderPlan(){
             actRow.appendChild(actData);
             if(act.note) actRow.appendChild(div({style:{fontSize:'10px',color:'#555',marginTop:'2px'}},act.note));
           } else {
-            // Show planned metrics and detail — no Log button for future days
+            // Show planned metrics and detail -- no Log button for future days
             const pmRow=div({style:{display:'flex',gap:'10px',marginBottom:'4px',flexWrap:'wrap'}});
             const plannedKm=act.planned?.km||(activities.length===1?s.km:0);
             const plannedVert=act.planned?.vert||(activities.length===1?s.vert:0);
@@ -2060,7 +2060,6 @@ function computeATLCTL(days){
 function renderTrend(){
   const wrap=div({});
   const DC={'GO HARD':'#00ff87','AS PLANNED':'#b8ff4f','MODIFY':'#ffd166','BACK OFF':'#ff6b6b'};
-  let extRange=14;
 
   function buildDays(n){
     const now=new Date(), out=[];
@@ -2133,13 +2132,13 @@ function renderTrend(){
     return wrap2;
   }
 
-  // 7-day rolling
-  const days7=buildDays(7);
-  const maxTSS7=Math.max(...days7.map(d=>d.tss),0.1);
-  const roll7=card([],{marginBottom:'14px'});
-  const roll7Hdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
-  roll7Hdr.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'7-Day Load & Readiness'));
-  roll7Hdr.appendChild(btn({style:{padding:'0 6px',height:'16px',borderRadius:'8px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)',lineHeight:'16px'},
+  // ── Single unified Load & Readiness card with 7/14/28 toggle ──
+  const loadCard=card([],{marginBottom:'14px'});
+  const loadHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
+  const loadTitle=div({style:{display:'flex',alignItems:'center',gap:'6px'}});
+  loadTitle.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'Load & Readiness'));
+  // Info button
+  loadTitle.appendChild(btn({style:{padding:'0 6px',height:'16px',borderRadius:'8px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)',lineHeight:'16px'},
     onclick:()=>{
       const existing=document.getElementById('trend-info-modal');
       if(existing){existing.remove();return;}
@@ -2149,112 +2148,91 @@ function renderTrend(){
       const sheet=div({style:{width:'100%',maxWidth:'480px',background:'var(--bg-modal)',borderRadius:'16px 16px 0 0',border:'1px solid var(--border)',padding:'20px 20px 44px',maxHeight:'90vh',overflowY:'auto'}});
       sheet.appendChild(div({style:{width:'36px',height:'4px',background:'var(--border-input)',borderRadius:'2px',margin:'0 auto 16px'}}));
       sheet.appendChild(div({style:{fontSize:'16px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.06em',color:'var(--text)',marginBottom:'16px'}},'Reading the Chart'));
-
       const sections=[
-        ['Two rows, one story',
-         'The top bars show training load (TSS — RPE × hours × vert multiplier). The bottom bars show readiness (how recovered you were that day based on HRV, RHR, sleep, and mood). Reading them together reveals how your body is responding to the work.'],
-        ['Top-heavy — load bars tall, readiness bars short',
-         'You\'re accumulating fatigue. This is expected during a build phase. Watch for consecutive days of low readiness — if the bottom bars stay flat for 3+ days, your recovery isn\'t keeping pace. Consider a down day or backing off intensity.'],
-        ['Bottom-heavy — readiness bars tall, load bars short',
-         'You\'re well recovered but not training much. Fine during taper or after a race. If this persists mid-block it may indicate under-training — your body has capacity left to absorb more load.'],
-        ['Balanced — moderate bars both sides',
-         'The ideal training state: consistent load with adequate recovery between sessions. Look for a pattern where hard days (tall top bars) are followed by green readiness a day or two later.'],
-        ['Lag between load and readiness',
-         'A big load day (Saturday long run) typically shows suppressed readiness 1–2 days later (Monday). This lag is normal and healthy. If readiness doesn\'t bounce back within 48–72hrs after a big effort, it may signal accumulated fatigue or external stress.'],
-        ['About log scale',
-         'Load bars use a logarithmic scale so that a monster day (5hr mountain run) doesn\'t visually crush your everyday sessions. A very tall bar is genuinely a big day — but the scale makes normal sessions readable too.'],
-        ['TSS formula',
-         'TSS = RPE (0–10) × hours × vert multiplier. The vert multiplier kicks in above 30m/km elevation density and scales up to 3× for steep mountain terrain, reflecting the extra physiological cost of climbing.'],
+        ['Two rows, one story','The top bars show training load (TSS -- RPE x hours x vert multiplier). The bottom bars show readiness (how recovered you were that day based on HRV, RHR, sleep, and mood). Reading them together reveals how your body is responding to the work.'],
+        ['Top-heavy -- load bars tall, readiness bars short','You\'re accumulating fatigue. This is expected during a build phase. Watch for consecutive days of low readiness -- if the bottom bars stay flat for 3+ days, your recovery isn\'t keeping pace. Consider a down day or backing off intensity.'],
+        ['Bottom-heavy -- readiness bars tall, load bars short','You\'re well recovered but not training much. Fine during taper or after a race. If this persists mid-block it may indicate under-training -- your body has capacity left to absorb more load.'],
+        ['Balanced -- moderate bars both sides','The ideal training state: consistent load with adequate recovery between sessions. Look for a pattern where hard days (tall top bars) are followed by green readiness a day or two later.'],
+        ['Lag between load and readiness','A big load day (Saturday long run) typically shows suppressed readiness 1-2 days later (Monday). This lag is normal and healthy. If readiness doesn\'t bounce back within 48-72hrs after a big effort, it may signal accumulated fatigue or external stress.'],
+        ['About log scale','Load bars use a logarithmic scale so that a monster day (5hr mountain run) doesn\'t visually crush your everyday sessions. A very tall bar is genuinely a big day -- but the scale makes normal sessions readable too.'],
+        ['TSS formula','TSS = RPE (0-10) x hours x vert multiplier. The vert multiplier kicks in above 30m/km elevation density and scales up to 3x for steep mountain terrain, reflecting the extra physiological cost of climbing.'],
       ];
-
       sections.forEach(([title,body])=>{
         const s=div({style:{marginBottom:'14px',paddingBottom:'14px',borderBottom:'1px solid var(--border-subtle)'}});
         s.appendChild(div({style:{fontSize:'10px',color:'#b8d400',letterSpacing:'0.1em',marginBottom:'5px',textTransform:'uppercase'}},title));
         s.appendChild(div({style:{fontSize:'11px',color:'var(--text-mute)',lineHeight:'1.7'}},body));
         sheet.appendChild(s);
       });
-
       sheet.appendChild(btn({class:'btn',onclick:()=>modal.remove()},'Close'));
       modal.appendChild(sheet);
       document.body.appendChild(modal);
     }},'?'));
-  roll7.appendChild(roll7Hdr);
-  roll7.appendChild(buildChart(days7,44,26,false));
-  const peak7=days7.reduce((a,b)=>b.tss>a.tss?b:a,{tss:0,ds:''});
-  if(peak7.tss>0.1){
-    const ptl=div({style:{display:'flex',justifyContent:'space-between',marginTop:'6px'}});
-    ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Peak: '+peak7.ds.slice(5).replace('-',' ')+' · '+peak7.tss.toFixed(1)+' TSS'));
-    const wkTSS=days7.reduce((s,d)=>s+d.tss,0);
-    ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Week total: '+wkTSS.toFixed(1)+' TSS'));
-    roll7.appendChild(ptl);
-  }
-  wrap.appendChild(roll7);
+  loadHdr.appendChild(loadTitle);
 
-  // Extended view
-  const extCard=card([],{marginBottom:'14px'});
-  const extHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
-  extHdr.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'Extended View'));
-  const tRow=div({style:{display:'flex',gap:'4px'}});
-  const extBody=div({});
+  // Toggle 7/14/28
+  let loadRange=7;
+  const loadToggle=div({style:{display:'flex',gap:'4px'}});
+  const loadBody=div({});
 
-  function rebuildExt(){
-    extBody.innerHTML='';
-    const daysExt=buildDays(extRange);
-    extBody.appendChild(buildChart(daysExt,32,20,extRange>=20));
+  function rebuildLoad(){
+    loadBody.innerHTML='';
+    const days=buildDays(loadRange);
+    const compact=loadRange>=20;
+    loadBody.appendChild(buildChart(days, compact?32:44, compact?20:26, compact));
 
-    // Week labels under chart
-    const wlRow=div({style:{display:'flex',gap:'0',marginTop:'1px'}});
-    const nowRef=new Date();
-    for(let i=extRange-1;i>=0;i--){
-      const dd=new Date(nowRef); dd.setDate(nowRef.getDate()-i);
-      const cell=div({style:{flex:'1',textAlign:'center'}});
-      if(dd.getDay()===1&&i<extRange-1) cell.appendChild(span({style:{fontSize:'7px',color:'#333'}},fmtDate(dd)));
-      wlRow.appendChild(cell);
+    // Week date labels for 14/28
+    if(loadRange>7){
+      const wlRow=div({style:{display:'flex',marginTop:'1px'}});
+      const nowRef=new Date();
+      for(let i=loadRange-1;i>=0;i--){
+        const dd=new Date(nowRef); dd.setDate(nowRef.getDate()-i);
+        const cell=div({style:{flex:'1',textAlign:'center'}});
+        if(dd.getDay()===1&&i<loadRange-1) cell.appendChild(span({style:{fontSize:'7px',color:'#333'}},fmtDate(dd)));
+        wlRow.appendChild(cell);
+      }
+      loadBody.appendChild(wlRow);
+    } else {
+      // 7-day: show peak + week total
+      const peakDay=days.reduce((a,b)=>b.tss>a.tss?b:a,{tss:0,ds:''});
+      if(peakDay.tss>0.1){
+        const ptl=div({style:{display:'flex',justifyContent:'space-between',marginTop:'6px'}});
+        ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Peak: '+peakDay.ds.slice(5).replace('-',' ')+' · '+peakDay.tss.toFixed(1)+' TSS'));
+        ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Week: '+days.reduce((s,d)=>s+d.tss,0).toFixed(1)+' TSS'));
+        loadBody.appendChild(ptl);
+      }
     }
-    extBody.appendChild(wlRow);
 
-    // ATL:CTL
-    const allD=buildDays(Math.max(extRange,28));
+    // ATL:CTL (always shown)
+    const allD=buildDays(Math.max(loadRange,28));
     const {atl,ctl,ratio}=computeATLCTL(allD.map(d=>({date:d.ds,tss:d.tss})));
     const nLogged=allD.filter(d=>d.tss>0).length;
-    // Confidence: CTL is only meaningful once the 28-day EWA has enough history
-    // With k=0.97, after 14 days you have ~34% of the true steady-state value
-    // After 28 days ~58%, after 42 days ~72%. Flag as reliable at 14+ sessions.
     const isReliable=nLogged>=14;
-    const isBuilding=nLogged>=5&&nLogged<14;
 
     const atlBox=div({style:{marginTop:'10px',padding:'10px',background:'var(--bg-input)',border:'1px solid var(--border-subtle)',borderRadius:'6px'}});
 
-    // Header row with info button
     const atlHdrRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
     atlHdrRow.appendChild(span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.12em',textTransform:'uppercase'}},'ATL:CTL Ratio'));
-    const infoBtn=btn({style:{padding:'0 6px',height:'16px',borderRadius:'8px',fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#666',lineHeight:'16px'},
+    const infoBtn=btn({style:{padding:'0 6px',height:'16px',borderRadius:'8px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)',lineHeight:'16px'},
       onclick:()=>{
         const existing=document.getElementById('atl-info-modal');
         if(existing){existing.remove();return;}
         const modal=div({style:{position:'fixed',inset:'0',background:'rgba(0,0,0,0.85)',zIndex:'200',display:'flex',alignItems:'flex-end',justifyContent:'center'}});
         modal.id='atl-info-modal';
         modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
-        const sheet=div({style:{width:'100%',maxWidth:'480px',background:'var(--bg-elev)',borderRadius:'16px 16px 0 0',border:'1px solid var(--border)',padding:'20px 20px 40px',maxHeight:'85vh',overflowY:'auto'}});
-        sheet.appendChild(div({style:{width:'36px',height:'4px',background:'#2a2a4a',borderRadius:'2px',margin:'0 auto 16px'}}));
+        const sheet=div({style:{width:'100%',maxWidth:'480px',background:'var(--bg-modal)',borderRadius:'16px 16px 0 0',border:'1px solid var(--border)',padding:'20px 20px 40px',maxHeight:'85vh',overflowY:'auto'}});
+        sheet.appendChild(div({style:{width:'36px',height:'4px',background:'var(--border-input)',borderRadius:'2px',margin:'0 auto 16px'}}));
         sheet.appendChild(div({style:{fontSize:'16px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.06em',color:'var(--text)',marginBottom:'14px'}},'About ATL:CTL'));
-        const sections=[
-          ['What it measures',
-           'ATL (Acute Training Load) is your rolling 7-day load — how hard you\'ve been training recently. CTL (Chronic Training Load) is your rolling 28-day load — your fitness baseline. The ratio ATL÷CTL tells you how your current training compares to your recent capacity.'],
-          ['How to read it',
-           '0.8–1.3 → Optimal. You\'re training at or near your fitness level.\n<0.8 → Underloading. You\'re training well below your baseline — detraining risk over time.\n1.3–1.5 → High load. Monitor recovery closely.\n>1.5 → Overreaching. Acute load is significantly above your chronic baseline — risk of injury or illness rises.'],
-          ['Why it needs time',
-           'CTL builds slowly. With fewer than 14 logged sessions, the 28-day baseline hasn\'t had enough data to stabilise, so the ratio will look artificially high even at normal training loads. The more history you have, the more meaningful the number becomes.'],
-          ['TSS formula used here',
-           'Load per session = RPE × hours × vert multiplier. The vert multiplier kicks in above 30m/km elevation density and scales up to 3× for mountain terrain — reflecting the extra physiological cost of vert-heavy runs.'],
-          ['What it isn\'t',
-           'This isn\'t a precise Training Peaks-style TSS — it\'s a proxy. It doesn\'t account for HR zones, swimming, cycling power, or sleep quality. Use it directionally, not as gospel.'],
+        const asections=[
+          ['What it measures','ATL (Acute Training Load) is your rolling 7-day load -- how hard you\'ve been training recently. CTL (Chronic Training Load) is your rolling 28-day load -- your fitness baseline. The ratio ATL/CTL tells you how your current training compares to your recent capacity.'],
+          ['How to read it','0.8-1.3 -> Optimal. You\'re training at or near your fitness level.\n<0.8 -> Underloading. You\'re training well below your baseline -- detraining risk over time.\n1.3-1.5 -> High load. Monitor recovery closely.\n>1.5 -> Overreaching. Acute load is significantly above your chronic baseline -- risk of injury or illness rises.'],
+          ['Why it needs time','CTL builds slowly. With fewer than 14 logged sessions, the 28-day baseline hasn\'t had enough data to stabilise, so the ratio will look artificially high even at normal training loads.'],
+          ['TSS formula used here','Load per session = RPE x hours x vert multiplier. The vert multiplier kicks in above 30m/km elevation density and scales up to 3x for mountain terrain.'],
         ];
-        sections.forEach(([title,body])=>{
+        asections.forEach(([title,body])=>{
           const s=div({style:{marginBottom:'14px',paddingBottom:'14px',borderBottom:'1px solid var(--border-subtle)'}});
-          s.appendChild(div({style:{fontSize:'10px',color:'#b8ff4f',letterSpacing:'0.1em',marginBottom:'5px'}},title.toUpperCase()));
+          s.appendChild(div({style:{fontSize:'10px',color:'#b8d400',letterSpacing:'0.1em',marginBottom:'5px'}},title.toUpperCase()));
           body.split('\n').forEach(line=>{
-            s.appendChild(div({style:{fontSize:'11px',color:'#888',lineHeight:'1.7',marginBottom:'2px'}},line));
+            s.appendChild(div({style:{fontSize:'11px',color:'var(--text-mute)',lineHeight:'1.7',marginBottom:'2px'}},line));
           });
           sheet.appendChild(s);
         });
@@ -2268,12 +2246,11 @@ function renderTrend(){
     if(nLogged<5){
       atlBox.appendChild(div({style:{fontSize:'10px',color:'#333'}},'Log 5+ sessions to begin building baseline ('+nLogged+' so far)'));
     } else {
-      // Confidence bar
       const confPct=Math.min(100,Math.round(nLogged/28*100));
       const confRow=div({style:{marginBottom:'8px'}});
       confRow.appendChild(div({style:{display:'flex',justifyContent:'space-between',marginBottom:'2px'}}),[
         span({style:{fontSize:'8px',color:'#333'}},'Baseline confidence'),
-        span({style:{fontSize:'8px',color:isReliable?'#00ff87':'#ffd166'}},confPct+'% ('+(isReliable?'reliable':'building')+' — '+nLogged+'/28 days)'),
+        span({style:{fontSize:'8px',color:isReliable?'#00ff87':'#ffd166'}},confPct+'% ('+(isReliable?'reliable':'building')+' -- '+nLogged+'/28 days)'),
       ]);
       const confTrack=div({class:'pbar-track'});
       confTrack.style.setProperty('--pbar-color',isReliable?'#00c875':'#ffd166');
@@ -2281,7 +2258,6 @@ function renderTrend(){
       confRow.appendChild(confTrack);
       atlBox.appendChild(confRow);
 
-      // Ratio display — greyed out with warning if not reliable
       const rc=!ratio?'#555':!isReliable?'#555':ratio>1.3?'#ff6b6b':ratio<0.8?'#74b9ff':'#00ff87';
       const rl=!ratio?'--':!isReliable?'Building...':ratio>1.5?'Overreaching':ratio>1.3?'High load':ratio<0.8?'Underloading':'Optimal';
       const ratioRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'4px'}});
@@ -2296,7 +2272,7 @@ function renderTrend(){
 
       if(!isReliable){
         atlBox.appendChild(div({style:{fontSize:'9px',color:'#555',lineHeight:'1.6',marginTop:'2px'}},
-          'CTL baseline still building — ratio will stabilise after '+Math.max(0,14-nLogged)+' more sessions. Don\'t act on it yet.'));
+          'CTL baseline still building -- ratio will stabilise after '+Math.max(0,14-nLogged)+' more sessions. Don\'t act on it yet.'));
       } else if(ratio){
         atlBox.appendChild(div({style:{fontSize:'9px',color:'#333',lineHeight:'1.6',marginTop:'2px'}},
           ratio>1.3?'Acute load well above chronic baseline. Ensure adequate recovery before next hard effort.':
@@ -2304,32 +2280,180 @@ function renderTrend(){
           'Load and recovery in balance.'));
       }
     }
-    extBody.appendChild(atlBox);
+    loadBody.appendChild(atlBox);
   }
 
-  [14,30].forEach((n,idx)=>{
+  [7,14,28].forEach(n=>{
     const b=btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',
-      background:extRange===n?'#1a1a3a':'#0a0a18',
-      border:'1px solid '+(extRange===n?'#3a3a6a':'#1a1a2e'),
-      color:extRange===n?'#e0e0ff':'#444'},
+      background:loadRange===n?'var(--bg-tab-active)':'var(--bg-input)',
+      border:'1px solid '+(loadRange===n?'var(--border-btn)':'var(--border)'),
+      color:loadRange===n?'var(--text)':'var(--text-dim)'},
       onclick:()=>{
-        extRange=n;
-        tRow.querySelectorAll('button').forEach((b2,i2)=>{
-          const nn=[14,30][i2];
-          b2.style.background=nn===n?'#1a1a3a':'#0a0a18';
-          b2.style.borderColor=nn===n?'#3a3a6a':'#1a1a2e';
-          b2.style.color=nn===n?'#e0e0ff':'#444';
+        loadRange=n;
+        loadToggle.querySelectorAll('button').forEach((b2,i2)=>{
+          const nn=[7,14,28][i2];
+          b2.style.background=nn===n?'var(--bg-tab-active)':'var(--bg-input)';
+          b2.style.borderColor=nn===n?'var(--border-btn)':'var(--border)';
+          b2.style.color=nn===n?'var(--text)':'var(--text-dim)';
         });
-        rebuildExt();
+        rebuildLoad();
       }},n+'d');
-    tRow.appendChild(b);
+    loadToggle.appendChild(b);
   });
-  extHdr.appendChild(tRow);
-  extCard.appendChild(extHdr);
-  extCard.appendChild(extBody);
-  rebuildExt();
-  wrap.appendChild(extCard);
+  loadHdr.appendChild(loadToggle);
+  loadCard.appendChild(loadHdr);
+  loadCard.appendChild(loadBody);
+  rebuildLoad();
+  wrap.appendChild(loadCard);
 
+
+  // ── Compliance tracker ─────────────────────────────────────────
+  const compCard=card([],{marginBottom:'14px'});
+  const compHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}});
+  compHdr.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'Session Compliance'));
+
+  // Range toggle
+  let compRange=7;
+  const compToggle=div({style:{display:'flex',gap:'4px'}});
+  const compBody=div({});
+
+  function buildCompliance(){
+    compBody.innerHTML='';
+    const COMPLIANCE_TYPES=['run','easy','long','intervals','strength','ride','race'];
+
+    try{
+      const now=new Date();
+      const blockMon=getBlockMonday();
+      const plan=getPlan();
+      const compDays=[];
+
+      for(let i=compRange-1;i>=0;i--){
+        const d=new Date(now); d.setDate(now.getDate()-i);
+        const ds=localDateStr(d);
+        const dayLabel=['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()];
+        const isWeekStart=d.getDay()===1;
+        const isToday=ds===today();
+
+        const dd=new Date(ds+'T12:00:00');
+        const diffD=Math.floor((dd-blockMon)/86400000);
+        if(isNaN(diffD)||diffD<0){
+          compDays.push({ds,acts:[],dayLabel,isWeekStart,isToday});
+          continue;
+        }
+        const wI=Math.floor(diffD/7);
+        if(wI>=plan.length){
+          compDays.push({ds,acts:[{perf:'3',_rest:true}],dayLabel,isWeekStart,isToday});
+          continue;
+        }
+        const dow=dd.getDay();
+        const dI=plan[wI].days.findIndex(s=>dowIndex(s.day)===dow);
+        const allActs=dI>=0?getDayActivities(wI,dI):[];
+        const relPlanned=allActs.filter(a=>COMPLIANCE_TYPES.includes(a.type||'easy'));
+        let acts=[];
+        if(relPlanned.length===0){
+          // No relevant activities - rest day, counts as met plan
+          acts=[{perf:'3',_rest:true}];
+        } else {
+          acts=relPlanned.map(a=>{
+            if(a.completed&&a.perf) return a;
+            if(a.completed&&!a.perf) return {...a,perf:'3'};
+            return {...a,perf:'1'}; // planned but not logged = poor
+          });
+        }
+        compDays.push({ds,acts,dayLabel,isWeekStart,isToday});
+      }
+
+      // Stats
+      const rated=compDays.filter(d=>d.acts.length>0);
+      const exceeded=rated.filter(d=>d.acts.some(a=>parseInt(a.perf)>3)).length;
+      const metPlan=rated.filter(d=>d.acts.every(a=>parseInt(a.perf)===3)).length;
+      const below=rated.filter(d=>d.acts.some(a=>parseInt(a.perf)<3)).length;
+
+      // Chart
+      const BAR_H=28;
+      const chartH=BAR_H*2+2+BAR_H*2;
+
+      const zeroLine=div({style:{position:'absolute',left:'0',right:'0',top:BAR_H*2+'px',height:'1px',background:'#2a2a4a',zIndex:'1'}});
+      const colWrap=div({style:{display:'flex',gap:(compRange>14?2:4)+'px',width:'100%',position:'relative',zIndex:'2'}});
+
+      compDays.forEach(day=>{
+        const col=div({style:{flex:'1',height:chartH+'px',position:'relative'}});
+
+        const perfVals=day.acts.map(a=>parseInt(a.perf)).filter(v=>v>=1&&v<=5);
+        const avgPerf=perfVals.length?perfVals.reduce((s,v)=>s+v,0)/perfVals.length:null;
+
+        if(avgPerf!==null){
+          const dev=avgPerf-3;
+          const color=dev>0?'#00c96e':dev<0?'#e84040':'#4a6080';
+          if(dev>0){
+            col.appendChild(div({style:{position:'absolute',bottom:(BAR_H*2+1)+'px',left:'1px',right:'1px',height:Math.max(2,Math.abs(dev)*BAR_H)+'px',background:color,borderRadius:'2px 2px 0 0',opacity:'0.85'}}));
+          } else if(dev<0){
+            col.appendChild(div({style:{position:'absolute',top:(BAR_H*2+1)+'px',left:'1px',right:'1px',height:Math.max(2,Math.abs(dev)*BAR_H)+'px',background:color,borderRadius:'0 0 2px 2px',opacity:'0.85'}}));
+          } else {
+            col.appendChild(div({style:{position:'absolute',top:(BAR_H*2-2)+'px',left:'50%',transform:'translateX(-50%)',width:'4px',height:'4px',background:color,borderRadius:'50%'}}));
+          }
+        }
+        if(day.isWeekStart) col.appendChild(div({style:{position:'absolute',left:'0',top:'0',bottom:'0',width:'1px',background:'#2a2a4a'}}));
+        if(compRange<=14) col.appendChild(div({style:{position:'absolute',bottom:'-14px',left:'0',right:'0',textAlign:'center',fontSize:'7px',color:day.isToday?'var(--text)':'#333'}},day.dayLabel));
+        colWrap.appendChild(col);
+      });
+
+      const chartWrap=div({style:{position:'relative',height:chartH+'px',marginBottom:'18px'}});
+      chartWrap.appendChild(zeroLine);
+      chartWrap.appendChild(colWrap);
+      compBody.appendChild(chartWrap);
+
+      // Legend
+      const leg=div({style:{display:'flex',gap:'12px',marginBottom:'8px'}});
+      [['#00c96e','Exceeded'],['#4a6080','Met plan'],['#e84040','Below']].forEach(([c,l])=>{
+        const item=div({style:{display:'flex',alignItems:'center',gap:'4px'}});
+        item.appendChild(div({style:{width:'8px',height:'8px',background:c,borderRadius:'1px',flexShrink:'0'}}));
+        item.appendChild(span({style:{fontSize:'8px',color:'#555'}},l));
+        leg.appendChild(item);
+      });
+      compBody.appendChild(leg);
+
+      // Pills
+      if(rated.length>0){
+        const pills=div({style:{display:'flex',gap:'6px',flexWrap:'wrap',alignItems:'center'}});
+        [[exceeded,'#00c96e','Exceeded'],[metPlan,'#4a6080','Met plan'],[below,'#e84040','Below']].forEach(([n,c,l])=>{
+          if(!n) return;
+          pills.appendChild(div({style:{padding:'3px 8px',borderRadius:'12px',background:c+'20',border:'1px solid '+c+'40',fontSize:'9px',color:c}},n+' '+l));
+        });
+        pills.appendChild(span({style:{fontSize:'9px',color:'#333',marginLeft:'auto'}},rated.length+' rated sessions'));
+        compBody.appendChild(pills);
+      } else {
+        compBody.appendChild(div({style:{fontSize:'10px',color:'#333'}},'Rate sessions (1-5) when logging to see compliance trends.'));
+      }
+
+    } catch(e){
+      compBody.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Compliance chart unavailable: '+e.message));
+    }
+  }
+
+  [7,14,28].forEach(n=>{
+    const b=btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',
+      background:compRange===n?'var(--bg-tab-active)':'var(--bg-input)',
+      border:'1px solid '+(compRange===n?'var(--border-btn)':'var(--border)'),
+      color:compRange===n?'var(--text)':'var(--text-dim)'},
+      onclick:()=>{
+        compRange=n;
+        compToggle.querySelectorAll('button').forEach((b2,i2)=>{
+          const nn=[7,14,28][i2];
+          b2.style.background=nn===n?'var(--bg-tab-active)':'var(--bg-input)';
+          b2.style.borderColor=nn===n?'var(--border-btn)':'var(--border)';
+          b2.style.color=nn===n?'var(--text)':'var(--text-dim)';
+        });
+        buildCompliance();
+      }},n+'d');
+    compToggle.appendChild(b);
+  });
+  compHdr.appendChild(compToggle);
+  compCard.appendChild(compHdr);
+  compCard.appendChild(div({style:{fontSize:'9px',color:'#555',marginBottom:'8px',lineHeight:'1.6'}},'Based on the Performance rating (1-5) logged per session. 3 = met plan (baseline).'));
+  compCard.appendChild(compBody);
+  buildCompliance();
+  wrap.appendChild(compCard);
   // Recent log
   const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14);
   wrap.appendChild(div({class:'section-title'},'Recent Log'));
@@ -2486,7 +2610,7 @@ function renderSettings(){
       row2.appendChild(distWrap);
       const delBtn=btn({style:{padding:'6px 9px',borderRadius:'5px',background:'#1a0a0a',border:'1px solid #2a1a1a',color:'#ff6b6b',fontSize:'13px',flexShrink:'0',alignSelf:'flex-end'},
         onclick:()=>{
-          // Inline confirm — replaces native confirm() which is blocked in some contexts
+          // Inline confirm -- replaces native confirm() which is blocked in some contexts
           const existing=raceCard.querySelector('.race-del-confirm');
           if(existing){existing.remove();return;}
           const confirmRow=div({class:'race-del-confirm',style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'8px',padding:'8px',background:'#1a0a0a',borderRadius:'5px',border:'1px solid #2a1a1a'}});
@@ -2538,7 +2662,7 @@ function renderSettings(){
   ]));
   wrap.appendChild(bkCard);
   const totalsCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
-  totalsCard.appendChild(div({class:'section-title'},'Daily Totals — Activity Types'));
+  totalsCard.appendChild(div({class:'section-title'},'Daily Totals -- Activity Types'));
   totalsCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},'Toggle which activity types contribute to daily km/vert/hr totals and weekly progress bars.'));
   const toggleGrid=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
 
@@ -2567,7 +2691,7 @@ function renderSettings(){
   totalsCard.appendChild(toggleGrid);
   wrap.appendChild(totalsCard);
 
-  // CSV Plan Export / Import — above TP iCal
+  // CSV Plan Export / Import -- above TP iCal
   const csvCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
   csvCard.appendChild(div({class:'section-title'},'Plan Export / Import'));
   csvCard.appendChild(btn({class:'btn',onclick:()=>download(planToCSV(),'training-plan.csv','text/csv')},'Export plan as CSV'));
@@ -2589,7 +2713,7 @@ function renderSettings(){
   csvCard.appendChild(div({style:{fontSize:'9px',color:'#555',lineHeight:'1.6'}},'Export first for correct column format. Edit in Numbers or Excel, then import back.'));
   csvCard.appendChild(div({},[btn({class:'btn',onclick:()=>csvI.click()},'Import CSV plan'),csvI,csvInfo]));
 
-  // Export Block CSV — logged activities only
+  // Export Block CSV -- logged activities only
   const blockCsvBtn=btn({class:'btn',onclick:()=>{
     const plan=getPlan();
     const rows=['week,date,day,week_type,activity_name,type,km,vert_m,hrs,rpe,perf,note'];
@@ -2635,7 +2759,7 @@ function renderSettings(){
   tpBtnRow.appendChild(btn({class:'btn btn-ok',style:{flex:'1'},onclick:()=>{
     const text=icsTa.value.trim();
     if(!text){icsStatus.textContent='Paste iCal text first.';icsStatus.style.color='#ff6b6b';return;}
-    if(!text.includes('BEGIN:VCALENDAR')){icsStatus.textContent='Not valid iCal — check you copied the full calendar text.';icsStatus.style.color='#ff6b6b';return;}
+    if(!text.includes('BEGIN:VCALENDAR')){icsStatus.textContent='Not valid iCal -- check you copied the full calendar text.';icsStatus.style.color='#ff6b6b';return;}
     clearSamplePlan();
     const result=applyICSToEdits(text);
     icsStatus.textContent=result.msg+(hasSamplePlan()?'':' Sample plan cleared.');
@@ -2647,7 +2771,7 @@ function renderSettings(){
   tpCard.appendChild(icsStatus);
   if(hasSamplePlan()){
     const sampleRow=div({style:{display:'flex',alignItems:'center',gap:'10px',borderTop:'1px solid var(--border-subtle)',paddingTop:'8px'}});
-    sampleRow.appendChild(span({style:{fontSize:'10px',color:'#555',flex:'1'}},'Sample plan loaded (weeks 1–4)'));
+    sampleRow.appendChild(span({style:{fontSize:'10px',color:'#555',flex:'1'}},'Sample plan loaded (weeks 1-4)'));
     sampleRow.appendChild(btn({class:'btn-sm btn-danger',onclick:()=>{
       if(confirm('Clear the sample plan? Your own edits will be kept.')) clearSamplePlan(); render();
     }},'Clear sample'));
@@ -2668,7 +2792,7 @@ function renderSettings(){
 // STRAVA BACKFILL (pre-loaded from Strava, May 9 - Jun 8 2026)
 // ============================================================
 function applyStravaBackfill(){
-  // Runs on fresh storage key — previous buggy data is gone
+  // Runs on fresh storage key -- previous buggy data is gone
   const plan=getPlan();
 
   const dateLookup={};
@@ -2745,69 +2869,69 @@ function applyStravaBackfill(){
 //                Thu easy trail / Fri shakeout / Sat climb or long / Sun long + race wk4
 
 const SAMPLE_SESSIONS = [
-  // WEEK 1 — RECOVERY / BASE
+  // WEEK 1 -- RECOVERY / BASE
   {day:'Mon',wk:1,label:'Upper Body Strength',type:'strength',km:0,vert:0,hrs:0.75,
-    detail:'Bench press, rows, pull-ups, shoulder press. Keep it aerobic — no max effort sets. Focus on movement quality.'},
-  {day:'Tue',wk:1,label:'Easy Intervals — 4x6min',type:'intervals',km:10,vert:100,hrs:1,
-    detail:'Warm up 2km, then 4x6min at 3:50–4:00/km with 2min jog recovery. Cool down easy. Total ~10km.'},
+    detail:'Bench press, rows, pull-ups, shoulder press. Keep it aerobic -- no max effort sets. Focus on movement quality.'},
+  {day:'Tue',wk:1,label:'Easy Intervals -- 4x6min',type:'intervals',km:10,vert:100,hrs:1,
+    detail:'Warm up 2km, then 4x6min at 3:50-4:00/km with 2min jog recovery. Cool down easy. Total ~10km.'},
   {day:'Wed',wk:1,label:'Legs Strength + Treadmill Climb',type:'strength',km:3,vert:300,hrs:1.25,
-    detail:'Squat 3x6 at 80% 1RM, barbell lunges, single-leg RDL, calf raises, tibialis raises. Then 40min treadmill at 10–12% incline.'},
+    detail:'Squat 3x6 at 80% 1RM, barbell lunges, single-leg RDL, calf raises, tibialis raises. Then 40min treadmill at 10-12% incline.'},
   {day:'Thu',wk:1,label:'Easy Trail Run',type:'easy',km:17,vert:300,hrs:2,
-    detail:'Zone 2 the whole way. 135–148bpm. Conversational effort. Good opportunity to practise race nutrition — aim for 60g carbs/hr.'},
+    detail:'Zone 2 the whole way. 135-148bpm. Conversational effort. Good opportunity to practise race nutrition -- aim for 60g carbs/hr.'},
   {day:'Fri',wk:1,label:'Shakeout',type:'easy',km:6,vert:50,hrs:0.5,
-    detail:'30–40min easy. Flush the legs. This is recovery, not training.'},
+    detail:'30-40min easy. Flush the legs. This is recovery, not training.'},
   {day:'Sat',wk:1,label:'Trail Climb Session',type:'long',km:20,vert:700,hrs:3,
-    detail:'Find a sustained climb — aim for 600–800m vert. Run easy on the flat sections, hike the steep stuff. Practise power hiking technique.'},
+    detail:'Find a sustained climb -- aim for 600-800m vert. Run easy on the flat sections, hike the steep stuff. Practise power hiking technique.'},
   {day:'Sun',wk:1,label:'Back-to-Back Long Run',type:'long',km:17,vert:350,hrs:2,
-    detail:'Easy effort on tired legs. This is the point — learning to run fatigued. Keep HR in Z2 even if pace suffers.'},
+    detail:'Easy effort on tired legs. This is the point -- learning to run fatigued. Keep HR in Z2 even if pace suffers.'},
 
-  // WEEK 2 — BUILD
+  // WEEK 2 -- BUILD
   {day:'Mon',wk:2,label:'Upper Body Strength',type:'strength',km:0,vert:0,hrs:0.75,
     detail:'Progress load from Week 1 where it felt easy. Maintain full range of motion.'},
-  {day:'Tue',wk:2,label:'Hill Reps — 6x3min',type:'intervals',km:11,vert:250,hrs:1.25,
-    detail:'Find a steep trail hill. 6x3min uphill at hard effort (155–160bpm), walk/jog back down. Total ~11km with warm-up and cool-down.'},
+  {day:'Tue',wk:2,label:'Hill Reps -- 6x3min',type:'intervals',km:11,vert:250,hrs:1.25,
+    detail:'Find a steep trail hill. 6x3min uphill at hard effort (155-160bpm), walk/jog back down. Total ~11km with warm-up and cool-down.'},
   {day:'Wed',wk:2,label:'Legs Strength + Treadmill Climb',type:'strength',km:4,vert:450,hrs:1.5,
-    detail:'Squat up to working weight, barbell lunges, single-leg RDL, calf raises. Then 60min treadmill incline — push the last 15min.'},
+    detail:'Squat up to working weight, barbell lunges, single-leg RDL, calf raises. Then 60min treadmill incline -- push the last 15min.'},
   {day:'Thu',wk:2,label:'Easy Trail Run',type:'easy',km:18,vert:350,hrs:2,
-    detail:'Zone 2. Add 2x15min Z3 blocks mid-run on uphills. Gut practice — caffeinated gels if racing with them.'},
+    detail:'Zone 2. Add 2x15min Z3 blocks mid-run on uphills. Gut practice -- caffeinated gels if racing with them.'},
   {day:'Fri',wk:2,label:'Shakeout',type:'easy',km:6,vert:50,hrs:0.5,
     detail:'Easy 30min. Optional 4x20sec strides at the end if legs feel good.'},
   {day:'Sat',wk:2,label:'Big Climb Day',type:'long',km:24,vert:1100,hrs:3.5,
-    detail:'Target 1000–1200m vert. Blackheath horse track or equivalent. Hike the steep sections with poles. Final 45min at race effort.'},
+    detail:'Target 1000-1200m vert. Blackheath horse track or equivalent. Hike the steep sections with poles. Final 45min at race effort.'},
   {day:'Sun',wk:2,label:'Back-to-Back Long Run',type:'long',km:20,vert:400,hrs:2.5,
-    detail:'Moderate effort. Practice race nutrition — 80g carbs/hr. Note any gut issues.'},
+    detail:'Moderate effort. Practice race nutrition -- 80g carbs/hr. Note any gut issues.'},
 
-  // WEEK 3 — SHARPEN
-  {day:'Mon',wk:3,label:'Upper Body Strength — Maintain',type:'strength',km:0,vert:0,hrs:0.75,
+  // WEEK 3 -- SHARPEN
+  {day:'Mon',wk:3,label:'Upper Body Strength -- Maintain',type:'strength',km:0,vert:0,hrs:0.75,
     detail:'Maintenance load only. No new PRs this week. Volume drops, quality stays.'},
-  {day:'Tue',wk:3,label:'Race-Pace Effort — 3x10min',type:'intervals',km:13,vert:150,hrs:1.25,
-    detail:'3x10min at goal race effort (148–153bpm) with 3min jog recovery. Flat or slight uphill. This is your race-day intensity — practise it.'},
+  {day:'Tue',wk:3,label:'Race-Pace Effort -- 3x10min',type:'intervals',km:13,vert:150,hrs:1.25,
+    detail:'3x10min at goal race effort (148-153bpm) with 3min jog recovery. Flat or slight uphill. This is your race-day intensity -- practise it.'},
   {day:'Wed',wk:3,label:'Legs Strength + Short Treadmill',type:'strength',km:3,vert:250,hrs:1,
-    detail:'Reduce squat volume — 3x5 at 70% 1RM. Single-leg work, calf, tibialis. 30min treadmill at 12% — easy effort.'},
-  {day:'Thu',wk:3,label:'Easy Trail — Sharpener',type:'easy',km:14,vert:250,hrs:1.5,
+    detail:'Reduce squat volume -- 3x5 at 70% 1RM. Single-leg work, calf, tibialis. 30min treadmill at 12% -- easy effort.'},
+  {day:'Thu',wk:3,label:'Easy Trail -- Sharpener',type:'easy',km:14,vert:250,hrs:1.5,
     detail:'Mostly Z2 with 4x1min surges at race effort on uphills. Keep the legs moving without accumulating fatigue.'},
   {day:'Fri',wk:3,label:'Rest or Shakeout',type:'rest',km:0,vert:0,hrs:0,
     detail:'Full rest or 20min easy walk. Save legs for the weekend.'},
   {day:'Sat',wk:3,label:'Moderate Long Run',type:'long',km:22,vert:700,hrs:3,
     detail:'Easy effort. Last significant training stimulus before race week. Finish feeling like you could do more.'},
   {day:'Sun',wk:3,label:'Easy Recovery Run',type:'easy',km:12,vert:150,hrs:1.25,
-    detail:'Very easy. Zone 1–2 only. Start thinking about race week logistics.'},
+    detail:'Very easy. Zone 1-2 only. Start thinking about race week logistics.'},
 
-  // WEEK 4 — RACE WEEK
-  {day:'Mon',wk:4,label:'Upper Body — Very Light',type:'strength',km:0,vert:0,hrs:0.5,
-    detail:'30–40min max. Bodyweight or very light load only. Movement, not training.'},
+  // WEEK 4 -- RACE WEEK
+  {day:'Mon',wk:4,label:'Upper Body -- Very Light',type:'strength',km:0,vert:0,hrs:0.5,
+    detail:'30-40min max. Bodyweight or very light load only. Movement, not training.'},
   {day:'Tue',wk:4,label:'Race-Feel Strides',type:'intervals',km:6,vert:60,hrs:0.5,
     detail:'20min easy + 6x20sec strides at race effort. Legs should feel quick and springy.'},
   {day:'Wed',wk:4,label:'Easy Movement',type:'easy',km:4,vert:30,hrs:0.4,
-    detail:'25–30min easy walk or jog. Gear check today. Pack drop bags if relevant.'},
+    detail:'25-30min easy walk or jog. Gear check today. Pack drop bags if relevant.'},
   {day:'Thu',wk:4,label:'Short Shakeout',type:'easy',km:5,vert:50,hrs:0.4,
-    detail:'20–25min easy. Last run before race. No heroics.'},
+    detail:'20-25min easy. Last run before race. No heroics.'},
   {day:'Fri',wk:4,label:'Rest / Travel',type:'rest',km:0,vert:0,hrs:0,
     detail:'Full rest or travel to race venue. Walk around, stay loose. Sleep is the priority.'},
   {day:'Sat',wk:4,label:'Pre-Race Prep',type:'rest',km:0,vert:0,hrs:0,
     detail:'Race briefing, bib collection, early dinner, early to bed. Trust your training.'},
   {day:'Sun',wk:4,label:'RACE DAY',type:'race',km:0,vert:0,hrs:0,
-    detail:'Execute the plan. First quarter conservative. Fuel from the gun — 80g carbs/hr. Hike the big climbs. You\'ve done the work.'},
+    detail:'Execute the plan. First quarter conservative. Fuel from the gun -- 80g carbs/hr. Hike the big climbs. You\'ve done the work.'},
 ];
 
 function applySamplePlan(){
@@ -2887,7 +3011,7 @@ function showOnboarding(){
     if(step===0){
       // Welcome
       body.appendChild(div({style:{fontSize:'12px',color:'#666',lineHeight:'1.9',marginBottom:'32px'}},
-        'A training planner and daily readiness tool for trail runners.\n\nTrack load, log sessions, monitor HRV and readiness, and get coach summaries — all from your phone.'));
+        'A training planner and daily readiness tool for trail runners.\n\nTrack load, log sessions, monitor HRV and readiness, and get coach summaries -- all from your phone.'));
 
       const resumeBtn=btn({class:'btn',style:{marginBottom:'12px'},onclick:()=>goto(1)},'Get started');
       body.appendChild(resumeBtn);
@@ -2923,7 +3047,7 @@ function showOnboarding(){
       body.appendChild(restoreCard);
 
       // New user option
-      body.appendChild(btn({class:'btn',onclick:()=>goto(2)},'Set up fresh →'));
+      body.appendChild(btn({class:'btn',onclick:()=>goto(2)},'Set up fresh ->'));
 
     } else if(step===2){
       // Setup: HRV/RHR + race
@@ -3000,7 +3124,7 @@ function showOnboarding(){
         markOnboarded();
         overlay.remove();
         render();
-      }},'Start training →'));
+      }},'Start training ->'));
 
       body.appendChild(btn({style:{padding:'10px',background:'transparent',border:'none',color:'#333',fontSize:'11px',marginTop:'8px',width:'100%'},
         onclick:()=>{markOnboarded();overlay.remove();render();}},'Skip for now'));
