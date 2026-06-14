@@ -2041,8 +2041,6 @@ function dateTSS(dateStr){
 
 // ATL: exponentially weighted 7-day load (k=0.87)
 // CTL: exponentially weighted 28-day load (k=0.97)
-// When history is short, CTL is underestimated. We blend actual CTL with a
-// projected steady-state CTL to give meaningful signal before 28+ days.
 function computeATLCTL(days){
   let atl=0, ctl=0;
   const kAtl=0.87, kCtl=0.97;
@@ -2050,15 +2048,7 @@ function computeATLCTL(days){
     atl = atl*kAtl + tss*(1-kAtl);
     ctl = ctl*kCtl + tss*(1-kCtl);
   });
-  const n=days.length;
-  // Projected steady-state CTL based on average recent daily TSS
-  const recentDays=days.slice(-14);
-  const avgTSS=recentDays.reduce((s,d)=>s+d.tss,0)/Math.max(recentDays.length,1);
-  const ctlSteadyState=avgTSS/(1-kCtl); // what CTL would be if this load continued
-  // Blend: weight toward actual CTL as history grows (full weight at 42+ days)
-  const historyWeight=Math.min(1, n/42);
-  const ctlBlended=ctl*historyWeight + ctlSteadyState*(1-historyWeight);
-  return {atl, ctl:ctlBlended, ctlRaw:ctl, ratio:ctlBlended>0?atl/ctlBlended:null};
+  return {atl, ctl, ratio:ctl>0?atl/ctl:null};
 }
 
 // ============================================================
@@ -2265,6 +2255,11 @@ function renderTrend(){
       confTrack.appendChild(div({class:'pbar-fill',style:{width:confPct+'%',background:isReliable?'#00c875':'#ffd166'}}));
       confRow.appendChild(confTrack);
       atlBox.appendChild(confRow);
+      // Early history caution
+      if(nLogged<28){
+        atlBox.appendChild(div({style:{fontSize:'9px',color:'#e8a020',lineHeight:'1.6',marginBottom:'4px',padding:'4px 6px',background:'#e8a02012',borderRadius:'4px',border:'1px solid #e8a02030'}},
+          'Early data -- ratio is directional only. A reading is available but CTL hasn\'t had enough history to fully stabilise. Use alongside your subjective feel and HRV, not as a standalone signal.'));
+      }
 
       const rc=!ratio?'#555':!isReliable?'#555':ratio>1.8?'#ff6b6b':ratio>1.4?'#ffd166':ratio<0.7?'#74b9ff':'#00ff87';
       const rl=!ratio?'--':!isReliable?'Building...':ratio>1.8?'Overreaching':ratio>1.4?'High load -- monitor':ratio<0.7?'Underloading':'Optimal';
@@ -2275,19 +2270,18 @@ function renderTrend(){
 
       const detailRow=div({style:{display:'flex',gap:'16px',marginBottom:'4px'}});
       detailRow.appendChild(span({style:{fontSize:'9px',color:'#444'}},'ATL (7d): '+atl.toFixed(1)));
-      detailRow.appendChild(span({style:{fontSize:'9px',color:'#444'}},'CTL (28d): '+ctl.toFixed(1)+(nLogged<42?' est.':'')));
+      detailRow.appendChild(span({style:{fontSize:'9px',color:'#444'}},'CTL (28d): '+ctl.toFixed(1)));
       atlBox.appendChild(detailRow);
 
       if(!isReliable){
         atlBox.appendChild(div({style:{fontSize:'9px',color:'#555',lineHeight:'1.6',marginTop:'2px'}},
           'Log 7+ sessions to unlock ratio ('+nLogged+' so far).'));
       } else if(ratio){
-        const projNote=nLogged<42?' CTL estimated from current load trend.':'';
         atlBox.appendChild(div({style:{fontSize:'9px',color:'#333',lineHeight:'1.6',marginTop:'2px'}},
-          (ratio>1.8?'Acute load well above chronic baseline. Prioritise recovery.':
+          ratio>1.8?'Acute load well above chronic baseline. Prioritise recovery.':
           ratio>1.4?'Load is elevated -- watch HRV and sleep. Normal for a build week with big vert.':
           ratio<0.7?'Training below chronic baseline. Safe to increase load if feeling good.':
-          'Load and recovery in balance.')+projNote));
+          'Load and recovery in balance.'));
       }
     }
     loadBody.appendChild(atlBox);
