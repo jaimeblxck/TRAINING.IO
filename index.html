@@ -83,7 +83,7 @@ body.light .pbar-fill{opacity:0.6;}
 // ============================================================
 const SK = {cfg:'utmb_cfg_v1',log:'utmb_log_v1',edits:'utmb_edits_v2',targets:'utmb_targets_v1',runs:'utmb_runs_v3'};
 const WTC = {BUILD:'#ffd166',PEAK:'#ff6b35',SHARPEN:'#ff9f43',TAPER:'#a29bfe',RACE:'#fd79a8',DELOAD:'#74b9ff',RECOVERY:'#55efc4'};
-const TC = {strength:'#7b9cff',intervals:'#ff9f43',easy:'#55efc4',long:'#a29bfe',race:'#fd79a8',ride:'#06b6d4',walk:'#94a3b8',sauna:'#fb923c',other:'#636e72',rest:'#3a3a4a'};
+const TC = {strength:'#7b9cff',intervals:'#ff9f43',easy:'#55efc4',long:'#a29bfe',race:'#fd79a8',ride:'#06b6d4',walk:'#94a3b8',sauna:'#fb923c',other:'#636e72',rest:'#5ba3a0'};
 const TL = {strength:'STR',intervals:'INT',easy:'EASY',long:'LONG',race:'RACE',ride:'RIDE',walk:'WALK',sauna:'SAUNA',other:'OTHER',rest:'REST'};
 // For display/toggle: run types consolidated, rest removed, ride added
 const ALL_TYPES = ['strength','intervals','easy','long','race','ride','walk','sauna','other','rest'];
@@ -361,8 +361,15 @@ function getDayActivities(wIdx,dIdx){
 }
 // Save activities array for a day
 function saveDayActivities(wIdx,dIdx,activities){
-  RUNS['w'+wIdx+'-d'+dIdx]=activities;
+  const key='w'+wIdx+'-d'+dIdx;
+  RUNS[key]=activities;
   S.set(SK.runs,RUNS);
+  // Activities are the plan -- clear stale EDITS slot so CSV data
+  // doesn't persist as a reference after any in-app change
+  if(EDITS[key]&&!EDITS[key]._sample){
+    delete EDITS[key];
+    S.set(SK.edits,EDITS);
+  }
 }
 // Compat shim -- returns first completed activity (for fatigue/RPE lookups)
 function getRunLog(wIdx,dIdx){
@@ -383,11 +390,11 @@ function getDayTotals(wIdx,dIdx){
 }
 // Get the effective km/vert/hrs for an activity -- actual if logged, planned if not
 function actEffective(a){
+  if(a.type==='rest') return {km:0,vert:0,hrs:0};
   const pf=v=>{ const n=parseFloat(v); return isNaN(n)?0:n; };
   if(a.completed){
     return {km:pf(a.actualKm), vert:pf(a.actualVert), hrs:pf(a.actualHrs)};
   }
-  // Unlogged: planned fields (TP import) take priority, then any pre-filled actuals
   return {
     km:  pf(a.planned?.km)  || pf(a.actualKm),
     vert:pf(a.planned?.vert)|| pf(a.actualVert),
@@ -398,8 +405,10 @@ function actEffective(a){
 // Sum effective metrics across all activities for a day (for display -- all types)
 function getDayPlanned(wIdx,dIdx,filterByCountTypes=false){
   const acts=getDayActivities(wIdx,dIdx);
-  // If no activities at all, day is empty — no planned metrics
+  // No activities — empty day
   if(acts.length===0) return {km:0,vert:0,hrs:0};
+  // All activities are rest — rest day, no planned metrics
+  if(acts.every(a=>a.type==='rest')) return {km:0,vert:0,hrs:0};
 
   const countTypes=CFG.countTypes||DEFAULT_COUNT_TYPES;
   const eligible=filterByCountTypes
@@ -875,7 +884,7 @@ function csvToEdits(csv){
   const headerIdx=lines.findIndex(l=>l.toLowerCase().includes('week')&&l.toLowerCase().includes('date')&&l.toLowerCase().includes('day'));
   const startIdx=headerIdx>=0?headerIdx+1:1;
 
-  const edits={};
+  const edits={...EDITS}; // start from existing edits so we can check for prior manual edits
   const newRuns={...RUNS};
   // Track activities per slot so we can append multiple rows for same day
   const slotActivities={}; // key -> [{label,type,km,vert,hrs,detail}]
@@ -950,22 +959,26 @@ function csvToEdits(csv){
       perf:'', exec:'', note:'',
       completed:false,
       ts:Date.now(),
-      planned:{km:a.km, vert:a.vert, hrs:a.hrs},
+      planned:{km:a.type==='rest'?0:a.km, vert:a.type==='rest'?0:a.vert, hrs:a.type==='rest'?0:a.hrs},
     }));
 
     if(toAdd.length) newRuns[key]=[...existing,...toAdd];
 
-    // Set EDITS slot to primary activity for label/type display
-    const primary=acts[0];
-    const totalKm=acts.reduce((s,a)=>s+a.km,0);
-    const totalVert=acts.reduce((s,a)=>s+a.vert,0);
-    const totalHrs=acts.reduce((s,a)=>s+a.hrs,0);
-    edits[key]={
-      label:acts.length>1?acts.map(a=>a.label).join(' + '):primary.label,
-      type:primary.type,
-      detail:primary.detail,
-      km:totalKm, vert:totalVert, hrs:totalHrs,
-    };
+    // Only write EDITS slot if not already manually edited (preserve in-app changes)
+    if(!edits[key]||edits[key]._sample){
+      const primary=acts[0];
+      const totalKm=acts.reduce((s,a)=>s+a.km,0);
+      const totalVert=acts.reduce((s,a)=>s+a.vert,0);
+      const totalHrs=acts.reduce((s,a)=>s+a.hrs,0);
+      newEdits[key]={
+        label:acts.length>1?acts.map(a=>a.label).join(' + '):primary.label,
+        type:primary.type,
+        detail:primary.detail,
+        km:primary.type==='rest'?0:totalKm,
+        vert:primary.type==='rest'?0:totalVert,
+        hrs:primary.type==='rest'?0:totalHrs,
+      };
+    }
   });
 
   RUNS=newRuns; S.set(SK.runs,RUNS);
@@ -1865,10 +1878,11 @@ function renderPlan(){
     topRow.appendChild(bWrap);
 
     // Totals right side: actuals if done, planned if future
+    const allRest=activities.length>0&&activities.every(a=>a.type==='rest');
     if(dayDone&&(totals.km>0||totals.hrs>0)){
       topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',whiteSpace:'nowrap'}},
         (totals.km>0?Math.round(totals.km)+'k ':'')+fmtHrTot(totals.hrs)));
-    } else if(!dayDone){
+    } else if(!dayDone&&!allRest){
       const dp=getDayPlanned(wIdx,dIdx,false);
       const dpStr=(dp.km>0?dp.km+'k ':'')+fmtHms(dp.hrs);
       if(dpStr.trim()) topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-faint)',whiteSpace:'nowrap'}},dpStr));
