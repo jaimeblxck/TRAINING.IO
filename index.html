@@ -923,7 +923,7 @@ function csvToEdits(csv){
       detail=(cols[7]||'').replace(/^"|"$/g,'').trim();
     }
 
-    if(!label) continue;
+    if(!label){ if(type==='rest') label='Rest'; else continue; }
     type=autoUpgradeType(type,km);
     if(!TYPE_KEY[type]) type='easy';
 
@@ -970,7 +970,7 @@ function csvToEdits(csv){
       const totalKm=acts.reduce((s,a)=>s+a.km,0);
       const totalVert=acts.reduce((s,a)=>s+a.vert,0);
       const totalHrs=acts.reduce((s,a)=>s+a.hrs,0);
-      newEdits[key]={
+      edits[key]={
         label:acts.length>1?acts.map(a=>a.label).join(' + '):primary.label,
         type:primary.type,
         detail:primary.detail,
