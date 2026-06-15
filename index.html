@@ -907,9 +907,17 @@ function csvToEdits(csv){
     if(cols.length<3) continue;
 
     let wk,dateStr,dayName,weekType,label,type,km,vert,hrs,detail;
-    const hasDate=cols[1]&&cols[1].match(/^\d{4}-\d{2}-\d{2}$/);
+    function normaliseDate(raw){
+      if(!raw) return '';
+      if(/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+      const m=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+      return raw;
+    }
+    const rawDate=cols[1]||'';
+    const hasDate=rawDate.match(/^\d{4}-\d{2}-\d{2}$/)||rawDate.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/);
     if(hasDate){
-      wk=parseInt(cols[0]); dateStr=cols[1]; dayName=cols[2];
+      wk=parseInt(cols[0]); dateStr=normaliseDate(rawDate); dayName=cols[2];
       weekType=(cols[3]||'').toUpperCase();
       label=(cols[4]||'').replace(/^"|"$/g,'').trim();
       type=(cols[5]||'easy').trim().toLowerCase()||'easy';
