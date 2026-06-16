@@ -405,9 +405,9 @@ function actEffective(a){
 // Sum effective metrics across all activities for a day (for display -- all types)
 function getDayPlanned(wIdx,dIdx,filterByCountTypes=false){
   const acts=getDayActivities(wIdx,dIdx);
-  // No activities — empty day
+  // No activities -- empty day
   if(acts.length===0) return {km:0,vert:0,hrs:0};
-  // All activities are rest — rest day, no planned metrics
+  // All activities are rest -- rest day, no planned metrics
   if(acts.every(a=>a.type==='rest')) return {km:0,vert:0,hrs:0};
 
   const countTypes=CFG.countTypes||DEFAULT_COUNT_TYPES;
@@ -1898,7 +1898,7 @@ function renderPlan(){
     topRow.appendChild(span({style:{fontSize:'10px',color:'#333',flexShrink:'0'}},isExp?'▲':'▼'));
     rowBtn.appendChild(topRow);
 
-    // Bottom line: activity titles — only shown when activities exist
+    // Bottom line: activity titles -- only shown when activities exist
     if(activities.length>0){
       const labels=activities.map(a=>a.label).filter(Boolean);
       if(labels.length){
@@ -2152,7 +2152,7 @@ function renderTrend(){
     return wrap2;
   }
 
-  // ── Single unified Load & Readiness card with 7/14/28 toggle ──
+  // -- Single unified Load & Readiness card with 7/14/28 toggle --
   const loadCard=card([],{marginBottom:'14px'});
   const loadHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
   const loadTitle=div({style:{display:'flex',alignItems:'center',gap:'6px'}});
@@ -2196,6 +2196,7 @@ function renderTrend(){
 
   function rebuildLoad(){
     loadBody.innerHTML='';
+    try{
     const days=buildDays(loadRange);
     const compact=loadRange>=20;
     loadBody.appendChild(buildChart(days, compact?32:44, compact?20:26, compact));
@@ -2268,10 +2269,10 @@ function renderTrend(){
     } else {
       const confPct=Math.min(100,Math.round(nLogged/28*100));
       const confRow=div({style:{marginBottom:'8px'}});
-      confRow.appendChild(div({style:{display:'flex',justifyContent:'space-between',marginBottom:'2px'}}),[
-        span({style:{fontSize:'8px',color:'#333'}},'Baseline confidence'),
-        span({style:{fontSize:'8px',color:isReliable?'#00ff87':'#ffd166'}},confPct+'% ('+(isReliable?'reliable':'building')+' -- '+nLogged+'/28 days)'),
-      ]);
+      const confLabelRow=div({style:{display:'flex',justifyContent:'space-between',marginBottom:'2px'}});
+      confLabelRow.appendChild(span({style:{fontSize:'8px',color:'#333'}},'Baseline confidence'));
+      confLabelRow.appendChild(span({style:{fontSize:'8px',color:isReliable?'#00ff87':'#ffd166'}},confPct+'% ('+(isReliable?'reliable':'building')+' -- '+nLogged+'/28 days)'));
+      confRow.appendChild(confLabelRow);
       const confTrack=div({class:'pbar-track'});
       confTrack.style.setProperty('--pbar-color',isReliable?'#00c875':'#ffd166');
       confTrack.appendChild(div({class:'pbar-fill',style:{width:confPct+'%',background:isReliable?'#00c875':'#ffd166'}}));
@@ -2307,6 +2308,9 @@ function renderTrend(){
       }
     }
     loadBody.appendChild(atlBox);
+    } catch(e){
+      loadBody.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Load chart unavailable: '+e.message));
+    }
   }
 
   [7,14,28].forEach(n=>{
@@ -2333,7 +2337,7 @@ function renderTrend(){
   wrap.appendChild(loadCard);
 
 
-  // ── Compliance tracker ─────────────────────────────────────────
+  // -- Compliance tracker -----------------------------------------
   const compCard=card([],{marginBottom:'14px'});
   const compHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}});
   compHdr.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'Session Compliance'));
@@ -2479,8 +2483,155 @@ function renderTrend(){
   compCard.appendChild(div({style:{fontSize:'9px',color:'#555',marginBottom:'8px',lineHeight:'1.6'}},'Based on the Performance rating (1-5) logged per session. 3 = met plan (baseline).'));
   compCard.appendChild(compBody);
   buildCompliance();
+  // -- Vert ratio chart -------------------------------------------
+  const vertCard=card([],{marginBottom:'14px'});
+  const vertHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
+  vertHdr.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'Vert Ratio (m/km)'));
+  let vertRange=7;
+  const vertToggle=div({style:{display:'flex',gap:'4px'}});
+  const vertBody=div({});
+
+  function buildVertChart(){
+    vertBody.innerHTML='';
+    try{
+      const now=new Date();
+      const blockMon=getBlockMonday();
+      const plan=getPlan();
+      // Only run/trail types contribute
+      const RUN_TYPES=['easy','long','intervals','race'];
+      const days=[];
+      let totalVert=0, totalKm=0;
+
+      for(let i=vertRange-1;i>=0;i--){
+        const d=new Date(now); d.setDate(now.getDate()-i);
+        const ds=localDateStr(d);
+        const dayLabel=['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()];
+        const isWeekStart=d.getDay()===1;
+        const isToday=ds===today();
+
+        const dd=new Date(ds+'T12:00:00');
+        const diffD=Math.floor((dd-blockMon)/86400000);
+        let ratio=null;
+
+        if(!isNaN(diffD)&&diffD>=0){
+          const wI=Math.floor(diffD/7);
+          if(wI<plan.length){
+            const dow=dd.getDay();
+            const dI=plan[wI].days.findIndex(s=>dowIndex(s.day)===dow);
+            if(dI>=0){
+              const acts=getDayActivities(wI,dI).filter(a=>a.completed&&RUN_TYPES.includes(a.type||'easy'));
+              const dayKm=acts.reduce((s,a)=>s+parseFloat(a.actualKm||0),0);
+              const dayVert=acts.reduce((s,a)=>s+parseFloat(a.actualVert||0),0);
+              if(dayKm>0&&dayVert>0){
+                ratio=Math.round(dayVert/dayKm);
+                totalVert+=dayVert;
+                totalKm+=dayKm;
+              }
+            }
+          }
+        }
+        days.push({ds,dayLabel,isWeekStart,isToday,ratio});
+      }
+
+      const avg=totalKm>0?Math.round(totalVert/totalKm):null;
+      const maxRatio=Math.max(...days.map(d=>d.ratio||0),1);
+      const BAR_H=60;
+      const compact=vertRange>=20;
+      const gap=compact?2:4;
+
+      // Chart
+      const chart=div({style:{display:'flex',gap:gap+'px',alignItems:'flex-end',height:(BAR_H+16)+'px',position:'relative'}});
+
+      // Average line overlay
+      if(avg){
+        const avgPct=Math.min(1,avg/maxRatio);
+        const avgY=BAR_H-(avgPct*BAR_H);
+        const avgLine=div({style:{position:'absolute',left:'0',right:'0',top:avgY+'px',height:'1px',background:'#ffd166',opacity:'0.6',zIndex:'2',pointerEvents:'none'}});
+        chart.appendChild(avgLine);
+      }
+
+      days.forEach(day=>{
+        const col=div({style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',height:(BAR_H+16)+'px',position:'relative',zIndex:'1'}});
+        if(day.ratio!==null){
+          const bh=Math.max(2,Math.round((day.ratio/maxRatio)*BAR_H));
+          const color=day.ratio>80?'#ff9f43':day.ratio>40?'#a29bfe':'#60a5fa';
+          col.appendChild(div({style:{width:'100%',height:bh+'px',background:color,borderRadius:'2px 2px 0 0',opacity:'0.85',position:'absolute',bottom:'16px'}}));
+          if(!compact&&bh>18){
+            col.appendChild(div({style:{position:'absolute',bottom:(bh+18)+'px',left:'0',right:'0',textAlign:'center',fontSize:'7px',color:color}},day.ratio+''));
+          }
+        }
+        if(day.isWeekStart) col.appendChild(div({style:{position:'absolute',left:'0',top:'0',bottom:'16px',width:'1px',background:'#2a2a4a'}}));
+        // Day label in its own element -- no querySelector needed
+        const dayLblEl=div({style:{position:'absolute',bottom:'0',left:'0',right:'0',height:'16px',display:'flex',alignItems:'center',justifyContent:'center'}});
+        if(!compact) dayLblEl.appendChild(span({style:{fontSize:'7px',color:day.isToday?'var(--text)':'#333'}},day.dayLabel));
+        col.appendChild(dayLblEl);
+        chart.appendChild(col);
+      });
+      vertBody.appendChild(chart);
+
+      // Legend + average
+      const leg=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'6px'}});
+      const legLeft=div({style:{display:'flex',gap:'10px'}});
+      [['#60a5fa','<40m/km'],['#a29bfe','40-80m/km'],['#ff9f43','>80m/km']].forEach(([c,l])=>{
+        const item=div({style:{display:'flex',alignItems:'center',gap:'3px'}});
+        item.appendChild(div({style:{width:'8px',height:'8px',background:c,borderRadius:'1px',flexShrink:'0'}}));
+        item.appendChild(span({style:{fontSize:'8px',color:'#555'}},l));
+        legLeft.appendChild(item);
+      });
+      leg.appendChild(legLeft);
+      if(avg){
+        const avgEl=div({style:{display:'flex',alignItems:'center',gap:'5px'}});
+        avgEl.appendChild(div({style:{width:'12px',height:'1px',background:'#ffd166'}}));
+        avgEl.appendChild(span({style:{fontSize:'9px',color:'#ffd166'}},avg+'m/km avg'));
+        leg.appendChild(avgEl);
+      } else {
+        leg.appendChild(span({style:{fontSize:'9px',color:'#333'}},'Log runs with vert to see ratio'));
+      }
+      vertBody.appendChild(leg);
+
+      // Week labels for 14/28
+      if(vertRange>7){
+        const wlRow=div({style:{display:'flex',marginTop:'2px'}});
+        const nowRef=new Date();
+        for(let i=vertRange-1;i>=0;i--){
+          const dd2=new Date(nowRef); dd2.setDate(nowRef.getDate()-i);
+          const cell=div({style:{flex:'1',textAlign:'center'}});
+          if(dd2.getDay()===1&&i<vertRange-1) cell.appendChild(span({style:{fontSize:'7px',color:'#333'}},fmtDate(dd2)));
+          wlRow.appendChild(cell);
+        }
+        vertBody.appendChild(wlRow);
+      }
+
+    }catch(e){
+      vertBody.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Vert ratio unavailable: '+e.message));
+    }
+  }
+
+  [7,14,28].forEach(n=>{
+    const b=btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',
+      background:vertRange===n?'var(--bg-tab-active)':'var(--bg-input)',
+      border:'1px solid '+(vertRange===n?'var(--border-btn)':'var(--border)'),
+      color:vertRange===n?'var(--text)':'var(--text-dim)'},
+      onclick:()=>{
+        vertRange=n;
+        vertToggle.querySelectorAll('button').forEach((b2,i2)=>{
+          const nn=[7,14,28][i2];
+          b2.style.background=nn===n?'var(--bg-tab-active)':'var(--bg-input)';
+          b2.style.borderColor=nn===n?'var(--border-btn)':'var(--border)';
+          b2.style.color=nn===n?'var(--text)':'var(--text-dim)';
+        });
+        buildVertChart();
+      }},n+'d');
+    vertToggle.appendChild(b);
+  });
+  vertHdr.appendChild(vertToggle);
+  vertCard.appendChild(vertHdr);
+  vertCard.appendChild(div({style:{fontSize:'9px',color:'#555',marginBottom:'8px'}},'m/km for completed runs only. Non-running days excluded from average.'));
+  vertCard.appendChild(vertBody);
+  buildVertChart();
+  wrap.appendChild(vertCard);
   wrap.appendChild(compCard);
-  // Recent log
+
   const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14);
   wrap.appendChild(div({class:'section-title'},'Recent Log'));
   if(!entries.length) wrap.appendChild(div({style:{fontSize:'11px',color:'#333'}},'No entries yet.'));
@@ -2523,7 +2674,7 @@ function renderSettings(){
   wrap.appendChild(apCard);
 
   // Config card
-  // ── Section 1: Configuration (HRV/RHR + block dates) ─────────
+  // -- Section 1: Configuration (HRV/RHR + block dates) ---------
   const cfgCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'12px'});
   cfgCard.appendChild(div({class:'section-title'},'Configuration'));
 
@@ -2586,7 +2737,7 @@ function renderSettings(){
   cfgCard.appendChild(savCfgBtn);
   wrap.appendChild(cfgCard);
 
-  // ── Section 2: Races (auto-save on change, confirm on delete) ─
+  // -- Section 2: Races (auto-save on change, confirm on delete) -
   const racesCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
   racesCard.appendChild(div({class:'section-title'},'Races'));
 
