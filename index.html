@@ -1081,7 +1081,7 @@ function renderHeader(){
     div({style:{textAlign:'right'}},[
       span({style:{fontSize:'26px',fontFamily:"'Bebas Neue',cursive",color:daysColor,lineHeight:'1',display:'block'}},daysNum!==null?daysNum+'':'--'),
       span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em',display:'block'}},nextRace?'DAYS TO '+nextRace.name.toUpperCase().split(' ')[0]:'DAYS TO RACE'),
-      nextRace?span({style:{fontSize:'9px',color:'#333',display:'block',marginTop:'1px'}},nextRace.date+(nextRace.dist?' · '+nextRace.dist:'')):null,
+      nextRace?span({style:{fontSize:'9px',color:'#333',display:'block',marginTop:'1px'}},nextRace.date+((nextRace.km||nextRace.dist)?' · '+(nextRace.km?nextRace.km+'km':nextRace.dist):'')):null,
     ]),
   ]));
 
@@ -2400,7 +2400,7 @@ function renderTrend(){
       const below=rated.filter(d=>d.acts.some(a=>parseInt(a.perf)<3)).length;
 
       // Chart
-      const BAR_H=28;
+      const BAR_H=17;
       const chartH=BAR_H*2+2+BAR_H*2;
 
       const zeroLine=div({style:{position:'absolute',left:'0',right:'0',top:BAR_H*2+'px',height:'1px',background:'#2a2a4a',zIndex:'1'}});
@@ -2511,7 +2511,7 @@ function renderTrend(){
 
         const dd=new Date(ds+'T12:00:00');
         const diffD=Math.floor((dd-blockMon)/86400000);
-        let ratio=null;
+        let ratio=null, isRace=false;
 
         if(!isNaN(diffD)&&diffD>=0){
           const wI=Math.floor(diffD/7);
@@ -2530,7 +2530,19 @@ function renderTrend(){
             }
           }
         }
-        days.push({ds,dayLabel,isWeekStart,isToday,ratio});
+        // Fallback: no logged activity for this day -- check for a race with known km/vert
+        if(ratio===null){
+          const races=CFG.races||[];
+          const race=races.find(r=>r.date===ds);
+          if(race){
+            const rk=parseFloat(race.km)||parseFloat(race.dist), rv=parseFloat(race.vert);
+            if(rk>0&&rv>0){
+              ratio=Math.round(rv/rk);
+              isRace=true; // shown but excluded from training average
+            }
+          }
+        }
+        days.push({ds,dayLabel,isWeekStart,isToday,ratio,isRace});
       }
 
       const avg=totalKm>0?Math.round(totalVert/totalKm):null;
@@ -2554,10 +2566,10 @@ function renderTrend(){
         const col=div({style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',height:(BAR_H+16)+'px',position:'relative',zIndex:'1'}});
         if(day.ratio!==null){
           const bh=Math.max(2,Math.round((day.ratio/maxRatio)*BAR_H));
-          const color=day.ratio>80?'#ff9f43':day.ratio>40?'#a29bfe':'#60a5fa';
-          col.appendChild(div({style:{width:'100%',height:bh+'px',background:color,borderRadius:'2px 2px 0 0',opacity:'0.85',position:'absolute',bottom:'16px'}}));
+          const color=day.isRace?'#fd79a8':day.ratio>80?'#ff9f43':day.ratio>40?'#a29bfe':'#60a5fa';
+          col.appendChild(div({style:{width:'100%',height:bh+'px',background:color,borderRadius:'2px 2px 0 0',opacity:day.isRace?'0.55':'0.85',position:'absolute',bottom:'16px',border:day.isRace?'1px dashed '+color:'none'}}));
           if(!compact&&bh>18){
-            col.appendChild(div({style:{position:'absolute',bottom:(bh+18)+'px',left:'0',right:'0',textAlign:'center',fontSize:'7px',color:color}},day.ratio+''));
+            col.appendChild(div({style:{position:'absolute',bottom:(bh+18)+'px',left:'0',right:'0',textAlign:'center',fontSize:'7px',color:color}},day.ratio+(day.isRace?'*':'')));
           }
         }
         if(day.isWeekStart) col.appendChild(div({style:{position:'absolute',left:'0',top:'0',bottom:'16px',width:'1px',background:'#2a2a4a'}}));
@@ -2570,24 +2582,55 @@ function renderTrend(){
       vertBody.appendChild(chart);
 
       // Legend + average
-      const leg=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'6px'}});
-      const legLeft=div({style:{display:'flex',gap:'10px'}});
+      const leg=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'6px',flexWrap:'wrap',gap:'4px'}});
+      const legLeft=div({style:{display:'flex',gap:'10px',flexWrap:'wrap'}});
       [['#60a5fa','<40m/km'],['#a29bfe','40-80m/km'],['#ff9f43','>80m/km']].forEach(([c,l])=>{
         const item=div({style:{display:'flex',alignItems:'center',gap:'3px'}});
         item.appendChild(div({style:{width:'8px',height:'8px',background:c,borderRadius:'1px',flexShrink:'0'}}));
         item.appendChild(span({style:{fontSize:'8px',color:'#555'}},l));
         legLeft.appendChild(item);
       });
+      if(days.some(d=>d.isRace)){
+        const item=div({style:{display:'flex',alignItems:'center',gap:'3px'}});
+        item.appendChild(div({style:{width:'8px',height:'8px',background:'#fd79a8',opacity:'0.55',border:'1px dashed #fd79a8',borderRadius:'1px',flexShrink:'0'}}));
+        item.appendChild(span({style:{fontSize:'8px',color:'#555'}},'race profile*'));
+        legLeft.appendChild(item);
+      }
       leg.appendChild(legLeft);
+
+      // Right side: average + race vert ratio benchmark, on the same line
+      const legRight=div({style:{display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}});
       if(avg){
         const avgEl=div({style:{display:'flex',alignItems:'center',gap:'5px'}});
         avgEl.appendChild(div({style:{width:'12px',height:'1px',background:'#ffd166'}}));
         avgEl.appendChild(span({style:{fontSize:'9px',color:'#ffd166'}},avg+'m/km avg'));
-        leg.appendChild(avgEl);
+        legRight.appendChild(avgEl);
       } else {
-        leg.appendChild(span({style:{fontSize:'9px',color:'#333'}},'Log runs with vert to see ratio'));
+        legRight.appendChild(span({style:{fontSize:'9px',color:'#333'}},'Log runs with vert to see ratio'));
       }
+      // Race readouts -- always shown as a benchmark (e.g. "UTMB: 56m/km"),
+      // independent of whether the race date falls within the visible window
+      const raceEntries=[];
+      (CFG.races||[]).forEach(race=>{
+        const rk=parseFloat(race.km)||parseFloat(race.dist), rv=parseFloat(race.vert);
+        if(rk>0&&rv>0){
+          const raceRatio=Math.round(rv/rk);
+          const rawName=(race.name||'Race').trim();
+          const label=rawName.length>10?'race':rawName;
+          raceEntries.push(label+': '+raceRatio+'m/km');
+        }
+      });
+      if(raceEntries.length){
+        legRight.appendChild(span({style:{fontSize:'9px',color:'#555'}},'\u00b7'));
+        legRight.appendChild(span({style:{fontSize:'9px',color:'#fd79a8'}},raceEntries.join(', ')));
+      }
+      leg.appendChild(legRight);
+
       vertBody.appendChild(leg);
+      if(days.some(d=>d.isRace)){
+        vertBody.appendChild(div({style:{fontSize:'8px',color:'#444',marginTop:'3px'}},'*From race config, not yet logged -- excluded from average.'));
+      }
+
 
       // Week labels for 14/28
       if(vertRange>7){
@@ -2626,7 +2669,7 @@ function renderTrend(){
   });
   vertHdr.appendChild(vertToggle);
   vertCard.appendChild(vertHdr);
-  vertCard.appendChild(div({style:{fontSize:'9px',color:'#555',marginBottom:'8px'}},'m/km for completed runs only. Non-running days excluded from average.'));
+  vertCard.appendChild(div({style:{fontSize:'9px',color:'#555',marginBottom:'8px'}},'m/km for completed runs only. Non-running days excluded.'));
   vertCard.appendChild(vertBody);
   buildVertChart();
   wrap.appendChild(vertCard);
@@ -2760,7 +2803,7 @@ function renderSettings(){
   function renderRacesEditor(){
     racesContainer.innerHTML='';
     if(!cfgForm.races||!cfgForm.races.length){
-      cfgForm.races=[{name:'',date:'',dist:''}];
+      cfgForm.races=[{name:'',date:'',dist:'',km:'',vert:''}];
     }
     cfgForm.races.forEach((r,i)=>{
       const raceCard=div({style:{padding:'10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'7px',marginBottom:'8px'}});
@@ -2770,19 +2813,24 @@ function renderSettings(){
       const nameWrap=div({style:{marginBottom:'8px'}});
       nameWrap.appendChild(lbl('Race name')); nameWrap.appendChild(nameI);
       raceCard.appendChild(nameWrap);
-      // Date + dist + delete
-      const row2=div({style:{display:'flex',gap:'8px',alignItems:'flex-end'}});
+      // Date + distance (km) + delete
+      const row2=div({style:{display:'flex',gap:'8px',alignItems:'flex-end',marginBottom:'8px'}});
       const dateWrap=div({style:{flex:'1',minWidth:0}});
       dateWrap.appendChild(lbl('Date'));
       const dateI=inp({class:'inp',type:'date',value:r.date});
       dateI.addEventListener('input',()=>{cfgForm.races[i].date=dateI.value; saveRaces();});
       dateWrap.appendChild(dateI);
       row2.appendChild(dateWrap);
-      const distWrap=div({style:{width:'80px',flexShrink:'0'}});
-      distWrap.appendChild(lbl('Distance'));
-      const distI=inp({class:'inp',type:'text',value:r.dist||'',placeholder:'50km'});
+      const distWrap=div({style:{width:'110px',flexShrink:'0'}});
+      distWrap.appendChild(lbl('Distance (km)'));
+      const distInitVal=(r.km!==undefined&&r.km!=='')?r.km:(parseFloat(r.dist)||'');
+      const distI=inp({class:'inp',type:'number',value:distInitVal,placeholder:'optional, e.g. 50'});
       distI.style.fontSize='12px';
-      distI.addEventListener('input',()=>{cfgForm.races[i].dist=distI.value; saveRaces();});
+      distI.addEventListener('input',()=>{
+        cfgForm.races[i].km=distI.value;
+        cfgForm.races[i].dist=distI.value?distI.value+'km':'';
+        saveRaces();
+      });
       distWrap.appendChild(distI);
       row2.appendChild(distWrap);
       const delBtn=btn({style:{padding:'6px 9px',borderRadius:'5px',background:'#1a0a0a',border:'1px solid #2a1a1a',color:'#ff6b6b',fontSize:'13px',flexShrink:'0',alignSelf:'flex-end'},
@@ -2800,13 +2848,24 @@ function renderSettings(){
         }},'\u00d7');
       row2.appendChild(delBtn);
       raceCard.appendChild(row2);
+      // Vert -- optional, used for the Vert Ratio chart on race day. Leave blank if unknown.
+      const row3=div({style:{display:'flex',gap:'8px',alignItems:'flex-end'}});
+      const vertWrap=div({style:{flex:'1',minWidth:0}});
+      vertWrap.appendChild(lbl('Vert (m)'));
+      const vertI=inp({class:'inp',type:'number',value:r.vert||'',placeholder:'optional, e.g. 2500'});
+      vertI.style.fontSize='12px';
+      vertI.addEventListener('input',()=>{cfgForm.races[i].vert=vertI.value; saveRaces();});
+      vertWrap.appendChild(vertI);
+      row3.appendChild(vertWrap);
+      raceCard.appendChild(row3);
+      raceCard.appendChild(div({style:{fontSize:'8px',color:'#444',marginTop:'5px',lineHeight:'1.5'}},'Distance and Vert are both optional -- fill in both to show this race\'s vert ratio on the Trend page. Leave blank if unknown.'));
       racesContainer.appendChild(raceCard);
     });
     // Add race button
     racesContainer.appendChild(btn({style:{padding:'8px 12px',borderRadius:'5px',fontSize:'10px',background:'var(--bg-input)',border:'1px dashed var(--border-btn)',color:'var(--text-mute)',width:'100%'},
       onclick:()=>{
         if(!cfgForm.races) cfgForm.races=[];
-        cfgForm.races.push({name:'',date:'',dist:''});
+        cfgForm.races.push({name:'',date:'',dist:'',km:'',vert:''});
         saveRaces();
         renderRacesEditor();
       }},'+ Add race'));
@@ -3260,23 +3319,18 @@ function showOnboarding(){
 
       // Race section
       const raceSect=div({style:{marginBottom:'24px'}});
-      raceSect.appendChild(div({style:{fontSize:'11px',color:'#888',marginBottom:'10px',lineHeight:'1.6'}},'Your next race. Sets the countdown and block length. Add more races in Settings later.'));
+      raceSect.appendChild(div({style:{fontSize:'11px',color:'#888',marginBottom:'10px',lineHeight:'1.6'}},'Your next race. Sets the countdown and block length. Add distance, vert and more races in Settings later.'));
       const raceGrid=div({style:{display:'flex',flexDirection:'column',gap:'10px'}});
-      let raceName=CFG.races?.[0]?.name||'', raceDate=CFG.races?.[0]?.date||'', raceDist=CFG.races?.[0]?.dist||'';
+      let raceName=CFG.races?.[0]?.name||'', raceDate=CFG.races?.[0]?.date||'';
       let blockStart=CFG.blockStartStr||new Date().toISOString().split('T')[0];
       const rni=inp({class:'inp',type:'text',value:raceName,placeholder:'UTMB 2026'});
       rni.addEventListener('input',()=>raceName=rni.value);
       const rdi=inp({class:'inp',type:'date',value:raceDate});
       rdi.addEventListener('input',()=>raceDate=rdi.value);
-      const rdi2=inp({class:'inp',type:'text',value:raceDist,placeholder:'100km'});
-      rdi2.addEventListener('input',()=>raceDist=rdi2.value);
       const bsi=inp({class:'inp',type:'date',value:blockStart});
       bsi.addEventListener('input',()=>blockStart=bsi.value);
       raceGrid.appendChild(div({},[lbl('Race name'),rni]));
-      const rdRow=div({class:'grid2'});
-      rdRow.appendChild(div({},[lbl('Race date'),rdi]));
-      rdRow.appendChild(div({},[lbl('Distance'),rdi2]));
-      raceGrid.appendChild(rdRow);
+      raceGrid.appendChild(div({},[lbl('Race date'),rdi]));
       raceGrid.appendChild(div({},[lbl('Training block start'),bsi]));
       raceGrid.appendChild(div({style:{fontSize:'9px',color:'#333'}},'Block start is the Monday your training begins. Weeks are calculated from there.'));
       raceSect.appendChild(raceGrid);
@@ -3294,7 +3348,7 @@ function showOnboarding(){
         CFG.rhrLow=rhrLow; CFG.rhrHigh=rhrHigh;
         CFG.blockStartStr=blockStart;
         CFG.raceDateStr=raceDate; CFG.raceName=raceName;
-        CFG.races=[{name:raceName,date:raceDate,dist:raceDist}];
+        CFG.races=[{name:raceName,date:raceDate,dist:'',km:'',vert:''}];
         S.set(SK.cfg,CFG);
         syncTargets();
         if(Object.keys(EDITS).length===0) applySamplePlan();
