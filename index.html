@@ -151,6 +151,7 @@ const S = {
 // ============================================================
 let CFG = S.get(SK.cfg, DEF_CFG);
 let LOG = S.get(SK.log, {});
+migrateLogEntries();
 let EDITS = S.get(SK.edits, {});
 let TARGETS = S.get(SK.targets, null) || buildTargets();
 let RUNS = S.get(SK.runs, {});
@@ -464,11 +465,76 @@ function scoreRHR(v){
   if(n<=hi) return 70-((n-lo)/(hi-lo))*20;
   return Math.max(0,50-((n-hi)/10)*30);
 }
-function scoreSleep(v){ return !v?null:v==='great'?90:v==='ok'?60:25; }
-function scoreSub(legs,mood,mot){
-  const vals=[legs,mood,mot].filter(x=>x!=='').map(Number);
-  if(!vals.length) return null;
-  return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length/5*100);
+function scoreSleep(v){
+  if(!v) return null;
+  return v==='excellent'?90:v==='good'?78:v==='fair'?55:v==='poor'?30:v==='sick'?15:null;
+}
+// Legs weighted 2x against Mood -- legs matters more for runners.
+// Degrades gracefully if only one of the two is filled in.
+function scoreSub(legs,mood){
+  const lv=parseFloat(legs), mv=parseFloat(mood);
+  let sum=0, weight=0;
+  if(!isNaN(lv)){ sum+=lv*2; weight+=2; }
+  if(!isNaN(mv)){ sum+=mv; weight+=1; }
+  if(!weight) return null;
+  return Math.round((sum/weight)/5*100);
+}
+// Recent-effort penalty applied multiplicatively to the combined readiness score.
+// <=5 no impact -- 5-8 ramps 0%->10% -- 8-10 ramps 10%->25% (steeper) -- >10 capped at 25%.
+function rpePenaltyPct(effRPE){
+  if(effRPE==null||effRPE<=5) return 0;
+  if(effRPE<=8) return (effRPE-5)/3*0.10;
+  if(effRPE<=10) return 0.10+(effRPE-8)/2*0.15;
+  return 0.25;
+}
+// Auto-calculated effective RPE: max RPE logged yesterday + half of max RPE the day before.
+// Replaces the old manual "Yesterday RPE" dropdown.
+function computeEffectiveRPE(){
+  function maxRPEForDate(ds){
+    const dd=new Date(ds+'T12:00:00');
+    const diffDays=Math.floor((dd-getBlockMonday())/86400000);
+    if(diffDays<0) return null;
+    const plan=getPlan();
+    const wI=Math.floor(diffDays/7);
+    if(!plan[wI]) return null;
+    const dow=dd.getDay();
+    const dI=plan[wI].days.findIndex(s=>dowIndex(s.day)===dow);
+    if(dI<0) return null;
+    const acts=getDayActivities(wI,dI).filter(a=>a.completed);
+    if(!acts.length) return null;
+    const mx=acts.reduce((max,a)=>Math.max(max,parseInt(a.exec||0)||0),0);
+    return mx>0?mx:null;
+  }
+  const yd=new Date(); yd.setDate(yd.getDate()-1);
+  const dbd=new Date(); dbd.setDate(dbd.getDate()-2);
+  const ydMax=maxRPEForDate(localDateStr(yd));
+  const dbdMax=maxRPEForDate(localDateStr(dbd));
+  if(ydMax==null&&dbdMax==null) return null;
+  return (ydMax||0)+0.5*(dbdMax||0);
+}
+// One-time, idempotent migration of historical LOG entries to the new readiness model.
+// Sleep: 'great'->'excellent', 'ok'->'good' ('poor' unchanged).
+// Mood+Motivation: merged into a single 'mood' field (averaged, rounded) where both existed.
+// Safe to call on every boot -- entries already migrated have no 'motivation' key, so they're skipped.
+function migrateLogEntries(){
+  let changed=false;
+  Object.keys(LOG).forEach(date=>{
+    const e=LOG[date];
+    if(!e) return;
+    if(e.sleep==='great'){ e.sleep='excellent'; changed=true; }
+    else if(e.sleep==='ok'){ e.sleep='good'; changed=true; }
+    if(e.motivation!==undefined){
+      const mv=parseFloat(e.mood), tv=parseFloat(e.motivation);
+      let merged=null;
+      if(!isNaN(mv)&&!isNaN(tv)) merged=Math.round((mv+tv)/2);
+      else if(!isNaN(mv)) merged=Math.round(mv);
+      else if(!isNaN(tv)) merged=Math.round(tv);
+      if(merged!=null) e.mood=String(merged);
+      delete e.motivation;
+      changed=true;
+    }
+  });
+  if(changed) S.set(SK.log,LOG);
 }
 // 7-day weighted fatigue load -- more recent days weighted more heavily
 // RPE/perf scores cast a recovery shadow that decays over days
@@ -768,16 +834,21 @@ function fieldGroup(labelText, inputEl){
   wrap.appendChild(inputEl);
   return wrap;
 }
-function numInp(labelText,val,cb,unit,hint,hintColor){
+function numInp(labelText,val,cb,unit,hint,hintColor,centered){
   const i=inp({type:'number',class:'inp',value:val||'',placeholder:''});
+  if(centered) i.style.textAlign='center';
   i.addEventListener('input',()=>cb(i.value));
-  const row=div({class:'flex'},[i]);
+  const row=div({class:'flex',style:centered?{justifyContent:'center'}:{}},[i]);
   if(unit) row.appendChild(span({style:{fontSize:'10px',color:'#4a4a6a',whiteSpace:'nowrap'}},unit));
   const wrap=div({});
-  if(labelText) wrap.appendChild(lbl(labelText));
+  if(labelText){
+    const l=lbl(labelText);
+    if(centered) l.style.textAlign='center';
+    wrap.appendChild(l);
+  }
   wrap.appendChild(row);
   if(hint){
-    const h=span({class:'hint',style:{color:hintColor||'#666'}},hint);
+    const h=span({class:'hint',style:{color:hintColor||'#666',display:centered?'block':'inline',textAlign:centered?'center':'left'}},hint);
     wrap.appendChild(h);
   }
   return wrap;
@@ -788,6 +859,30 @@ function selField(labelText,val,opts,cb){
   const wrap=div({});
   if(labelText) wrap.appendChild(lbl(labelText));
   wrap.appendChild(s);
+  return wrap;
+}
+// Button-row selector (5 tappable pills) -- used for Sleep, Legs, Mood.
+// opts: [{v,l,color}]. Best-to-worst should be ordered left-to-right by the caller
+// so the colour gradient (green->red) reads consistently across fields.
+function pillField(labelText,val,opts,cb){
+  const wrap=div({});
+  if(labelText) wrap.appendChild(lbl(labelText));
+  const row=div({style:{display:'flex',gap:'4px'}});
+  function renderPills(){
+    row.innerHTML='';
+    opts.forEach(o=>{
+      const isActive=val===o.v;
+      const p=div({style:{flex:'1',padding:'9px 2px 7px',borderRadius:'6px',
+        border:(isActive?'2px':'1px')+' solid '+(isActive?o.color:'var(--border-btn)'),
+        background:'var(--bg-btn)',textAlign:'center',cursor:'pointer'},
+        onclick:()=>{val=o.v;cb(o.v);renderPills();}});
+      p.appendChild(div({style:{width:'7px',height:'7px',borderRadius:'50%',background:o.color,margin:'0 auto 5px'}}));
+      p.appendChild(div({style:{fontSize:'9px',color:'var(--text)',lineHeight:'1.2'}},o.l));
+      row.appendChild(p);
+    });
+  }
+  renderPills();
+  wrap.appendChild(row);
   return wrap;
 }
 
@@ -1136,16 +1231,19 @@ function renderToday(){
 
   // State held in closure vars updated by inputs
   let hrv=saved.hrv||'', rhr=saved.rhr||'', sleep=saved.sleep||'';
-  let legs=saved.legs||'', mood=saved.mood||'', mot=saved.motivation||'', rpe=saved.rpe||'';
+  let legs=saved.legs||'', mood=saved.mood||'';
   let note=saved.note||'';
 
   function computeScores(){
     const h=scoreHRV(hrv), r=scoreRHR(rhr), s=scoreSleep(sleep);
     const physVals=[h,r,s].filter(x=>x!=null);
     const rScore=physVals.length?Math.round(physVals.reduce((a,b)=>a+b,0)/physVals.length):null;
-    const sScore=scoreSub(legs,mood,mot);
-    const combined=rScore!=null&&sScore!=null?Math.round((rScore+sScore)/2):(rScore??sScore);
-    return {rScore,sScore,combined};
+    const sScore=scoreSub(legs,mood);
+    const combinedBase=rScore!=null&&sScore!=null?Math.round((rScore+sScore)/2):(rScore??sScore);
+    const effRPE=computeEffectiveRPE();
+    const penalty=rpePenaltyPct(effRPE);
+    const combined=combinedBase!=null?Math.max(0,Math.round(combinedBase*(1-penalty))):null;
+    return {rScore,sScore,combined,effRPE,penalty};
   }
 
   // Today's session card -- shown first so it's closest to the data inputs
@@ -1309,51 +1407,59 @@ function renderToday(){
   wrap.appendChild(ringsRow);
   updateDecision();
 
-  // Pre-populate RPE from yesterday's activity RPE if not already saved today
-  if(!saved.rpe){
-    const yd=new Date(); yd.setDate(yd.getDate()-1);
-    const ydStr=localDateStr(yd);
-    // Check yesterday's daily log first
-    if(LOG[ydStr]?.rpe) rpe=LOG[ydStr].rpe;
-    else {
-      // Use yesterday's activity RPE (exec field) -- highest RPE across all activities
-      const ydDow=yd.getDay();
-      const ydPlan=getPlan();
-      const ydWIdx=Math.max(0,Math.floor((yd-getBlockMonday())/(7*86400000)));
-      if(ydPlan[ydWIdx]){
-        const ydDIdx=ydPlan[ydWIdx].days.findIndex(d=>dowIndex(d.day)===ydDow);
-        if(ydDIdx>=0){
-          const ydActs=getDayActivities(ydWIdx,ydDIdx).filter(a=>a.completed);
-          if(ydActs.length){
-            // Use highest RPE across all activities that day
-            const maxRPE=ydActs.reduce((max,a)=>Math.max(max,parseInt(a.exec||0)),0);
-            if(maxRPE>0) rpe=String(maxRPE);
-          }
-        }
-      }
-    }
-  }
-
-  // HRV / RHR inputs
+  // HRV / RHR inputs -- centred per request
   const grid1=div({class:'grid2',style:{marginBottom:'12px'}});
   const hrvN=parseFloat(hrv);
   const hrvHint=!isNaN(hrvN)?(hrvN<CFG.hrvLow?{t:'Below range',c:'#e05050'}:hrvN>CFG.hrvHigh?{t:'Above range',c:'#2a9d60'}:{t:'In range ✓',c:'#2a9d60'}):null;
   const rhrN=parseFloat(rhr);
   const rhrHint=!isNaN(rhrN)?(rhrN<CFG.rhrLow?{t:'Below baseline',c:'#2a9d60'}:rhrN>CFG.rhrHigh?{t:'Elevated',c:'#e05050'}:{t:'Baseline ✓',c:'#2a9d60'}):null;
 
-  const hrvF=numInp('HRV',hrv,v=>{hrv=v;updateDecision();},'ms',hrvHint?.t,hrvHint?.c);
-  const rhrF=numInp('Resting HR',rhr,v=>{rhr=v;updateDecision();},'bpm',rhrHint?.t,rhrHint?.c);
+  const hrvF=numInp('HRV',hrv,v=>{hrv=v;updateDecision();},'ms',hrvHint?.t,hrvHint?.c,true);
+  const rhrF=numInp('Resting HR',rhr,v=>{rhr=v;updateDecision();},'bpm',rhrHint?.t,rhrHint?.c,true);
   grid1.appendChild(hrvF); grid1.appendChild(rhrF);
   wrap.appendChild(grid1);
 
-  const grid2=div({class:'grid2',style:{marginBottom:'12px'}});
-  grid2.appendChild(selField('Sleep',sleep,[{v:'great',l:'Solid 8+'},{v:'ok',l:'6-7hr OK'},{v:'poor',l:'Poor / broken'}],v=>{sleep=v;updateDecision();}));
-  grid2.appendChild(selField('Yesterday RPE',rpe,[{v:'0',l:'0 - Rest'},{v:'1',l:'1 - Active recovery'},{v:'2',l:'2 - Very easy'},{v:'3',l:'3 - Easy'},{v:'4',l:'4 - Moderate'},{v:'5',l:'5 - Comfortably hard'},{v:'6',l:'6 - Hard'},{v:'7',l:'7 - Very hard'},{v:'8',l:'8 - Race effort'},{v:'9',l:'9 - Near maximal'},{v:'10',l:'10 - Maximal'}],v=>{rpe=v;updateDecision();}));
-  grid2.appendChild(selField('Legs',legs,[{v:'5',l:'5 Fresh'},{v:'4',l:'4 Good'},{v:'3',l:'3 OK'},{v:'2',l:'2 Heavy'},{v:'1',l:'1 Wrecked'}],v=>{legs=v;updateDecision();}));
-  grid2.appendChild(selField('Mood',mood,[{v:'5',l:'5 Sharp'},{v:'4',l:'4 Good'},{v:'3',l:'3 OK'},{v:'2',l:'2 Stressed'},{v:'1',l:'1 Flat'}],v=>{mood=v;updateDecision();}));
-  wrap.appendChild(grid2);
+  // Sleep -- 5-tier quality scale (button row)
+  wrap.appendChild(div({style:{marginBottom:'16px'}},[pillField('Sleep',sleep,[
+    {v:'excellent',l:'Excellent',color:'#00c96e'},
+    {v:'good',l:'Good',color:'#a8d800'},
+    {v:'fair',l:'Fair',color:'#ffd166'},
+    {v:'poor',l:'Poor',color:'#ff6b6b'},
+    {v:'sick',l:'Sick',color:'#8b2050'},
+  ],v=>{sleep=v;updateDecision();})]));
 
-  wrap.appendChild(div({style:{marginBottom:'16px'}},[selField('Motivation',mot,[{v:'5',l:'5 Hungry'},{v:'4',l:'4 Ready'},{v:'3',l:'3 OK'},{v:'2',l:'2 Meh'},{v:'1',l:'1 None'}],v=>{mot=v;updateDecision();})]));
+  // Legs -- same button-row treatment and colour direction as Sleep
+  wrap.appendChild(div({style:{marginBottom:'16px'}},[pillField('Legs',legs,[
+    {v:'5',l:'Fresh',color:'#00c96e'},
+    {v:'4',l:'Good',color:'#a8d800'},
+    {v:'3',l:'OK',color:'#ffd166'},
+    {v:'2',l:'Heavy',color:'#ff9f43'},
+    {v:'1',l:'Wrecked',color:'#ff6b6b'},
+  ],v=>{legs=v;updateDecision();})]));
+
+  // Mood -- merged Mood + Motivation into one field
+  wrap.appendChild(div({style:{marginBottom:'16px'}},[pillField('Mood',mood,[
+    {v:'5',l:'Sharp',color:'#00c96e'},
+    {v:'4',l:'Good',color:'#a8d800'},
+    {v:'3',l:'OK',color:'#ffd166'},
+    {v:'2',l:'Flat',color:'#ff9f43'},
+    {v:'1',l:'Empty',color:'#ff6b6b'},
+  ],v=>{mood=v;updateDecision();})]));
+
+  // Yesterday's Effort -- auto-calculated, read-only, feeds a fatigue penalty into the combined score
+  const {effRPE,penalty}=computeScores();
+  const rpeBox=div({style:{marginBottom:'16px',padding:'10px 12px',background:'var(--bg-input)',border:'1px solid var(--border-subtle)',borderRadius:'6px'}});
+  const rpeHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'2px'}});
+  rpeHdr.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',textTransform:'uppercase'}},"Yesterday's Effort"));
+  rpeHdr.appendChild(span({style:{fontSize:'8px',color:'#a8d800',background:'#a8d80018',border:'1px solid #a8d80040',padding:'1px 6px',borderRadius:'3px'}},'AUTO'));
+  rpeBox.appendChild(rpeHdr);
+  rpeBox.appendChild(div({style:{fontSize:'16px',fontFamily:"'Bebas Neue',cursive",color:'var(--text)'}},effRPE!=null?effRPE.toFixed(1):'--'));
+  if(penalty>0){
+    rpeBox.appendChild(div({style:{fontSize:'9px',color:'#ffd166',marginTop:'4px'}},'Readiness penalty: -'+Math.round(penalty*100)+'%'));
+  } else if(effRPE!=null){
+    rpeBox.appendChild(div({style:{fontSize:'9px',color:'#444',marginTop:'4px'}},'No penalty -- recent effort within normal range'));
+  }
+  wrap.appendChild(rpeBox);
 
   const noteWrap=div({style:{marginBottom:'16px'}});
   noteWrap.appendChild(lbl('Session note'));
@@ -1363,9 +1469,9 @@ function renderToday(){
   wrap.appendChild(noteWrap);
 
   const saveBtn=btn({class:'btn',onclick:()=>{
-    const {rScore,sScore,combined}=computeScores();
+    const {combined,effRPE}=computeScores();
     const dec=combined!=null?getDecision(combined):null;
-    const entry={hrv,rhr,sleep,legs,mood,motivation:mot,rpe,note,decision:dec?.label,ts:Date.now()};
+    const entry={hrv,rhr,sleep,legs,mood,rpe:effRPE!=null?String(effRPE):'',note,decision:dec?.label,ts:Date.now()};
     LOG[td]=entry; S.set(SK.log,LOG);
     saveBtn.textContent='LOGGED'; saveBtn.style.color='#00ff87'; saveBtn.style.borderColor='#00ff87';
     setTimeout(()=>{saveBtn.textContent='LOG TODAY';saveBtn.style.color='';saveBtn.style.borderColor='';},1800);
@@ -1438,9 +1544,21 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
   }
 
   // Actual inputs -- time shown as h:mm, accepts h:mm or decimal
+  // Vert ratio readout -- auto-computed from km + vert, updates live as you type
+  const vertRatioBox=div({style:{fontSize:'10px',color:'var(--text-mute)',marginBottom:'12px',padding:'7px 9px',background:'var(--bg-input)',border:'1px solid var(--border-subtle)',borderRadius:'5px',display:'none'}});
+  function updateVertRatio(){
+    const k=parseFloat(akm), v=parseFloat(avert);
+    if(k>0&&v>0){
+      vertRatioBox.style.display='block';
+      vertRatioBox.textContent='Vert ratio: '+Math.round(v/k)+'m/km';
+    } else {
+      vertRatioBox.style.display='none';
+    }
+  }
+
   const actGrid=div({class:'grid3',style:{marginBottom:'12px'}});
-  [['km',akm,v=>akm=v,'number','km'],
-   ['m',avert,v=>avert=v,'number','m'],
+  [['km',akm,v=>{akm=v;updateVertRatio();},'number','km'],
+   ['m',avert,v=>{avert=v;updateVertRatio();},'number','m'],
    ['h:mm',ahrs?fmtHms(parseFloat(ahrs)||0):'',v=>ahrs=v,'text','time']
   ].forEach(([unit,val,cb,itype,u])=>{
     const isTime=u==='time';
@@ -1451,6 +1569,8 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
     actGrid.appendChild(div({},[lbl(unit),i]));
   });
   sheet.appendChild(actGrid);
+  sheet.appendChild(vertRatioBox);
+  updateVertRatio(); // show immediately when editing an already-logged run
 
   const rGrid=div({class:'grid2',style:{marginBottom:'12px'}});
   rGrid.appendChild(selField('Performance',perf,[{v:'5',l:'5 Exceeded'},{v:'4',l:'4 Solid'},{v:'3',l:'3 Met plan'},{v:'2',l:'2 Below'},{v:'1',l:'1 Poor'}],v=>perf=v));
