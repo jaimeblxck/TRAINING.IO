@@ -1375,7 +1375,7 @@ function renderToday(){
   decBanner.id='dec-banner';
 
   // Rings row
-  const ringsRow=div({style:{display:'flex',justifyContent:'space-around',padding:'16px 0',marginBottom:'20px',borderTop:'1px solid var(--border-subtle)',borderBottom:'1px solid var(--border-subtle)'}});
+  const ringsRow=div({style:{display:'flex',justifyContent:'space-around',alignItems:'center',padding:'16px 0',marginBottom:'20px',borderTop:'1px solid var(--border-subtle)',borderBottom:'1px solid var(--border-subtle)'}});
   ringsRow.id='rings-row';
 
   function updateDecision(){
@@ -1398,9 +1398,9 @@ function renderToday(){
 
     // Update rings
     ringsRow.innerHTML='';
-    ringsRow.appendChild(ring(rScore,'#60a5fa','Physical'));
-    ringsRow.appendChild(ring(combined,dec?.color||'#333','Combined',88,dec?.textColor));
-    ringsRow.appendChild(ring(sScore,'#c084fc','Subjective'));
+    ringsRow.appendChild(ring(rScore,'#60a5fa','Vitals'));
+    ringsRow.appendChild(ring(combined,dec?.color||'#333','Readiness',88,dec?.textColor));
+    ringsRow.appendChild(ring(sScore,'#c084fc','Feel'));
   }
 
   wrap.appendChild(decBanner);
@@ -2606,7 +2606,7 @@ function renderTrend(){
   // -- Vert ratio chart -------------------------------------------
   const vertCard=card([],{marginBottom:'14px'});
   const vertHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
-  vertHdr.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'Vert Ratio (m/km)'));
+  vertHdr.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'Run Vert Ratio (m/km)'));
   let vertRange=7;
   const vertToggle=div({style:{display:'flex',gap:'4px'}});
   const vertBody=div({});
@@ -2666,24 +2666,45 @@ function renderTrend(){
       }
 
       const avg=totalKm>0?Math.round(totalVert/totalKm):null;
-      const maxRatio=Math.max(...days.map(d=>d.ratio||0),1);
+      const maxRatio0=Math.max(...days.map(d=>d.ratio||0),1);
+      // Precompute race vert ratios once -- used for both the on-chart benchmark line(s)
+      // and the legend readout below
+      const raceRatios=[];
+      (CFG.races||[]).forEach(race=>{
+        const rk=parseFloat(race.km)||parseFloat(race.dist), rv=parseFloat(race.vert);
+        if(rk>0&&rv>0){
+          const rawName=(race.name||'Race').trim();
+          const label=rawName.length>10?'race':rawName;
+          raceRatios.push({name:label,ratio:Math.round(rv/rk)});
+        }
+      });
+      // Scale must accommodate race lines too, so a steep race benchmark isn't clipped off-chart
+      const maxRatio=Math.max(maxRatio0,...raceRatios.map(r=>r.ratio),1);
       const BAR_H=60;
+      const TOP_PAD=22; // headroom above the tallest bar so its value label doesn't clip
       const compact=vertRange>=20;
       const gap=compact?2:4;
+      const chartH=BAR_H+16+TOP_PAD;
 
       // Chart
-      const chart=div({style:{display:'flex',gap:gap+'px',alignItems:'flex-end',height:(BAR_H+16)+'px',position:'relative'}});
+      const chart=div({style:{display:'flex',gap:gap+'px',alignItems:'flex-end',height:chartH+'px',position:'relative'}});
 
-      // Average line overlay
+      // Average line overlay -- bottom-anchored to match bar positioning, unaffected by TOP_PAD
       if(avg){
         const avgPct=Math.min(1,avg/maxRatio);
-        const avgY=BAR_H-(avgPct*BAR_H);
-        const avgLine=div({style:{position:'absolute',left:'0',right:'0',top:avgY+'px',height:'1px',background:'#ffd166',opacity:'0.6',zIndex:'2',pointerEvents:'none'}});
+        const avgLine=div({style:{position:'absolute',left:'0',right:'0',bottom:(16+avgPct*BAR_H)+'px',height:'1px',background:'#ffd166',opacity:'0.6',zIndex:'2',pointerEvents:'none'}});
         chart.appendChild(avgLine);
       }
 
+      // Race benchmark line(s) -- same treatment as the average line, in race-pink, dashed to distinguish
+      raceRatios.forEach(r=>{
+        const racePct=Math.min(1,r.ratio/maxRatio);
+        const raceLine=div({style:{position:'absolute',left:'0',right:'0',bottom:(16+racePct*BAR_H)+'px',height:'0',borderTop:'1px dashed #fd79a8',opacity:'0.7',zIndex:'2',pointerEvents:'none'}});
+        chart.appendChild(raceLine);
+      });
+
       days.forEach(day=>{
-        const col=div({style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',height:(BAR_H+16)+'px',position:'relative',zIndex:'1'}});
+        const col=div({style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',height:chartH+'px',position:'relative',zIndex:'1'}});
         if(day.ratio!==null){
           const bh=Math.max(2,Math.round((day.ratio/maxRatio)*BAR_H));
           const color=day.isRace?'#fd79a8':day.ratio>80?'#ff9f43':day.ratio>40?'#a29bfe':'#60a5fa';
@@ -2728,18 +2749,8 @@ function renderTrend(){
       } else {
         legRight.appendChild(span({style:{fontSize:'9px',color:'#333'}},'Log runs with vert to see ratio'));
       }
-      // Race readouts -- always shown as a benchmark (e.g. "UTMB: 56m/km"),
-      // independent of whether the race date falls within the visible window
-      const raceEntries=[];
-      (CFG.races||[]).forEach(race=>{
-        const rk=parseFloat(race.km)||parseFloat(race.dist), rv=parseFloat(race.vert);
-        if(rk>0&&rv>0){
-          const raceRatio=Math.round(rv/rk);
-          const rawName=(race.name||'Race').trim();
-          const label=rawName.length>10?'race':rawName;
-          raceEntries.push(label+': '+raceRatio+'m/km');
-        }
-      });
+      // Race readouts -- reuse the raceRatios computed earlier for the chart lines
+      const raceEntries=raceRatios.map(r=>r.name+': '+r.ratio+'m/km');
       if(raceEntries.length){
         legRight.appendChild(span({style:{fontSize:'9px',color:'#555'}},'\u00b7'));
         legRight.appendChild(span({style:{fontSize:'9px',color:'#fd79a8'}},raceEntries.join(', ')));
@@ -2789,7 +2800,6 @@ function renderTrend(){
   });
   vertHdr.appendChild(vertToggle);
   vertCard.appendChild(vertHdr);
-  vertCard.appendChild(div({style:{fontSize:'9px',color:'#555',marginBottom:'8px'}},'m/km for completed runs only. Non-running days excluded.'));
   vertCard.appendChild(vertBody);
   buildVertChart();
   wrap.appendChild(vertCard);
