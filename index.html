@@ -1500,6 +1500,10 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
   let perf=existing.perf||'';
   let exec=existing.exec||'';
   let note=existing.note||'';
+  let fuelCarbsG=existing.fuelCarbsG||'';
+  let fuelFluidMl=existing.fuelFluidMl||'';
+  let fuelSodiumMg=existing.fuelSodiumMg||'';
+  let fuelGut=existing.fuelGut||'';
 
   const tc=()=>TC[type]||'#555';
 
@@ -1559,7 +1563,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
   const actGrid=div({class:'grid3',style:{marginBottom:'12px'}});
   [['km',akm,v=>{akm=v;updateVertRatio();},'number','km'],
    ['m',avert,v=>{avert=v;updateVertRatio();},'number','m'],
-   ['h:mm',ahrs?fmtHms(parseFloat(ahrs)||0):'',v=>ahrs=v,'text','time']
+   ['h:mm',ahrs?fmtHms(parseFloat(ahrs)||0):'',v=>{ahrs=v;updateFuelVisibility();},'text','time']
   ].forEach(([unit,val,cb,itype,u])=>{
     const isTime=u==='time';
     const i=inp({type:itype,value:val,placeholder:isTime?'h:mm':'0',
@@ -1571,6 +1575,58 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
   sheet.appendChild(actGrid);
   sheet.appendChild(vertRatioBox);
   updateVertRatio(); // show immediately when editing an already-logged run
+
+  // Fuel tracking -- only relevant for efforts long enough that fuelling matters.
+  // Threshold: 1.5hrs. Carbs/Fluid/Sodium are totals for the session; rates (g/hr etc)
+  // are derived live from duration, same readout pattern as Vert ratio above.
+  const FUEL_MIN_HRS=1.5;
+  const fuelSection=div({style:{display:'none',marginBottom:'12px'}});
+  fuelSection.appendChild(lbl('Fuel'));
+  const fuelGrid=div({class:'grid3',style:{marginBottom:'8px'}});
+  function mkFuelInput(unit,val,cb){
+    const i=inp({type:'number',value:val,placeholder:'0',
+      style:{background:'var(--bg-input)',border:'1px solid #22223a',color:'var(--text)',
+        padding:'7px 8px',borderRadius:'5px',fontSize:'13px',outline:'none',width:'100%'}});
+    i.addEventListener('input',()=>{cb(i.value);updateFuelRates();});
+    fuelGrid.appendChild(div({},[lbl(unit),i]));
+  }
+  mkFuelInput('Carbs (g)',fuelCarbsG,v=>fuelCarbsG=v);
+  mkFuelInput('Fluid (ml)',fuelFluidMl,v=>fuelFluidMl=v);
+  mkFuelInput('Sodium (mg)',fuelSodiumMg,v=>fuelSodiumMg=v);
+  fuelSection.appendChild(fuelGrid);
+
+  const fuelRatesBox=div({style:{fontSize:'10px',color:'var(--text-mute)',marginBottom:'10px',padding:'7px 9px',background:'var(--bg-input)',border:'1px solid var(--border-subtle)',borderRadius:'5px',display:'none'}});
+  function updateFuelRates(){
+    const hrs=parseHms(ahrs)||0;
+    const c=parseFloat(fuelCarbsG), f=parseFloat(fuelFluidMl), s=parseFloat(fuelSodiumMg);
+    const parts=[];
+    if(hrs>0&&c>0) parts.push('Carb rate: '+Math.round(c/hrs)+'g/hr');
+    if(hrs>0&&f>0) parts.push('Fluid rate: '+Math.round(f/hrs)+'ml/hr');
+    if(hrs>0&&s>0) parts.push('Sodium rate: '+Math.round(s/hrs)+'mg/hr');
+    if(parts.length){
+      fuelRatesBox.style.display='block';
+      fuelRatesBox.textContent=parts.join(' \u00b7 ');
+    } else {
+      fuelRatesBox.style.display='none';
+    }
+  }
+  fuelSection.appendChild(fuelRatesBox);
+
+  fuelSection.appendChild(pillField('Gut',fuelGut,[
+    {v:'5',l:'Great',color:'#00c96e'},
+    {v:'4',l:'Good',color:'#a8d800'},
+    {v:'3',l:'OK',color:'#ffd166'},
+    {v:'2',l:'Uneasy',color:'#ff9f43'},
+    {v:'1',l:'Distress',color:'#ff6b6b'},
+  ],v=>fuelGut=v));
+
+  sheet.appendChild(fuelSection);
+  function updateFuelVisibility(){
+    const hrs=parseHms(ahrs)||0;
+    fuelSection.style.display=hrs>=FUEL_MIN_HRS?'block':'none';
+    if(hrs>=FUEL_MIN_HRS) updateFuelRates();
+  }
+  updateFuelVisibility(); // show immediately when editing an already-logged long run
 
   const rGrid=div({class:'grid2',style:{marginBottom:'12px'}});
   rGrid.appendChild(selField('Performance',perf,[{v:'5',l:'5 Exceeded'},{v:'4',l:'4 Solid'},{v:'3',l:'3 Met plan'},{v:'2',l:'2 Below'},{v:'1',l:'1 Poor'}],v=>perf=v));
@@ -1594,6 +1650,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
       label, type,
       actualKm:akm, actualVert:avert, actualHrs:parseHms(ahrs)||'',
       perf, exec, note,
+      fuelCarbsG, fuelFluidMl, fuelSodiumMg, fuelGut,
       completed:isLoggedDay, ts:Date.now()
     };
     saveDayActivities(wIdx,dIdx,updated);
@@ -2804,6 +2861,168 @@ function renderTrend(){
   buildVertChart();
   wrap.appendChild(vertCard);
   wrap.appendChild(compCard);
+
+  // -- Fuel Rate chart -------------------------------------------
+  // Bar height = carb g/hr for the day's qualifying long effort.
+  // Bar colour = logged gut response that day (green=tolerated well -> red=distress).
+  // This is the direct "what carb rate does my body actually handle" readout --
+  // built from your own data rather than generic 60-90g/hr advice.
+  const fuelCard=card([],{marginBottom:'14px'});
+  const fuelHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
+  fuelHdr.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'Fuel Rate (g/hr carbs)'));
+  let fuelRange=7;
+  const fuelToggle=div({style:{display:'flex',gap:'4px'}});
+  const fuelBody=div({});
+
+  const GUT_COLORS={5:'#00c96e',4:'#a8d800',3:'#ffd166',2:'#ff9f43',1:'#ff6b6b'};
+
+  function buildFuelChart(){
+    fuelBody.innerHTML='';
+    try{
+      const now=new Date();
+      const blockMon=getBlockMonday();
+      const plan=getPlan();
+      const RUN_TYPES=['easy','long','intervals','race'];
+      const days=[];
+      let totalCarbs=0, totalHrs=0;
+      let bestTolerated=null;
+
+      for(let i=fuelRange-1;i>=0;i--){
+        const d=new Date(now); d.setDate(now.getDate()-i);
+        const ds=localDateStr(d);
+        const dayLabel=['Su','Mo','Tu','We','Th','Fr','Sa'][d.getDay()];
+        const isWeekStart=d.getDay()===1;
+        const isToday=ds===today();
+
+        const dd=new Date(ds+'T12:00:00');
+        const diffD=Math.floor((dd-blockMon)/86400000);
+        let rate=null, gutTier=null;
+
+        if(!isNaN(diffD)&&diffD>=0){
+          const wI=Math.floor(diffD/7);
+          if(wI<plan.length){
+            const dow=dd.getDay();
+            const dI=plan[wI].days.findIndex(s=>dowIndex(s.day)===dow);
+            if(dI>=0){
+              const acts=getDayActivities(wI,dI).filter(a=>a.completed&&RUN_TYPES.includes(a.type||'easy')
+                &&parseFloat(a.fuelCarbsG)>0&&parseFloat(a.actualHrs)>0);
+              if(acts.length){
+                const dayCarbs=acts.reduce((s,a)=>s+parseFloat(a.fuelCarbsG||0),0);
+                const dayHrs=acts.reduce((s,a)=>s+parseFloat(a.actualHrs||0),0);
+                rate=Math.round(dayCarbs/dayHrs);
+                totalCarbs+=dayCarbs; totalHrs+=dayHrs;
+                // Conservative: worst (lowest) gut rating among that day's fuelled activities
+                const gutVals=acts.map(a=>parseInt(a.fuelGut)).filter(v=>v>=1&&v<=5);
+                if(gutVals.length){
+                  gutTier=Math.min(...gutVals);
+                  if(gutTier>=4) bestTolerated=Math.max(bestTolerated||0,rate);
+                }
+              }
+            }
+          }
+        }
+        days.push({ds,dayLabel,isWeekStart,isToday,rate,gutTier});
+      }
+
+      const avg=totalHrs>0?Math.round(totalCarbs/totalHrs):null;
+      const maxRate=Math.max(...days.map(d=>d.rate||0),1);
+      const BAR_H=60;
+      const TOP_PAD=22;
+      const compact=fuelRange>=20;
+      const gap=compact?2:4;
+      const chartH=BAR_H+16+TOP_PAD;
+
+      if(!days.some(d=>d.rate!==null)){
+        fuelBody.appendChild(div({style:{fontSize:'10px',color:'#333',padding:'8px 0'}},'Log carbs on runs over 90min to see fuel tolerance trends.'));
+      } else {
+        const chart=div({style:{display:'flex',gap:gap+'px',alignItems:'flex-end',height:chartH+'px',position:'relative'}});
+
+        if(avg){
+          const avgPct=Math.min(1,avg/maxRate);
+          const avgLine=div({style:{position:'absolute',left:'0',right:'0',bottom:(16+avgPct*BAR_H)+'px',height:'1px',background:'#ffd166',opacity:'0.6',zIndex:'2',pointerEvents:'none'}});
+          chart.appendChild(avgLine);
+        }
+
+        days.forEach(day=>{
+          const col=div({style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',height:chartH+'px',position:'relative',zIndex:'1'}});
+          if(day.rate!==null){
+            const bh=Math.max(2,Math.round((day.rate/maxRate)*BAR_H));
+            const color=day.gutTier?GUT_COLORS[day.gutTier]:'#60a5fa';
+            col.appendChild(div({style:{width:'100%',height:bh+'px',background:color,borderRadius:'2px 2px 0 0',opacity:'0.85',position:'absolute',bottom:'16px'}}));
+            if(!compact&&bh>18){
+              col.appendChild(div({style:{position:'absolute',bottom:(bh+18)+'px',left:'0',right:'0',textAlign:'center',fontSize:'7px',color:color}},day.rate+''));
+            }
+          }
+          if(day.isWeekStart) col.appendChild(div({style:{position:'absolute',left:'0',top:'0',bottom:'16px',width:'1px',background:'#2a2a4a'}}));
+          const dayLblEl=div({style:{position:'absolute',bottom:'0',left:'0',right:'0',height:'16px',display:'flex',alignItems:'center',justifyContent:'center'}});
+          if(!compact) dayLblEl.appendChild(span({style:{fontSize:'7px',color:day.isToday?'var(--text)':'#333'}},day.dayLabel));
+          col.appendChild(dayLblEl);
+          chart.appendChild(col);
+        });
+        fuelBody.appendChild(chart);
+
+        // Legend + average
+        const leg=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'6px',flexWrap:'wrap',gap:'4px'}});
+        const legLeft=div({style:{display:'flex',gap:'8px',flexWrap:'wrap'}});
+        [['#00c96e','Great'],['#a8d800','Good'],['#ffd166','OK'],['#ff9f43','Uneasy'],['#ff6b6b','Distress']].forEach(([c,l])=>{
+          const item=div({style:{display:'flex',alignItems:'center',gap:'3px'}});
+          item.appendChild(div({style:{width:'8px',height:'8px',background:c,borderRadius:'1px',flexShrink:'0'}}));
+          item.appendChild(span({style:{fontSize:'8px',color:'#555'}},l));
+          legLeft.appendChild(item);
+        });
+        leg.appendChild(legLeft);
+        if(avg){
+          const avgEl=div({style:{display:'flex',alignItems:'center',gap:'5px'}});
+          avgEl.appendChild(div({style:{width:'12px',height:'1px',background:'#ffd166'}}));
+          avgEl.appendChild(span({style:{fontSize:'9px',color:'#ffd166'}},avg+'g/hr avg'));
+          leg.appendChild(avgEl);
+        }
+        fuelBody.appendChild(leg);
+
+        if(bestTolerated){
+          fuelBody.appendChild(div({style:{fontSize:'9px',color:'#a8d800',marginTop:'4px'}},'Best tolerated: '+bestTolerated+'g/hr (Good or better gut response)'));
+        }
+
+        // Week labels for 14/28
+        if(fuelRange>7){
+          const wlRow=div({style:{display:'flex',marginTop:'2px'}});
+          const nowRef=new Date();
+          for(let i=fuelRange-1;i>=0;i--){
+            const dd2=new Date(nowRef); dd2.setDate(nowRef.getDate()-i);
+            const cell=div({style:{flex:'1',textAlign:'center'}});
+            if(dd2.getDay()===1&&i<fuelRange-1) cell.appendChild(span({style:{fontSize:'7px',color:'#333'}},fmtDate(dd2)));
+            wlRow.appendChild(cell);
+          }
+          fuelBody.appendChild(wlRow);
+        }
+      }
+    } catch(e){
+      fuelBody.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Fuel chart unavailable: '+e.message));
+    }
+  }
+
+  [7,14,28].forEach(n=>{
+    const b=btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',
+      background:fuelRange===n?'var(--bg-tab-active)':'var(--bg-input)',
+      border:'1px solid '+(fuelRange===n?'var(--border-btn)':'var(--border)'),
+      color:fuelRange===n?'var(--text)':'var(--text-dim)'},
+      onclick:()=>{
+        fuelRange=n;
+        fuelToggle.querySelectorAll('button').forEach((b2,i2)=>{
+          const nn=[7,14,28][i2];
+          b2.style.background=nn===n?'var(--bg-tab-active)':'var(--bg-input)';
+          b2.style.borderColor=nn===n?'var(--border-btn)':'var(--border)';
+          b2.style.color=nn===n?'var(--text)':'var(--text-dim)';
+        });
+        buildFuelChart();
+      }},n+'d');
+    fuelToggle.appendChild(b);
+  });
+  fuelHdr.appendChild(fuelToggle);
+  fuelCard.appendChild(fuelHdr);
+  fuelCard.appendChild(fuelBody);
+  buildFuelChart();
+  wrap.appendChild(fuelCard);
 
   const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14);
   wrap.appendChild(div({class:'section-title'},'Recent Log'));
