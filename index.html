@@ -3024,6 +3024,301 @@ function renderTrend(){
   buildFuelChart();
   wrap.appendChild(fuelCard);
 
+  // -- Fuel Averages / Race Plan card ------------------------------------
+  // Aggregates all fuelled long efforts across the block and surfaces:
+  //   1. Training data table (banded by duration, <2 / 2-4 / 4+hrs)
+  //   2. Race day plan (suggested hourly intake from band matching race target time)
+  //   3. Projected session totals
+  //   4. Collapsible sessions drawer for review / correction
+  const fuelAvgCard=card([],{marginBottom:'14px'});
+
+  function buildFuelAverages(){
+    fuelAvgCard.innerHTML='';
+    try{
+      const races=getRaces();
+      let selectedRaceIdx=0; // default to first race
+
+      // Parse target time string "h:mm" -> decimal hours
+      function parseTargetTime(s){
+        if(!s) return null;
+        s=String(s).trim();
+        if(s.includes(':')){
+          const [h,m]=s.split(':');
+          return (parseInt(h)||0)+(parseInt(m)||0)/60;
+        }
+        return parseFloat(s)||null;
+      }
+
+      // Determine the most relevant training band for a given race target time
+      function bandForHours(hrs){
+        if(hrs==null) return null;
+        if(hrs<2) return '<2hrs';
+        if(hrs<4) return '2-4hrs';
+        return '4hrs+';
+      }
+
+      // Collect all fuelled sessions across the whole block
+      const plan=getPlan();
+      const blockMon=getBlockMonday();
+      const RUN_TYPES=['easy','long','intervals','race'];
+      const allSessions=[]; // {ds,label,wIdx,dIdx,aIdx,hrs,carbs,fluid,sodium,gutTier,carbRate,fluidRate,sodiumRate}
+
+      plan.forEach((week,wI)=>{
+        week.days.forEach((day,dI)=>{
+          const acts=getDayActivities(wI,dI).filter(a=>
+            a.completed && RUN_TYPES.includes(a.type||'easy') &&
+            parseFloat(a.fuelCarbsG)>0 && parseFloat(a.actualHrs)>0
+          );
+          acts.forEach((a,aI)=>{
+            const hrs=parseFloat(a.actualHrs);
+            const carbs=parseFloat(a.fuelCarbsG||0);
+            const fluid=parseFloat(a.fuelFluidMl||0);
+            const sodium=parseFloat(a.fuelSodiumMg||0);
+            const gut=parseInt(a.fuelGut)||null;
+            const slotD=new Date(getBlockMonday());
+            slotD.setDate(slotD.getDate()+wI*7);
+            // Find actual calendar date for this slot
+            const DOW_ORDER=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+            const dowName=DOW_ORDER[(dI+6)%7]||DOW_ORDER[dI]; // days are Mon-indexed in plan
+            // Use slotDate helper if available, otherwise compute directly
+            const slotDs=slotDate(wI,day.day||'Mon');
+            allSessions.push({
+              ds:slotDs, label:a.label||a.type||'Run',
+              wIdx:wI, dIdx:dI, aIdx:aI,
+              hrs, carbs, fluid, sodium, gutTier:gut,
+              carbRate:hrs>0?Math.round(carbs/hrs):0,
+              fluidRate:hrs>0?Math.round(fluid/hrs):0,
+              sodiumRate:hrs>0?Math.round(sodium/hrs):0,
+            });
+          });
+        });
+      });
+
+      // Group sessions into duration bands
+      function bandOf(s){
+        if(s.hrs<2) return '<2hrs';
+        if(s.hrs<4) return '2-4hrs';
+        return '4hrs+';
+      }
+      const BANDS=['<2hrs','2-4hrs','4hrs+'];
+      const bandData={};
+      BANDS.forEach(b=>{ bandData[b]={sessions:[],carb:0,fluid:0,sodium:0}; });
+      allSessions.forEach(s=>{
+        const b=bandOf(s);
+        bandData[b].sessions.push(s);
+        bandData[b].carb+=s.carbRate;
+        bandData[b].fluid+=s.fluidRate;
+        bandData[b].sodium+=s.sodiumRate;
+      });
+      function bandAvg(b,field){ const n=bandData[b].sessions.length; return n?Math.round(bandData[b][field]/n):null; }
+
+      // -- Header --
+      const hdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}});
+      hdr.appendChild(div({class:'section-title'},'Fuel Averages / Race Plan'));
+
+      // Race selector pills -- only shown if >1 race configured
+      if(races.length>1){
+        const pills=div({style:{display:'flex',gap:'4px'}});
+        races.forEach((race,ri)=>{
+          const rawName=(race.name||'Race').trim();
+          const shortName=rawName.length>8?rawName.slice(0,7)+'\u2026':rawName;
+          const isActive=ri===selectedRaceIdx;
+          const p=btn({style:{padding:'4px 9px',borderRadius:'4px',fontSize:'10px',
+            background:isActive?'var(--bg-tab-active)':'var(--bg-input)',
+            border:'1px solid '+(isActive?'var(--border-btn)':'var(--border)'),
+            color:isActive?'var(--text)':'var(--text-dim)'},
+            onclick:()=>{ selectedRaceIdx=ri; buildFuelAverages(); }},shortName);
+          pills.appendChild(p);
+        });
+        hdr.appendChild(pills);
+      }
+      fuelAvgCard.appendChild(hdr);
+
+      // -- Target time (editable here, writes back to race config) --
+      const selRace=races[selectedRaceIdx]||races[0];
+      const cfgRaceIdx=(CFG.races||[]).findIndex(r=>r.name===selRace?.name&&r.date===selRace?.date);
+      let targetTimeStr=(selRace?.targetTime)||'';
+      let targetHrs=parseTargetTime(targetTimeStr);
+
+      const ttRow=div({style:{display:'flex',alignItems:'center',gap:'10px',marginBottom:'16px',
+        padding:'9px 11px',background:'var(--bg-input)',border:'1px solid var(--border-subtle)',borderRadius:'7px'}});
+      const ttLbl=span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.14em',textTransform:'uppercase',whiteSpace:'nowrap'}},'Target finish');
+      const ttI=inp({type:'text',value:targetTimeStr,placeholder:'h:mm',
+        style:{background:'transparent',border:'none',color:'var(--text)',fontFamily:'inherit',
+          fontSize:'15px',fontWeight:'600',letterSpacing:'0.04em',width:'60px',outline:'none',textAlign:'center'}});
+      ttI.addEventListener('input',()=>{
+        targetTimeStr=ttI.value;
+        targetHrs=parseTargetTime(targetTimeStr);
+        if(cfgRaceIdx>=0&&CFG.races[cfgRaceIdx]!==undefined){
+          CFG.races[cfgRaceIdx].targetTime=targetTimeStr;
+          S.set(SK.cfg,CFG);
+        }
+        buildFuelAverages();
+      });
+      ttRow.appendChild(ttLbl);
+      ttRow.appendChild(ttI);
+      ttRow.appendChild(span({style:{fontSize:'8px',color:'var(--text-dim)'}},'h:mm · syncs with race config'));
+      fuelAvgCard.appendChild(ttRow);
+
+      if(!allSessions.length){
+        fuelAvgCard.appendChild(div({style:{fontSize:'10px',color:'#333',padding:'8px 0'}},'Log carbs, fluid and sodium on runs over 90min to see block averages here.'));
+        return;
+      }
+
+      const activeBand=bandForHours(targetHrs); // null if no target time
+
+      // -- Section 1: Training data --
+      const trainingHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',
+        marginBottom:'8px',paddingBottom:'5px',borderBottom:'1px solid var(--border-subtle)'}});
+      trainingHdr.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.12em',textTransform:'uppercase'}},'Training data'));
+      trainingHdr.appendChild(span({style:{fontSize:'9px',color:'var(--text-dim)'}},'from '+allSessions.length+' session'+(allSessions.length===1?'':'s')+' · >1.5hr only'));
+      fuelAvgCard.appendChild(trainingHdr);
+
+      // Table
+      const tbl=el('table',{style:{width:'100%',borderCollapse:'collapse',marginBottom:'18px'}});
+      const thead=el('thead',{}); const hrow=el('tr',{});
+      ['Duration','Carbs','Fluid','Sodium'].forEach((h,hi)=>{
+        const th=el('th',{style:{fontSize:'8px',color:'var(--text-dim)',letterSpacing:'0.1em',
+          textTransform:'uppercase',padding:'4px 6px',textAlign:hi===0?'left':'right',
+          borderBottom:'1px solid var(--border-subtle)',fontWeight:'normal'}},h);
+        hrow.appendChild(th);
+      });
+      thead.appendChild(hrow); tbl.appendChild(thead);
+      const tbody=el('tbody',{});
+      BANDS.forEach(b=>{
+        const n=bandData[b].sessions.length;
+        const isActive=b===activeBand;
+        const hasDat=n>0;
+        const row=el('tr',{style:{background:isActive?'#fd79a808':'transparent'}});
+        // Duration label
+        const bandLbl=el('td',{style:{fontSize:'10px',padding:'8px 6px',
+          borderBottom:'1px solid var(--border-subtle)',textAlign:'left',
+          color:isActive?'#fd79a8':hasDat?'var(--text-mute)':'#333'}},b);
+        if(n) bandLbl.appendChild(span({style:{fontSize:'8px',color:'var(--text-dim)',marginLeft:'2px'}},'×'+n));
+        row.appendChild(bandLbl);
+        // Carb / fluid / sodium
+        ['carb','fluid','sodium'].forEach((field,fi)=>{
+          const avg=bandAvg(b,field);
+          const units=['g/hr','ml/hr','mg/hr'][fi];
+          const muted=!hasDat||(activeBand&&!isActive);
+          const td=el('td',{style:{fontSize:'11px',padding:'8px 6px',
+            borderBottom:'1px solid var(--border-subtle)',textAlign:'right',
+            color:muted?'#555':isActive?'var(--text)':'var(--text)'}},
+            avg!=null?avg+units:'--');
+          row.appendChild(td);
+        });
+        tbody.appendChild(row);
+      });
+      tbl.appendChild(tbody);
+      fuelAvgCard.appendChild(tbl);
+
+      // -- Section 2: Race day plan --
+      const planHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',
+        marginBottom:'8px',paddingBottom:'5px',borderBottom:'1px solid var(--border-subtle)'}});
+      planHdr.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.12em',textTransform:'uppercase'}},'Race day plan'));
+      const raceTag=targetHrs&&selRace?.name?
+        span({style:{fontSize:'9px',color:'#fd79a8'}},(selRace.name.length>10?(selRace.name.slice(0,9)+'\u2026'):selRace.name)+' · '+targetTimeStr):
+        span({style:{fontSize:'9px',color:'var(--text-dim)'}},'set target time above');
+      planHdr.appendChild(raceTag);
+      fuelAvgCard.appendChild(planHdr);
+
+      // Suggested hourly intake from active band (or overall avg if no band match / no data in band)
+      const srcBand=activeBand&&bandData[activeBand].sessions.length?activeBand:
+        BANDS.find(b=>bandData[b].sessions.length)||null;
+      const hCarb=srcBand?bandAvg(srcBand,'carb'):null;
+      const hFluid=srcBand?bandAvg(srcBand,'fluid'):null;
+      const hSodium=srcBand?bandAvg(srcBand,'sodium'):null;
+
+      const intakeLbl=span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.14em',
+        textTransform:'uppercase',display:'block',marginBottom:'6px'}},'Suggested hourly intake');
+      fuelAvgCard.appendChild(intakeLbl);
+
+      const intakeRow=div({style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px',marginBottom:'14px'}});
+      [[hCarb,'g/hr','#60a5fa'],[hFluid,'ml/hr','#a29bfe'],[hSodium,'mg/hr','#fd79a8']].forEach(([val,unit,color])=>{
+        const blk=div({style:{background:'var(--bg-input)',border:'1px solid var(--border-subtle)',
+          borderRadius:'7px',padding:'10px 8px',textAlign:'center'}});
+        blk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'20px',
+          letterSpacing:'0.02em',lineHeight:'1',marginBottom:'2px',color:val!=null?color:'#333'}},
+          val!=null?String(val):'--'));
+        blk.appendChild(div({style:{fontSize:'8px',color:'var(--text-mute)',letterSpacing:'0.06em'}},unit));
+        intakeRow.appendChild(blk);
+      });
+      fuelAvgCard.appendChild(intakeRow);
+
+      // Projected totals
+      const totLbl=span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.14em',
+        textTransform:'uppercase',display:'block',marginBottom:'6px'}},'Projected totals'+(targetHrs?' · '+targetTimeStr:''));
+      fuelAvgCard.appendChild(totLbl);
+
+      const totsRow=div({style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px'}});
+      const totCarb=hCarb!=null&&targetHrs?Math.round(hCarb*targetHrs):null;
+      const totFluid=hFluid!=null&&targetHrs?parseFloat((hFluid*targetHrs/1000).toFixed(1)):null;
+      const totSodium=hSodium!=null&&targetHrs?parseFloat((hSodium*targetHrs/1000).toFixed(1)):null;
+      [[totCarb,'total carbs','g'],[totFluid,'total fluid','L'],[totSodium,'total sodium','g']].forEach(([val,label,unit])=>{
+        const blk=div({});
+        blk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',color:'var(--text)',lineHeight:'1'}},
+          val!=null?val+unit:'--'));
+        blk.appendChild(div({style:{fontSize:'8px',color:'var(--text-mute)',marginTop:'2px'}},label));
+        totsRow.appendChild(blk);
+      });
+      fuelAvgCard.appendChild(totsRow);
+
+      // -- Sessions drawer --
+      let drawerOpen=false;
+      const toggleBtn=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',
+        marginTop:'16px',padding:'8px 10px',background:'var(--bg-input)',
+        border:'1px solid var(--border-subtle)',borderRadius:'6px',cursor:'pointer'},
+        onclick:()=>{
+          drawerOpen=!drawerOpen;
+          chevron.style.transform=drawerOpen?'rotate(180deg)':'';
+          drawer.style.display=drawerOpen?'block':'none';
+        }});
+      const toggleLbl=div({style:{display:'flex',alignItems:'center',gap:'4px'}});
+      toggleLbl.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',textTransform:'uppercase'}},'Sessions included'));
+      toggleLbl.appendChild(span({style:{fontSize:'9px',color:'var(--text)',marginLeft:'2px'}},'\u00b7 '+allSessions.length));
+      toggleBtn.appendChild(toggleLbl);
+      const chevron=span({style:{fontSize:'10px',color:'var(--text-dim)',transition:'transform 0.15s'}},'▼');
+      toggleBtn.appendChild(chevron);
+      fuelAvgCard.appendChild(toggleBtn);
+
+      const drawer=div({style:{display:'none',marginTop:'6px',border:'1px solid var(--border-subtle)',borderRadius:'6px',overflow:'hidden'}});
+      const GUT_COLORS_MAP={5:'#00c96e',4:'#a8d800',3:'#ffd166',2:'#ff9f43',1:'#ff6b6b'};
+      // Sort sessions newest first
+      const sorted=[...allSessions].sort((a,b)=>b.ds.localeCompare(a.ds));
+      sorted.forEach((s,si)=>{
+        const isLast=si===sorted.length-1;
+        const row=div({style:{display:'flex',alignItems:'center',gap:'8px',padding:'9px 10px',
+          borderBottom:isLast?'none':'1px solid var(--border-subtle)',
+          background:'var(--bg-input)',cursor:'pointer'},
+          onclick:()=>{ overlay.remove?.(); showActivityModal(s.wIdx,s.dIdx,s.aIdx,null); }});
+        // Gut dot (or grey if no gut logged)
+        row.appendChild(div({style:{width:'8px',height:'8px',borderRadius:'50%',flexShrink:'0',
+          background:s.gutTier?GUT_COLORS_MAP[s.gutTier]:'#333'}}));
+        // Date
+        const dateD=new Date(s.ds+'T12:00:00');
+        row.appendChild(span({style:{fontSize:'9px',color:'var(--text-dim)',width:'48px',flexShrink:'0'}},fmtDate(dateD)));
+        // Name
+        row.appendChild(span({style:{fontSize:'10px',color:'var(--text)',flex:'1',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},s.label));
+        // Duration
+        const h=Math.floor(s.hrs), m=Math.round((s.hrs-h)*60);
+        row.appendChild(span({style:{fontSize:'9px',color:'var(--text-dim)',width:'30px',flexShrink:'0',textAlign:'right'}},h+':'+(m<10?'0':'')+m));
+        // Carb rate
+        row.appendChild(span({style:{fontSize:'10px',color:'var(--text-mute)',width:'48px',flexShrink:'0',textAlign:'right'}},s.carbRate+'g/hr'));
+        // Edit link
+        row.appendChild(span({style:{fontSize:'9px',color:'#a29bfe',flexShrink:'0',padding:'2px 6px',
+          border:'1px solid #a29bfe40',borderRadius:'3px'}},'edit'));
+        drawer.appendChild(row);
+      });
+      fuelAvgCard.appendChild(drawer);
+
+    }catch(e){
+      fuelAvgCard.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Fuel averages unavailable: '+e.message));
+    }
+  }
+
+  buildFuelAverages();
+  wrap.appendChild(fuelAvgCard);
+
   const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14);
   wrap.appendChild(div({class:'section-title'},'Recent Log'));
   if(!entries.length) wrap.appendChild(div({style:{fontSize:'11px',color:'#333'}},'No entries yet.'));
@@ -3197,7 +3492,7 @@ function renderSettings(){
         }},'\u00d7');
       row2.appendChild(delBtn);
       raceCard.appendChild(row2);
-      // Vert -- optional, used for the Vert Ratio chart on race day. Leave blank if unknown.
+      // Vert + target time -- optional fields
       const row3=div({style:{display:'flex',gap:'8px',alignItems:'flex-end'}});
       const vertWrap=div({style:{flex:'1',minWidth:0}});
       vertWrap.appendChild(lbl('Vert (m)'));
@@ -3206,15 +3501,22 @@ function renderSettings(){
       vertI.addEventListener('input',()=>{cfgForm.races[i].vert=vertI.value; saveRaces();});
       vertWrap.appendChild(vertI);
       row3.appendChild(vertWrap);
+      const ttWrap=div({style:{flex:'1',minWidth:0}});
+      ttWrap.appendChild(lbl('Target finish (h:mm)'));
+      const ttI=inp({class:'inp',type:'text',value:r.targetTime||'',placeholder:'e.g. 26:00'});
+      ttI.style.fontSize='12px';
+      ttI.addEventListener('input',()=>{cfgForm.races[i].targetTime=ttI.value; saveRaces();});
+      ttWrap.appendChild(ttI);
+      row3.appendChild(ttWrap);
       raceCard.appendChild(row3);
-      raceCard.appendChild(div({style:{fontSize:'8px',color:'#444',marginTop:'5px',lineHeight:'1.5'}},'Distance and Vert are both optional -- fill in both to show this race\'s vert ratio on the Trend page. Leave blank if unknown.'));
+      raceCard.appendChild(div({style:{fontSize:'8px',color:'#444',marginTop:'5px',lineHeight:'1.5'}},'Distance and Vert are both optional -- fill in both to show this race\'s vert ratio on the Trend page. Target time is used for the fuel race plan.'));
       racesContainer.appendChild(raceCard);
     });
     // Add race button
     racesContainer.appendChild(btn({style:{padding:'8px 12px',borderRadius:'5px',fontSize:'10px',background:'var(--bg-input)',border:'1px dashed var(--border-btn)',color:'var(--text-mute)',width:'100%'},
       onclick:()=>{
         if(!cfgForm.races) cfgForm.races=[];
-        cfgForm.races.push({name:'',date:'',dist:'',km:'',vert:''});
+        cfgForm.races.push({name:'',date:'',dist:'',km:'',vert:'',targetTime:''});
         saveRaces();
         renderRacesEditor();
       }},'+ Add race'));
