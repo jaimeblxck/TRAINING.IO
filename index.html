@@ -2403,7 +2403,12 @@ function renderTrend(){
     // ATL:CTL (always shown)
     const allD=buildDays(Math.max(loadRange,28));
     const {atl,ctl,ratio}=computeATLCTL(allD.map(d=>({date:d.ds,tss:d.tss})));
-    const nLogged=allD.filter(d=>d.tss>0).length;
+    // nLogged: number of calendar days since block start (capped at 28).
+    // Skipped/rest days within the block count as zero load, not missing data.
+    // "Not enough data" warnings only fire while the 28-day CTL window is still building.
+    const blockMon=getBlockMonday();
+    const daysElapsed=Math.floor((new Date()-blockMon)/86400000)+1;
+    const nLogged=Math.min(28,Math.max(daysElapsed,allD.filter(d=>d.tss>0).length));
     const isReliable=nLogged>=7;
 
     const atlBox=div({style:{marginTop:'10px',padding:'10px',background:'var(--bg-input)',border:'1px solid var(--border-subtle)',borderRadius:'6px'}});
