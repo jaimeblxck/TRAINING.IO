@@ -2065,12 +2065,18 @@ function renderPlan(){
     // Totals right side: actuals if done, planned if future
     const allRest=activities.length>0&&activities.every(a=>a.type==='rest');
     if(dayDone&&(totals.km>0||totals.hrs>0)){
-      topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',whiteSpace:'nowrap'}},
-        (totals.km>0?Math.round(totals.km)+'k ':'')+fmtHrTot(totals.hrs)));
+      const parts=[];
+      if(totals.km>0) parts.push(Math.round(totals.km)+'km');
+      if(totals.vert>0) parts.push((totals.vert>=1000?(totals.vert/1000).toFixed(1)+'k':Math.round(totals.vert))+'m');
+      parts.push(fmtHrTot(totals.hrs));
+      topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',whiteSpace:'nowrap'}},parts.join(' ')));
     } else if(!dayDone&&!allRest){
       const dp=getDayPlanned(wIdx,dIdx,false);
-      const dpStr=(dp.km>0?dp.km+'k ':'')+fmtHms(dp.hrs);
-      if(dpStr.trim()) topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-faint)',whiteSpace:'nowrap'}},dpStr));
+      const parts=[];
+      if(dp.km>0) parts.push(dp.km+'km');
+      if(dp.vert>0) parts.push((dp.vert>=1000?(dp.vert/1000).toFixed(1)+'k':dp.vert)+'m');
+      if(dp.hrs>0) parts.push(fmtHms(dp.hrs));
+      if(parts.length) topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-faint)',whiteSpace:'nowrap'}},parts.join(' ')));
     }
     topRow.appendChild(span({style:{fontSize:'10px',color:'#333',flexShrink:'0'}},isExp?'▲':'▼'));
     rowBtn.appendChild(topRow);
@@ -2450,18 +2456,18 @@ function renderTrend(){
       atlBox.appendChild(div({style:{fontSize:'10px',color:'#333'}},'Log 5+ sessions to begin building baseline ('+nLogged+' so far)'));
     } else {
       const confPct=Math.min(100,Math.round(nLogged/28*100));
-      const confRow=div({style:{marginBottom:'8px'}});
-      const confLabelRow=div({style:{display:'flex',justifyContent:'space-between',marginBottom:'2px'}});
-      confLabelRow.appendChild(span({style:{fontSize:'8px',color:'#333'}},'Baseline confidence'));
-      confLabelRow.appendChild(span({style:{fontSize:'8px',color:isReliable?'#00ff87':'#ffd166'}},confPct+'% ('+(isReliable?'reliable':'building')+' -- '+nLogged+'/28 days)'));
-      confRow.appendChild(confLabelRow);
-      const confTrack=div({class:'pbar-track'});
-      confTrack.style.setProperty('--pbar-color',isReliable?'#00c875':'#ffd166');
-      confTrack.appendChild(div({class:'pbar-fill',style:{width:confPct+'%',background:isReliable?'#00c875':'#ffd166'}}));
-      confRow.appendChild(confTrack);
-      atlBox.appendChild(confRow);
-      // Early history caution
-      if(nLogged<28){
+      if(confPct<100){
+        const confRow=div({style:{marginBottom:'8px'}});
+        const confLabelRow=div({style:{display:'flex',justifyContent:'space-between',marginBottom:'2px'}});
+        confLabelRow.appendChild(span({style:{fontSize:'8px',color:'#333'}},'Baseline confidence'));
+        confLabelRow.appendChild(span({style:{fontSize:'8px',color:isReliable?'#00ff87':'#ffd166'}},confPct+'% ('+(isReliable?'reliable':'building')+' -- '+nLogged+'/28 days)'));
+        confRow.appendChild(confLabelRow);
+        const confTrack=div({class:'pbar-track'});
+        confTrack.style.setProperty('--pbar-color',isReliable?'#00c875':'#ffd166');
+        confTrack.appendChild(div({class:'pbar-fill',style:{width:confPct+'%',background:isReliable?'#00c875':'#ffd166'}}));
+        confRow.appendChild(confTrack);
+        atlBox.appendChild(confRow);
+        // Early history caution
         atlBox.appendChild(div({style:{fontSize:'9px',color:'#e8a020',lineHeight:'1.6',marginBottom:'4px',padding:'4px 6px',background:'#e8a02012',borderRadius:'4px',border:'1px solid #e8a02030'}},
           'Early data -- ratio is directional only. A reading is available but CTL hasn\'t had enough history to fully stabilise. Use alongside your subjective feel and HRV, not as a standalone signal.'));
       }
