@@ -1844,7 +1844,27 @@ function renderBlock(){
             const editPanel=div({style:{padding:'12px',background:'var(--bg-elev)',
               border:'1px solid '+tc2+'30',borderTop:'none',borderRadius:'0 0 8px 8px',
               marginTop:'-8px',paddingTop:'16px'}});
-            editPanel.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',marginBottom:'10px'}},'ADJUST TARGETS'));
+            editPanel.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',marginBottom:'8px'}},'ADJUST TARGETS'));
+
+            // Week type selector -- same pill row as future weeks
+            const typeContainer=div({style:{marginBottom:'10px'}});
+            typeContainer.appendChild(lbl('Week type'));
+            const typeBtnsDiv=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
+            function renderCurWTBtns(){
+              typeBtnsDiv.innerHTML='';
+              WEEK_TYPES.forEach(wt=>{
+                const wtc=WTC[wt], isA=TARGETS[wIdx].type===wt;
+                const b=btn({style:{padding:'5px 10px',borderRadius:'4px',fontSize:'10px',
+                  background:isA?wtc+'30':'var(--bg-input)',border:'1px solid '+(isA?wtc:'var(--border)'),
+                  color:isA?wtc:'var(--text-mute)'},
+                  onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],type:wt};S.set(SK.targets,TARGETS);renderCurWTBtns();}},wt);
+                typeBtnsDiv.appendChild(b);
+              });
+            }
+            renderCurWTBtns();
+            typeContainer.appendChild(typeBtnsDiv);
+            editPanel.appendChild(typeContainer);
+
             let form={...TARGETS[wIdx]};
             const ng=div({class:'grid3',style:{marginBottom:'10px'}});
             [['Target km',form.km,'km',v=>form.km=parseFloat(v)||0],
@@ -1908,18 +1928,61 @@ function renderBlock(){
     });
   });
 
-  // Block totals footer
-  const totals=TARGETS.reduce((acc,t)=>({km:acc.km+t.km,vert:acc.vert+t.vert,hrs:acc.hrs+t.hrs}),{km:0,vert:0,hrs:0});
-  const footer=div({style:{marginTop:'16px',padding:'12px 14px',background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'8px'}});
-  footer.appendChild(div({class:'section-title',style:{marginBottom:'8px'}},'Block totals (planned)'));
-  const totRow=div({style:{display:'flex',gap:'0'}});
-  [[totals.km+'km','#60a5fa','TOTAL KM'],[( totals.vert/1000).toFixed(0)+'k','#a29bfe','VERT (000m)'],[fmtHrTot(totals.hrs),'#ffd166','HOURS']].forEach(([val,col,label])=>{
-    const cell=div({style:{flex:'1',textAlign:'center'}});
-    cell.appendChild(div({style:{fontSize:'20px',fontFamily:"'Bebas Neue',cursive",color:col,lineHeight:'1'}},val));
-    cell.appendChild(div({style:{fontSize:'8px',color:'#444',letterSpacing:'0.1em',marginTop:'2px'}},label));
-    totRow.appendChild(cell);
+  // Block Totals footer -- completed, remaining and full-block totals
+  const cw2=curWeek();
+  let comp={km:0,vert:0,hrs:0};   // all completed activities across all logged weeks
+  let rem={km:0,vert:0,hrs:0};    // remaining planned (current + future weeks, unlogged days)
+  const plan2=getPlan();
+  plan2.forEach((week,wi)=>{
+    week.days.forEach((_,di)=>{
+      const acts=getDayActivities(wi,di);
+      acts.filter(a=>a.completed).forEach(a=>{
+        comp.km+=parseFloat(a.actualKm||0);
+        comp.vert+=parseFloat(a.actualVert||0);
+        comp.hrs+=parseFloat(a.actualHrs||0);
+      });
+      // Remaining = planned on days that haven't been completed yet
+      if(!acts.some(a=>a.completed)){
+        const dp=getDayPlanned(wi,di,false);
+        rem.km+=dp.km||0; rem.vert+=dp.vert||0; rem.hrs+=dp.hrs||0;
+      }
+    });
   });
-  footer.appendChild(totRow);
+  const totalKm=comp.km+rem.km, totalVert=comp.vert+rem.vert, totalHrs=comp.hrs+rem.hrs;
+  function fmtV(v){ return v>=1000?(v/1000).toFixed(1)+'k':Math.round(v)+''; }
+
+  const footer=div({style:{marginTop:'16px',padding:'12px 14px',background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'8px'}});
+  footer.appendChild(div({class:'section-title',style:{marginBottom:'10px'}},'Block Totals'));
+
+  // Column headers
+  const hRow=div({style:{display:'flex',marginBottom:'6px'}});
+  hRow.appendChild(div({style:{width:'80px',flexShrink:'0'}})); // spacer
+  ['KM','VERT','HOURS'].forEach(h=>{
+    hRow.appendChild(div({style:{flex:'1',textAlign:'right',fontSize:'8px',color:'var(--text-mute)',letterSpacing:'0.1em'}},h));
+  });
+  footer.appendChild(hRow);
+
+  // Row helper
+  function totRow(label,color,km,vert,hrs){
+    const row=div({style:{display:'flex',alignItems:'baseline',marginBottom:'5px'}});
+    row.appendChild(div({style:{width:'80px',flexShrink:'0',fontSize:'9px',color:color,letterSpacing:'0.08em',textTransform:'uppercase'}},label));
+    [
+      {v:Math.round(km)+'km', c:color},
+      {v:fmtV(vert)+'m', c:color},
+      {v:fmtHrTot(hrs), c:color}
+    ].forEach(({v,c})=>{
+      row.appendChild(div({style:{flex:'1',textAlign:'right',fontFamily:"'Bebas Neue',cursive",fontSize:'16px',color:c,lineHeight:'1'}},v));
+    });
+    return row;
+  }
+
+  footer.appendChild(totRow('Completed','#00c96e',comp.km,comp.vert,comp.hrs));
+  footer.appendChild(totRow('Remaining','#4a4a6a',rem.km,rem.vert,rem.hrs));
+
+  // Divider line
+  footer.appendChild(div({style:{borderTop:'1px solid var(--border-subtle)',margin:'6px 0'}}));
+  footer.appendChild(totRow('Total','#60a5fa',totalKm,totalVert,totalHrs));
+
   wrap.appendChild(footer);
   return wrap;
 }
