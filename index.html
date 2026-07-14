@@ -1769,14 +1769,31 @@ function renderBlock(){
       if(isPast&&hasActuals) dateRow.appendChild(span({style:{fontSize:'8px',color:'#00ff87'}},'✓'));
       rowText.appendChild(dateRow);
 
-      // Summary line -- actuals for done weeks, planned for future
+      // Summary line
       if(isDone&&hasActuals){
         const actKmF=Math.round(actuals.km);
-        const actVertF=actuals.vert>=1000?(actuals.vert/1000).toFixed(1)+'k':Math.round(actuals.vert);
-        rowText.appendChild(span({style:{fontSize:'10px',color:isPast?'#555':'#b8ff4f'}},
-          actKmF+'km · '+actVertF+'m · '+fmtHrTot(actuals.hrs)+' · '+actuals.acts+' activities'));
+        const actVertF=actuals.vert>=1000?(actuals.vert/1000).toFixed(1):Math.round(actuals.vert);
+        const actVertU=actuals.vert>=1000?'km':'m';
+        const planVertF=t.vert>=1000?(t.vert/1000).toFixed(1):t.vert;
+        const planVertU=t.vert>=1000?'km':'m';
+        const progColor=isCur?'#b8ff4f':'#00ff87';
+        const progLine=span({style:{fontSize:'10px'}});
+        function prog(done,plan,unit){
+          const s=span({});
+          s.appendChild(span({style:{color:progColor}},done+''));
+          s.appendChild(span({style:{color:'#888'}},'/'+plan+unit));
+          return s;
+        }
+        const sep=()=>span({style:{color:'#2a2a4a'}},' · ');
+        progLine.appendChild(prog(actKmF,t.km,'km'));
+        progLine.appendChild(sep());
+        progLine.appendChild(prog(actVertF+actVertU,planVertF+planVertU,''));
+        progLine.appendChild(sep());
+        progLine.appendChild(prog(fmtHrTot(actuals.hrs),fmtHrTot(t.hrs),''));
+        rowText.appendChild(progLine);
+        rowText.appendChild(span({style:{fontSize:'9px',color:'#444',display:'block',marginTop:'2px'}},actuals.acts+' activities'));
       } else {
-        rowText.appendChild(span({style:{fontSize:'10px',color:'#444'}},
+        rowText.appendChild(span({style:{fontSize:'10px',color:'#888'}},
           t.km+'km · '+(t.vert>=1000?(t.vert/1000).toFixed(1)+'k':t.vert)+'m · '+fmtHrTot(t.hrs)+' planned'));
       }
 
