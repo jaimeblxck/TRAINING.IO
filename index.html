@@ -2,72 +2,97 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Training OS">
 <title>Training OS</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#07071a; --bg-card:#0a0a1a; --bg-input:#0e0e1f; --bg-elev:#0d0d1f;
-  --bg-btn:#1a1a3a; --bg-tab-active:#1a1a3a; --bg-modal:#0d0d1f;
+  --bg:#07071a; --bg-card:#0a0a1a; --bg-input:#0e0e1f; --bg-elev:#0d0d20;
+  --bg-btn:#1a1a3a; --bg-tab-active:#1e1e3a; --bg-modal:#0a0a1a;
   --border:#1c1c2e; --border-input:#22223a; --border-btn:#3a3a6a; --border-subtle:#1a1a2e;
-  --text:#e0e0ff; --text-mute:#4a4a6a; --text-dim:#444; --text-faint:#333;
-  --track:#1a1a2e;
+  --text:#e0e0ff; --text-mute:#4a4a6a; --text-dim:#666; --text-faint:#2a2a4a;
+  --tab-text:#4a4a6a; --tab-active:#e0e0ff;
 }
 body.light{
-  --bg:#f4f4f8; --bg-card:#ffffff; --bg-input:#ffffff; --bg-elev:#ffffff;
-  --bg-btn:#e8e8f4; --bg-tab-active:#dcdcf0; --bg-modal:#ffffff;
-  --border:#d8d8e4; --border-input:#c8c8d8; --border-btn:#b0b0d0; --border-subtle:#e4e4ec;
-  --text:#1a1a2e; --text-mute:#7a7a90; --text-dim:#999; --text-faint:#aaa;
-  --track:#e0e0e8;
+  --bg:#f0f0f8; --bg-card:#ffffff; --bg-input:#e8e8f0; --bg-elev:#f8f8ff;
+  --bg-btn:#e0e0f0; --bg-tab-active:#d8d8f0; --bg-modal:#ffffff;
+  --border:#d0d0e0; --border-input:#c8c8d8; --border-btn:#a0a0c0; --border-subtle:#e0e0f0;
+  --text:#0a0a2a; --text-mute:#6060a0; --text-dim:#808088; --text-faint:#c0c0d8;
+  --tab-text:#6060a0; --tab-active:#0a0a2a;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;min-height:100vh;font-size:13px;transition:background 0.3s,color 0.3s;}
-input,select,textarea,button{font-family:'JetBrains Mono',monospace;font-size:12px;}
-input[type=date].inp{font-size:12px;padding:7px 8px;height:36px;-webkit-appearance:none;appearance:none;min-width:0;width:100%;}
-input[type=date]::-webkit-date-and-time-value{text-align:left;}
-input[type=number]{-moz-appearance:textfield;}
-select option{background:var(--bg-input);color:var(--text);}
-::-webkit-scrollbar{width:3px;}
-::-webkit-scrollbar-thumb{background:var(--border);}
-#app{max-width:480px;margin:0 auto;padding-bottom:60px;}
-.pad{padding:0 20px;}
-.card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;}
-.lbl{font-size:9px;color:var(--text-mute);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:4px;display:block;}
-.inp{background:var(--bg-input);border:1px solid var(--border-input);color:var(--text);padding:8px 10px;border-radius:6px;outline:none;width:100%;}
-.sel{background:var(--bg-input);border:1px solid var(--border-input);color:var(--text);padding:7px 8px;border-radius:5px;outline:none;width:100%;cursor:pointer;}
-.btn{padding:10px 14px;border-radius:7px;border:1px solid var(--border-btn);background:var(--bg-btn);color:var(--text);cursor:pointer;letter-spacing:0.08em;width:100%;display:block;text-align:center;}
-.btn-sm{padding:7px 12px;border-radius:5px;border:1px solid var(--border-btn);background:var(--bg-btn);color:var(--text);cursor:pointer;font-size:10px;}
-.btn-ok{border-color:#00ff8750;background:#00ff8720;color:#00b894;}
-.btn-danger{border-color:#3a1a1a;background:#1a0a0a;color:#ff6b6b;}
-.btn-ghost{border-color:var(--border-subtle);background:var(--bg-btn);color:var(--text-mute);}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+html,body{height:100%;overscroll-behavior:none;}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'JetBrains Mono',monospace;
+  font-size:13px; line-height:1.4;
+  -webkit-font-smoothing:antialiased;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+#app{min-height:100vh;}
+.tab-bar{
+  display:flex; gap:2px; padding:0 16px 8px;
+  border-bottom:1px solid var(--border); overflow-x:auto;
+  -webkit-overflow-scrolling:touch; scrollbar-width:none;
+}
+.tab-bar::-webkit-scrollbar{display:none;}
+.tab{
+  flex:1; padding:8px 4px; border:none; border-radius:4px;
+  background:transparent; color:var(--tab-text);
+  font-family:'JetBrains Mono',monospace; font-size:10px;
+  letter-spacing:0.08em; cursor:pointer; min-width:40px;
+  transition:background 0.1s, color 0.1s;
+}
+.tab.active{background:var(--bg-tab-active); color:var(--tab-active);}
+.pad{padding:16px 16px 80px;}
+.section-title{font-family:'Bebas Neue',cursive;font-size:15px;letter-spacing:0.06em;color:var(--text);margin-bottom:8px;display:block;}
+.lbl{font-size:9px;color:var(--text-mute);letter-spacing:0.14em;text-transform:uppercase;display:block;margin-bottom:4px;}
+.inp{
+  background:var(--bg-input); border:1px solid var(--border-input);
+  color:var(--text); padding:8px 10px; border-radius:6px;
+  font-family:'JetBrains Mono',monospace; font-size:13px;
+  width:100%; outline:none; -webkit-appearance:none;
+}
+.inp:focus{border-color:var(--border-btn);}
+.sel{
+  background:var(--bg-input); border:1px solid var(--border-input);
+  color:var(--text); padding:8px 10px; border-radius:6px;
+  font-family:'JetBrains Mono',monospace; font-size:13px;
+  width:100%; outline:none; -webkit-appearance:none; cursor:pointer;
+}
+.btn{
+  background:var(--bg-btn); border:1px solid var(--border-btn);
+  color:var(--text); padding:10px 16px; border-radius:6px;
+  font-family:'JetBrains Mono',monospace; font-size:12px;
+  letter-spacing:0.06em; cursor:pointer; display:inline-block;
+  -webkit-appearance:none; width:100%;
+}
+.btn-ok{background:#00c875;border-color:#00c875;color:#000;font-weight:700;}
+.btn-sm{padding:6px 12px;font-size:11px;width:auto;}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text-mute);padding:6px 12px;font-size:11px;width:auto;}
+.week-btn{
+  padding:5px 9px; border-radius:5px;
+  font-family:'JetBrains Mono',monospace; font-size:10px;
+  letter-spacing:0.04em; cursor:pointer; border:1px solid var(--border);
+  background:var(--bg-input); color:var(--text-mute);
+}
+.week-btn.active{color:var(--text);}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;}
 .flex{display:flex;align-items:center;gap:8px;}
-.tab-bar{display:flex;margin:16px 20px;background:var(--bg-card);border-radius:8px;padding:3px;border:1px solid var(--border-subtle);}
-.tab{flex:1;padding:8px 0;background:transparent;border:none;color:var(--text-dim);border-radius:6px;cursor:pointer;font-size:10px;letter-spacing:0.06em;transition:all 0.2s;}
-.tab.active{background:var(--bg-tab-active);color:var(--text);}
-.pbar-track{height:6px;background:var(--track);border-radius:3px;overflow:hidden;margin-top:2px;position:relative;}
-.pbar-fill{height:100%;border-radius:3px;transition:width 0.4s;}
-body.light .pbar-track{background:transparent;overflow:visible;}
-body.light .pbar-track::before{content:'';position:absolute;inset:0;border-radius:3px;border:1.5px solid var(--pbar-color,#888);opacity:0.3;}
-body.light .pbar-fill{opacity:0.6;}
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;display:flex;align-items:flex-end;justify-content:center;}
-.modal{width:100%;max-width:480px;background:var(--bg-modal);border-radius:16px 16px 0 0;border:1px solid var(--border);border-bottom:none;padding:20px 20px 44px;max-height:90vh;overflow-y:auto;}
-.modal-handle{width:36px;height:4px;background:var(--border-input);border-radius:2px;margin:0 auto 18px;}
-.session-row{width:100%;text-align:left;padding:10px 12px;border-radius:8px;display:flex;align-items:center;gap:8px;cursor:pointer;border:1px solid var(--border);background:var(--bg-card);}
-.badge{font-size:9px;color:#000;padding:2px 5px;border-radius:3px;font-weight:700;min-width:34px;text-align:center;}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
 .hint{font-size:9px;margin-top:3px;}
-.divider{border:none;border-top:1px solid var(--border-subtle);margin:16px 0;}
+.row-sep{padding:8px 0;border-bottom:1px solid #111;display:flex;align-items:center;gap:10px;}
 .ring-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;}
 .ring-lbl{font-size:9px;color:var(--text-mute);letter-spacing:0.14em;text-transform:uppercase;}
-.week-btn{padding:4px 9px;border-radius:4px;font-size:11px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-dim);cursor:pointer;}
-.week-btn.active{font-weight:700;}
-.coach-box{padding:12px;background:#0a1a0a;border:1px solid #00ff8730;border-radius:8px;}
-.section-title{font-size:9px;color:#4a4a6a;letter-spacing:0.14em;text-transform:uppercase;margin-bottom:12px;}
-.row-sep{padding:8px 0;border-bottom:1px solid #111;display:flex;align-items:center;gap:10px;}
+.pbar-track{height:4px;background:#15152a;border-radius:2px;overflow:hidden;}
+.pbar-fill{height:100%;border-radius:2px;background:var(--pbar-color,#00c875);transition:width 0.3s;}
+.pbar-labels-row{display:flex;justify-content:space-between;margin-top:3px;}
+.pbar-label{font-size:8px;color:#333;}
 </style>
 </head>
 <body>
@@ -76,8 +101,8 @@ body.light .pbar-fill{opacity:0.6;}
   <div class="tab-bar" id="tabs"></div>
   <div class="pad" id="content"></div>
 </div>
-
 <script>
+
 // ============================================================
 // DATA & CONFIG
 // ============================================================
@@ -1176,7 +1201,7 @@ function renderHeader(){
     div({style:{textAlign:'right'}},[
       span({style:{fontSize:'26px',fontFamily:"'Bebas Neue',cursive",color:daysColor,lineHeight:'1',display:'block'}},daysNum!==null?daysNum+'':'--'),
       span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em',display:'block'}},nextRace?'DAYS TO '+nextRace.name.toUpperCase().split(' ')[0]:'DAYS TO RACE'),
-      nextRace?span({style:{fontSize:'9px',color:'#333',display:'block',marginTop:'1px'}},nextRace.date+((nextRace.km||nextRace.dist)?' · '+(nextRace.km?nextRace.km+'km':nextRace.dist):'')):null,
+      nextRace?span({style:{fontSize:'9px',color:'#333',display:'block',marginTop:'1px'}},nextRace.date+((nextRace.km||nextRace.dist)?' \u00b7 '+(nextRace.km?nextRace.km+'km':nextRace.dist):'')):null,
     ]),
   ]));
 
@@ -1189,7 +1214,7 @@ function renderHeader(){
   if(upcomingRaces.length>1){
     const r2=upcomingRaces[1];
     const d2=daysTo(r2.date);
-    pillRow.appendChild(span({style:{fontSize:'9px',background:'#fd79a820',border:'1px solid #fd79a840',color:'#fd79a8',padding:'3px 8px',borderRadius:'4px'}},r2.name.split(' ')[0]+' '+fmtDate(new Date(r2.date+'T12:00:00'))+' · '+d2+'d'));
+    pillRow.appendChild(span({style:{fontSize:'9px',background:'#fd79a820',border:'1px solid #fd79a840',color:'#fd79a8',padding:'3px 8px',borderRadius:'4px'}},r2.name.split(' ')[0]+' '+fmtDate(new Date(r2.date+'T12:00:00'))+' \u00b7 '+d2+'d'));
   }
   h.appendChild(pillRow);
 }
@@ -1197,7 +1222,7 @@ function renderHeader(){
 function renderTabs(){
   const bar=document.getElementById('tabs');
   bar.innerHTML='';
-  const tabs=[{id:'today',label:'TODAY'},{id:'plan',label:'PLAN'},{id:'block',label:'BLOCK'},{id:'trend',label:'TREND'},{id:'settings',label:'⚙'}];
+  const tabs=[{id:'today',label:'TODAY'},{id:'plan',label:'PLAN'},{id:'block',label:'BLOCK'},{id:'trend',label:'TREND'},{id:'settings',label:'\u2699'}];
   tabs.forEach(t=>{
     const b=btn({class:'tab'+(ACTIVE_TAB===t.id?' active':''),onclick:()=>{ACTIVE_TAB=t.id;EXPANDED_DAY=null;EDITING_DAY=null;render();}},t.label);
     if(t.id==='settings') b.style.fontSize='16px';
@@ -1218,6 +1243,353 @@ function renderContent(){
 // ============================================================
 // TODAY TAB
 // ============================================================
+// ============================================================
+// BLOCK PROGRESS CARD (shown on Today + Plan tabs)
+// ============================================================
+function buildBlockProgress(){
+  const wrap=div({style:{marginBottom:'16px'}});
+  try{
+    const plan=getPlan();
+    const N=TARGETS.length;
+    if(!N) return wrap;
+    const curW=Math.min(curWeek()-1,N-1); // 0-indexed current week
+
+    // Days to nearest future race
+    const now=new Date();
+    let daysToRace=null, nextRaceName=null;
+    (CFG.races||[]).forEach(r=>{
+      if(!r.date) return;
+      const rd=new Date(r.date+'T12:00:00');
+      const diff=Math.ceil((rd-now)/86400000);
+      if(diff>0&&(daysToRace===null||diff<daysToRace)){
+        daysToRace=diff; nextRaceName=r.name;
+      }
+    });
+
+    // Stats: completed = sum of actual logged km across all past+current activities
+    let doneKm=0;
+    plan.forEach((week,wi)=>{
+      week.days.forEach((_,di)=>{
+        getDayActivities(wi,di).filter(a=>a.completed).forEach(a=>{
+          doneKm+=parseFloat(a.actualKm||0);
+        });
+      });
+    });
+    const remKm=TARGETS.slice(curW).reduce((s,t)=>s+(t.km||0),0);
+
+    // Header
+    const hdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'12px'}});
+    const hdrLeft=div({});
+    hdrLeft.appendChild(div({class:'section-title'},'Block Progress'));
+    hdrLeft.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',marginTop:'1px'}},'W'+(curW+1)+' of '+N+(nextRaceName?' \u00b7 '+nextRaceName+' build':'')));
+    hdr.appendChild(hdrLeft);
+    if(daysToRace!=null){
+      const hdrRight=div({style:{textAlign:'right'}});
+      hdrRight.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'26px',color:'#fd79a8',lineHeight:'1'}},String(daysToRace)));
+      hdrRight.appendChild(div({style:{fontSize:'8px',color:'#fd79a8',letterSpacing:'0.08em'}},'DAYS TO RACE'));
+      hdr.appendChild(hdrRight);
+    }
+    wrap.appendChild(hdr);
+
+    // SVG line chart
+    const CW=320, CH=60;
+    const PL=2, PR=6, PT=14, PB=6;
+    const gW=CW-PL-PR, gH=CH-PT-PB;
+    const xStep=N>1?gW/(N-1):gW;
+    const maxKm=Math.max(...TARGETS.map(t=>t.km||0))*1.08||120;
+    const xOf=i=>PL+i*xStep;
+    const yOf=km=>PT+gH-((km||0)/maxKm)*gH;
+
+    // Split line at current week
+    const donePts=TARGETS.slice(0,curW+1).map((t,i)=>[xOf(i),yOf(t.km)]);
+    const remPts=TARGETS.slice(curW).map((t,i)=>[xOf(curW+i),yOf(t.km)]);
+    const toStr=pts=>pts.map(([x,y])=>x.toFixed(1)+','+y.toFixed(1)).join(' ');
+    const doneArea=[...donePts,[xOf(curW),yOf(0)],[xOf(0),yOf(0)]].map(([x,y])=>x.toFixed(1)+','+y.toFixed(1)).join(' ');
+
+    // Race week flag positions
+    const raceWeeks=TARGETS.map((t,i)=>({...t,i})).filter(t=>t.type==='RACE');
+
+    const svgEl=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svgEl.setAttribute('viewBox','0 0 '+CW+' '+CH);
+    svgEl.setAttribute('width','100%');
+    svgEl.setAttribute('preserveAspectRatio','none');
+    svgEl.style.display='block';
+
+    const svgContent=[
+      '<defs>',
+      '<linearGradient id="bpg" x1="0" y1="0" x2="0" y2="1">',
+      '<stop offset="0%" stop-color="#ffd166" stop-opacity="0.14"/>',
+      '<stop offset="100%" stop-color="#ffd166" stop-opacity="0.01"/>',
+      '</linearGradient>',
+      '<filter id="bpglow"><feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b"/>',
+      '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>',
+      '</defs>',
+      // Guide lines
+      '<line x1="'+PL+'" y1="'+yOf(90).toFixed(1)+'" x2="'+(CW-PR)+'" y2="'+yOf(90).toFixed(1)+'" stroke="#111128" stroke-width="0.8"/>',
+      '<line x1="'+PL+'" y1="'+yOf(60).toFixed(1)+'" x2="'+(CW-PR)+'" y2="'+yOf(60).toFixed(1)+'" stroke="#111128" stroke-width="0.8"/>',
+      // Done area fill
+      '<polygon points="'+doneArea+'" fill="url(#bpg)"/>',
+      // Remaining line (muted)
+      remPts.length>1?'<polyline points="'+toStr(remPts)+'" fill="none" stroke="#252535" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>':'',
+      // Done line (yellow)
+      donePts.length>1?'<polyline points="'+toStr(donePts)+'" fill="none" stroke="#ffd166" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>':'',
+      // Now vertical guide
+      '<line x1="'+xOf(curW).toFixed(1)+'" y1="'+PT+'" x2="'+xOf(curW).toFixed(1)+'" y2="'+(CH-PB)+'" stroke="#ffd16625" stroke-width="1" stroke-dasharray="2,2"/>',
+      // Past week dots
+      ...TARGETS.slice(0,curW).map((_,i)=>'<circle cx="'+xOf(i).toFixed(1)+'" cy="'+yOf(TARGETS[i].km).toFixed(1)+'" r="2" fill="#ffd166" opacity="0.35"/>'),
+      // NOW dot
+      '<circle cx="'+xOf(curW).toFixed(1)+'" cy="'+yOf(TARGETS[curW].km).toFixed(1)+'" r="5" fill="#ffd166" opacity="0.35" filter="url(#bpglow)"/>',
+      '<circle cx="'+xOf(curW).toFixed(1)+'" cy="'+yOf(TARGETS[curW].km).toFixed(1)+'" r="2.5" fill="#ffd166"/>',
+      // Checker flags on each RACE week
+      ...raceWeeks.map(r=>'<text x="'+(xOf(r.i)-7).toFixed(1)+'" y="'+(yOf(r.km)-5).toFixed(1)+'" font-size="12" font-family="sans-serif">\uD83C\uDFC1</text>'),
+    ].join('');
+    svgEl.innerHTML=svgContent;
+    wrap.appendChild(svgEl);
+
+    // Phase colour strip
+    const colorStrip=div({style:{display:'flex',gap:'2px',height:'4px',margin:'5px 0 3px'}});
+    TARGETS.forEach((t,i)=>{
+      const c=WTC[t.type]||'#555';
+      const done=i<=curW;
+      const seg=div({style:{flex:'1',borderRadius:'1px',background:c,opacity:done?'0.7':'0.25'}});
+      colorStrip.appendChild(seg);
+    });
+    wrap.appendChild(colorStrip);
+
+    // Phase labels
+    const phaseRow=div({style:{display:'flex',gap:'2px',marginBottom:'12px'}});
+    const SHORT={BUILD:'BUILD',PEAK:'PEAK',SHARPEN:'SHRPN',TAPER:'TAPER',RACE:'RACE',DELOAD:'DLOAD',RECOVERY:'RCVY'};
+    const groups=[];let cg=null;
+    TARGETS.forEach((t,i)=>{
+      if(!cg||cg.type!==t.type){cg={type:t.type,count:1,start:i};groups.push(cg);}
+      else cg.count++;
+    });
+    groups.forEach(g=>{
+      const lbl=div({style:{flex:String(g.count),textAlign:'center',fontSize:'6px',
+        color:WTC[g.type]||'#555',letterSpacing:'0.06em',
+        opacity:g.start<=curW?'0.9':'0.35'}},SHORT[g.type]||g.type);
+      phaseRow.appendChild(lbl);
+    });
+    wrap.appendChild(phaseRow);
+
+    // Stats
+    const statsRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}});
+    const doneBlk=div({});
+    doneBlk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',color:'#ffd166',lineHeight:'1'}},Math.round(doneKm)+'km'));
+    doneBlk.appendChild(div({style:{fontSize:'8px',color:'var(--text-mute)',letterSpacing:'0.08em',marginTop:'1px'}},'COMPLETED'));
+    const remBlk=div({style:{textAlign:'right'}});
+    remBlk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',color:'#252535',lineHeight:'1'}},Math.round(remKm)+'km'));
+    remBlk.appendChild(div({style:{fontSize:'8px',color:'#252535',letterSpacing:'0.08em',marginTop:'1px'}},'REMAINING'));
+    statsRow.appendChild(doneBlk);
+    statsRow.appendChild(remBlk);
+    wrap.appendChild(statsRow);
+
+  }catch(e){
+    wrap.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Block progress unavailable: '+e.message));
+  }
+  return wrap;
+}
+
+// ============================================================
+// BLOCK PROGRESS CARD -- shown on Today and Plan tabs
+// Line graph of planned weekly km across the whole block,
+// split at the current week (yellow done / muted remaining).
+// Race weeks get a checker flag. Periodisation colour strip below.
+// ============================================================
+function buildBlockProgress(){
+  const card=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',
+    borderRadius:'10px',padding:'14px',marginBottom:'14px'}});
+  try{
+    const plan=getPlan();
+    const nWeeks=plan.length;
+    if(!nWeeks) return card;
+
+    const curWk=curWeek(); // 1-based
+    const curIdx=Math.min(curWk-1, nWeeks-1); // 0-based
+
+    // Planned km from TARGETS; fall back to 0
+    const weekKm=TARGETS.slice(0,nWeeks).map(t=>parseFloat(t?.km)||0);
+    const weekTypes=TARGETS.slice(0,nWeeks).map(t=>t?.type||'BUILD');
+
+    // Days to nearest upcoming race
+    const races=getRaces();
+    const today2=new Date(); today2.setHours(0,0,0,0);
+    let daysToRace=null, nearestRace=null;
+    races.forEach(r=>{
+      if(!r.date) return;
+      const rd=new Date(r.date+'T00:00:00');
+      const diff=Math.round((rd-today2)/86400000);
+      if(diff>=0&&(daysToRace===null||diff<daysToRace)){daysToRace=diff;nearestRace=r;}
+    });
+
+    // Completed km for each week (sum of actual logged activities)
+    const doneKm=plan.map((_,wi)=>{
+      let tot=0;
+      const w=plan[wi];
+      if(!w) return 0;
+      w.days.forEach((_,di)=>{const t=getDayTotals(wi,di);tot+=t.km;});
+      return tot;
+    });
+    const totalDone=Math.round(doneKm.slice(0,curIdx).reduce((s,k)=>s+k,0));
+    const totalRem =Math.round(weekKm.slice(curIdx).reduce((s,k)=>s+k,0));
+
+    const TYPE_FG={BUILD:'#3a9a5a',RACE:'#fd79a8',SHARPEN:'#60a5fa',
+                   PEAK:'#8a50e0',DELOAD:'#888',TAPER:'#c09030',RECOVERY:'#4080a0'};
+
+    // Header
+    const hdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'12px'}});
+    const htl=div({});
+    htl.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'15px',letterSpacing:'0.06em'}},'Block Progress'));
+    htl.appendChild(div({style:{fontSize:'9px',color:'#4a4a6a',marginTop:'1px'}},'W'+curWk+' of '+nWeeks+' \u00b7 '+(nearestRace?.name||'race')+' build'));
+    hdr.appendChild(htl);
+    if(daysToRace!==null){
+      const hrc=div({style:{textAlign:'right'}});
+      hrc.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'26px',color:'#fd79a8',lineHeight:'1'}},String(daysToRace)));
+      hrc.appendChild(div({style:{fontSize:'8px',color:'#fd79a8',letterSpacing:'0.08em'}},'DAYS TO RACE'));
+      hdr.appendChild(hrc);
+    }
+    card.appendChild(hdr);
+
+    // SVG line chart
+    const W=320, H=60;
+    const PAD_L=2,PAD_R=6,PAD_T=14,PAD_B=6;
+    const gW=W-PAD_L-PAD_R, gH=H-PAD_T-PAD_B;
+    const maxKm=Math.max(...weekKm,1)*1.05;
+    const xStep=gW/(nWeeks-1||1);
+    const xOf=i=>PAD_L+i*xStep;
+    const yOf=km=>PAD_T+gH-(km/maxKm)*gH;
+
+    const donePoints=weekKm.slice(0,curIdx+1).map((k,i)=>[xOf(i),yOf(k)]);
+    const remPoints =weekKm.slice(curIdx).map((k,i)=>[xOf(curIdx+i),yOf(k)]);
+    const pts=arr=>arr.map(([x,y])=>x.toFixed(1)+','+y.toFixed(1)).join(' ');
+    const doneArea=[...donePoints,[xOf(curIdx),yOf(0)],[xOf(0),yOf(0)]].map(([x,y])=>x.toFixed(1)+','+y.toFixed(1)).join(' ');
+
+    // Race week flags
+    const raceFlags=weekTypes.map((t,i)=>t==='RACE'?i:-1).filter(i=>i>=0);
+
+    const svgEl=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svgEl.setAttribute('viewBox','0 0 '+W+' '+H);
+    svgEl.setAttribute('width','100%');
+    svgEl.style.display='block';
+
+    // Guide lines
+    [90,60].forEach(km=>{
+      const l=document.createElementNS('http://www.w3.org/2000/svg','line');
+      l.setAttribute('x1',PAD_L);l.setAttribute('x2',W-PAD_R);
+      l.setAttribute('y1',yOf(km).toFixed(1));l.setAttribute('y2',yOf(km).toFixed(1));
+      l.setAttribute('stroke','#111128');l.setAttribute('stroke-width','0.8');
+      svgEl.appendChild(l);
+    });
+
+    // Defs
+    const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+    defs.innerHTML='<linearGradient id="bpg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffd166" stop-opacity="0.15"/><stop offset="100%" stop-color="#ffd166" stop-opacity="0.01"/></linearGradient><filter id="bpglow"><feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+    svgEl.appendChild(defs);
+
+    // Done area
+    const areaEl=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    areaEl.setAttribute('points',doneArea);areaEl.setAttribute('fill','url(#bpg)');
+    svgEl.appendChild(areaEl);
+
+    // Remaining line
+    const remLine=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    remLine.setAttribute('points',pts(remPoints));remLine.setAttribute('fill','none');
+    remLine.setAttribute('stroke','#252535');remLine.setAttribute('stroke-width','1.5');
+    remLine.setAttribute('stroke-linecap','round');remLine.setAttribute('stroke-linejoin','round');
+    svgEl.appendChild(remLine);
+
+    // Done line
+    const doneLine=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    doneLine.setAttribute('points',pts(donePoints));doneLine.setAttribute('fill','none');
+    doneLine.setAttribute('stroke','#ffd166');doneLine.setAttribute('stroke-width','2');
+    doneLine.setAttribute('stroke-linecap','round');doneLine.setAttribute('stroke-linejoin','round');
+    svgEl.appendChild(doneLine);
+
+    // Now vertical guide
+    const nvl=document.createElementNS('http://www.w3.org/2000/svg','line');
+    nvl.setAttribute('x1',xOf(curIdx).toFixed(1));nvl.setAttribute('x2',xOf(curIdx).toFixed(1));
+    nvl.setAttribute('y1',PAD_T);nvl.setAttribute('y2',H-PAD_B);
+    nvl.setAttribute('stroke','#ffd16625');nvl.setAttribute('stroke-width','1');
+    nvl.setAttribute('stroke-dasharray','2,2');
+    svgEl.appendChild(nvl);
+
+    // Past week dots
+    donePoints.slice(0,-1).forEach(([x,y])=>{
+      const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',x.toFixed(1));c.setAttribute('cy',y.toFixed(1));
+      c.setAttribute('r','2');c.setAttribute('fill','#ffd166');c.setAttribute('opacity','0.35');
+      svgEl.appendChild(c);
+    });
+
+    // Now dot glow
+    const nowX=xOf(curIdx).toFixed(1), nowY=yOf(weekKm[curIdx]).toFixed(1);
+    const glowC=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    glowC.setAttribute('cx',nowX);glowC.setAttribute('cy',nowY);
+    glowC.setAttribute('r','5');glowC.setAttribute('fill','#ffd166');
+    glowC.setAttribute('opacity','0.35');glowC.setAttribute('filter','url(#bpglow)');
+    svgEl.appendChild(glowC);
+    const nowC=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    nowC.setAttribute('cx',nowX);nowC.setAttribute('cy',nowY);
+    nowC.setAttribute('r','2.5');nowC.setAttribute('fill','#ffd166');
+    svgEl.appendChild(nowC);
+
+    // Checker flags on every RACE week
+    raceFlags.forEach(ri=>{
+      const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',(xOf(ri)-7).toFixed(1));
+      t.setAttribute('y',(yOf(weekKm[ri])-5).toFixed(1));
+      t.setAttribute('font-size','12');t.setAttribute('font-family','sans-serif');
+      t.textContent='\uD83C\uDFC1'; // \u1f3c1
+      svgEl.appendChild(t);
+    });
+
+    card.appendChild(svgEl);
+
+    // Colour strip + phase labels
+    const colorStrip=div({style:{display:'flex',gap:'2px',height:'4px',margin:'5px 0 3px'}});
+    weekTypes.forEach((type,i)=>{
+      const seg=div({style:{flex:'1',borderRadius:'1px',
+        background:TYPE_FG[type]||'#555',
+        opacity:(i<=curIdx?'0.7':'0.25')}});
+      colorStrip.appendChild(seg);
+    });
+    card.appendChild(colorStrip);
+
+    const phaseRow=div({style:{display:'flex',gap:'2px',marginBottom:'12px'}});
+    const groups=[];let cg=null;
+    weekTypes.forEach((t,i)=>{
+      if(!cg||cg.type!==t){cg={type:t,count:1,start:i};groups.push(cg);}
+      else cg.count++;
+    });
+    const SHORT={BUILD:'BUILD',RACE:'RACE',SHARPEN:'SHRPN',PEAK:'PEAK',DELOAD:'DLOAD',TAPER:'TAPER',RECOVERY:'RCVY'};
+    groups.forEach(g=>{
+      const lbl=div({style:{flex:String(g.count),textAlign:'center',fontSize:'6px',
+        color:TYPE_FG[g.type]||'#555',letterSpacing:'0.06em',
+        opacity:g.start<=curIdx?'0.9':'0.35'}},SHORT[g.type]||g.type);
+      phaseRow.appendChild(lbl);
+    });
+    card.appendChild(phaseRow);
+
+    // Stats
+    const statsRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}});
+    const doneBlk=div({});
+    doneBlk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',color:'#ffd166',lineHeight:'1'}},
+      totalDone+'km'));
+    doneBlk.appendChild(div({style:{fontSize:'8px',color:'#4a4a6a',letterSpacing:'0.08em',marginTop:'1px'}},'COMPLETED'));
+    const remBlk=div({style:{textAlign:'right'}});
+    remBlk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',color:'#252535',lineHeight:'1'}},
+      totalRem+'km'));
+    remBlk.appendChild(div({style:{fontSize:'8px',color:'#252535',letterSpacing:'0.08em',marginTop:'1px'}},'REMAINING'));
+    statsRow.appendChild(doneBlk);
+    statsRow.appendChild(remBlk);
+    card.appendChild(statsRow);
+
+  }catch(e){
+    card.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Block progress unavailable: '+e.message));
+  }
+  return card;
+}
+
 function renderToday(){
   const wrap=div({});
   const td=today();
@@ -1228,6 +1600,7 @@ function renderToday(){
   const dIdx=plan[wIdx]?.days.findIndex(d=>dowIndex(d.day)===dow)??-1;
   const todaySess=dIdx>=0?getSession(wIdx,dIdx):null;
   const todayRun=dIdx>=0?getRunLog(wIdx,dIdx):null;
+  wrap.appendChild(buildBlockProgress());
 
   // State held in closure vars updated by inputs
   let hrv=saved.hrv||'', rhr=saved.rhr||'', sleep=saved.sleep||'';
@@ -1266,7 +1639,7 @@ function renderToday(){
     const bwrap=div({style:{display:'flex',gap:'2px'}});
     badgeTypes.forEach(t=>bwrap.appendChild(span({style:{fontSize:'9px',background:TC[t]||'#555',color:'#000',padding:'2px 5px',borderRadius:'3px',fontWeight:'700'}},TL[t]||'--')));
     hdrRow.appendChild(bwrap);
-    hdrRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',flex:'1'}},'TODAY · WK '+(wIdx+1)));
+    hdrRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',flex:'1'}},'TODAY \u00b7 WK '+(wIdx+1)));
     hdrRow.appendChild(span({style:{fontSize:'8px',color:'#000',background:'#b8d400',padding:'2px 6px',borderRadius:'3px',fontWeight:'700',letterSpacing:'0.06em'}},'CURRENT'));
     const doneCount=allTodayActs.filter(a=>a.completed).length;
     if(doneCount>0){
@@ -1310,7 +1683,7 @@ function renderToday(){
           border:'1px solid '+(act.completed?'#00c96e50':'var(--border-btn)'),
           color:act.completed?'#007a42':'var(--text)'},
           onclick:()=>showActivityModal(wIdx,dIdx,aIdx,todaySess)},
-          act.completed?'✓ Edit':'Log'));
+          act.completed?'\u2713 Edit':'Log'));
 
         if(act.completed){
           btnGroup.appendChild(btn({style:{padding:'5px 7px',borderRadius:'5px',fontSize:'10px',
@@ -1321,7 +1694,7 @@ function renderToday(){
               updated[aIdx]={...updated[aIdx],completed:false};
               saveDayActivities(wIdx,dIdx,updated);
               render();
-            }},'↩'));
+            }},'\u21a9'));
         }
 
         mainLine.appendChild(btnGroup);
@@ -1410,9 +1783,9 @@ function renderToday(){
   // HRV / RHR inputs -- centred per request
   const grid1=div({class:'grid2',style:{marginBottom:'12px'}});
   const hrvN=parseFloat(hrv);
-  const hrvHint=!isNaN(hrvN)?(hrvN<CFG.hrvLow?{t:'Below range',c:'#e05050'}:hrvN>CFG.hrvHigh?{t:'Above range',c:'#2a9d60'}:{t:'In range ✓',c:'#2a9d60'}):null;
+  const hrvHint=!isNaN(hrvN)?(hrvN<CFG.hrvLow?{t:'Below range',c:'#e05050'}:hrvN>CFG.hrvHigh?{t:'Above range',c:'#2a9d60'}:{t:'In range \u2713',c:'#2a9d60'}):null;
   const rhrN=parseFloat(rhr);
-  const rhrHint=!isNaN(rhrN)?(rhrN<CFG.rhrLow?{t:'Below baseline',c:'#2a9d60'}:rhrN>CFG.rhrHigh?{t:'Elevated',c:'#e05050'}:{t:'Baseline ✓',c:'#2a9d60'}):null;
+  const rhrHint=!isNaN(rhrN)?(rhrN<CFG.rhrLow?{t:'Below baseline',c:'#2a9d60'}:rhrN>CFG.rhrHigh?{t:'Elevated',c:'#e05050'}:{t:'Baseline \u2713',c:'#2a9d60'}):null;
 
   const hrvF=numInp('HRV',hrv,v=>{hrv=v;updateDecision();},'ms',hrvHint?.t,hrvHint?.c,true);
   const rhrF=numInp('Resting HR',rhr,v=>{rhr=v;updateDecision();},'bpm',rhrHint?.t,rhrHint?.c,true);
@@ -1666,7 +2039,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
         updated[aIdx]={...updated[aIdx],completed:false};
         saveDayActivities(wIdx,dIdx,updated);
         overlay.remove(); render();
-      }},'↩ Unlog'));
+      }},'\u21a9 Unlog'));
   }
 
   const closeBtn=btn({class:'btn-sm btn-ghost',onclick:()=>overlay.remove()},'Close');
@@ -1721,7 +2094,7 @@ function renderBlock(){
     },{km:0,vert:0,hrs:0});
     const phaseHdr=div({style:{display:'flex',alignItems:'center',gap:'8px',margin:'10px 0 6px'}});
     phaseHdr.appendChild(span({style:{fontSize:'9px',background:tc+'20',border:'1px solid '+tc+'30',color:tc,padding:'2px 8px',borderRadius:'10px',letterSpacing:'0.1em'}},group.type));
-    phaseHdr.appendChild(span({style:{fontSize:'9px',color:'#333'}},phaseTotals.km+'km · '+(phaseTotals.vert>=1000?(phaseTotals.vert/1000).toFixed(0)+'k':phaseTotals.vert)+'m'));
+    phaseHdr.appendChild(span({style:{fontSize:'9px',color:'#333'}},phaseTotals.km+'km \u00b7 '+(phaseTotals.vert>=1000?(phaseTotals.vert/1000).toFixed(0)+'k':phaseTotals.vert)+'m'));
     wrap.appendChild(phaseHdr);
 
     group.weeks.forEach(wIdx=>{
@@ -1766,7 +2139,7 @@ function renderBlock(){
       const dateRow=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'2px'}});
       dateRow.appendChild(span({style:{fontSize:'10px',color:'var(--text-mute)'}},fmtDate(mon)+' - '+fmtDate(sun)));
       if(isCur) dateRow.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'NOW'));
-      if(isPast&&hasActuals) dateRow.appendChild(span({style:{fontSize:'8px',color:'#00ff87'}},'✓'));
+      if(isPast&&hasActuals) dateRow.appendChild(span({style:{fontSize:'8px',color:'#00ff87'}},'\u2713'));
       rowText.appendChild(dateRow);
 
       // Summary line
@@ -1784,7 +2157,7 @@ function renderBlock(){
           s.appendChild(span({style:{color:'#888'}},'/'+plan+unit));
           return s;
         }
-        const sep=()=>span({style:{color:'#2a2a4a'}},' · ');
+        const sep=()=>span({style:{color:'#2a2a4a'}},' \u00b7 ');
         progLine.appendChild(prog(actKmF,t.km,'km'));
         progLine.appendChild(sep());
         progLine.appendChild(prog(actVertF+actVertU,planVertF+planVertU,''));
@@ -1794,7 +2167,7 @@ function renderBlock(){
         rowText.appendChild(span({style:{fontSize:'9px',color:'#444',display:'block',marginTop:'2px'}},actuals.acts+' activities'));
       } else {
         rowText.appendChild(span({style:{fontSize:'10px',color:'#888'}},
-          t.km+'km · '+(t.vert>=1000?(t.vert/1000).toFixed(1)+'k':t.vert)+'m · '+fmtHrTot(t.hrs)+' planned'));
+          t.km+'km \u00b7 '+(t.vert>=1000?(t.vert/1000).toFixed(1)+'k':t.vert)+'m \u00b7 '+fmtHrTot(t.hrs)+' planned'));
       }
 
       // Second line: Sessions (+ Edit for current week)
@@ -1817,9 +2190,9 @@ function renderBlock(){
       if(isDone){
         rowBtn.appendChild(btn({style:{padding:'4px 6px',borderRadius:'4px',fontSize:'11px',
           background:'transparent',border:'none',color:'#333',flexShrink:'0',cursor:'pointer'},
-          onclick:e=>{e.stopPropagation();BLOCK_EDITING=isExpanded?null:wIdx;render();}},isExpanded?'▲':'▼'));
+          onclick:e=>{e.stopPropagation();BLOCK_EDITING=isExpanded?null:wIdx;render();}},isExpanded?'\u25b2':'\u25bc'));
       } else {
-        rowBtn.appendChild(span({style:{fontSize:'11px',color:'#333',flexShrink:'0'}},isExpanded?'▲':'▼'));
+        rowBtn.appendChild(span({style:{fontSize:'11px',color:'#333',flexShrink:'0'}},isExpanded?'\u25b2':'\u25bc'));
       }
 
       // Wrapper for row + panels -- rounded bottom depends on whether expanded
@@ -1849,7 +2222,7 @@ function renderBlock(){
               const actF=lb==='HRS'?fmtHrTot(act):lb==='VERT'&&act>=1000?(act/1000).toFixed(1)+'k':Math.round(act);
               const tgtF=lb==='HRS'?fmtHrTot(t.hrs):lb==='VERT'&&t.vert>=1000?(t.vert/1000).toFixed(1)+'k':t[lb.toLowerCase()]||tgt;
               info.appendChild(span({style:{fontSize:'8px',color:over?'#ff6b6b':'var(--text-mute)'}},
-                actF+' / '+tgtF+(lb==='KM'?'km':lb==='VERT'?'m':'')+(over?' ↑':pct===100?' ✓':' '+pct+'%')));
+                actF+' / '+tgtF+(lb==='KM'?'km':lb==='VERT'?'m':'')+(over?' \u2191':pct===100?' \u2713':' '+pct+'%')));
               row.appendChild(info); row.appendChild(pbar(act,tgt||1,col));
               barsDiv.appendChild(row);
             });
@@ -2015,6 +2388,7 @@ function renderPlan(){
   const week=plan[wIdx];
   const target=TARGETS[wIdx];
   const wrap=div({});
+  wrap.appendChild(buildBlockProgress());
 
   // Week selector
   const weekSel=div({style:{display:'flex',gap:'5px',marginBottom:'14px',flexWrap:'wrap'}});
@@ -2053,7 +2427,7 @@ function renderPlan(){
   hdrLeft.appendChild(hdrBadges);
   // Target line -- always light text since card is always dark
   hdrLeft.appendChild(div({style:{fontSize:'12px',color:'#c0ccee',letterSpacing:'0.04em',marginBottom:'8px'}},
-    'TARGET: '+(target?.km||0)+'km · '+(target?.vert||0)+'m · '+(target?.hrs||0)+'hr'));
+    'TARGET: '+(target?.km||0)+'km \u00b7 '+(target?.vert||0)+'m \u00b7 '+(target?.hrs||0)+'hr'));
   hdrTop.appendChild(hdrLeft);
   hdrTop.appendChild(div({style:{fontSize:'11px',color:'#6080a0',textAlign:'right'}},actuals.done+'/'+week.days.length+' done'));
   hdrCard.appendChild(hdrTop);
@@ -2129,7 +2503,7 @@ function renderPlan(){
 
     // Done tick or day+date
     if(dayDone){
-      topRow.appendChild(span({style:{fontSize:'9px',color:'#007a42',fontWeight:'700'}},'✓'));
+      topRow.appendChild(span({style:{fontSize:'9px',color:'#007a42',fontWeight:'700'}},'\u2713'));
     }
     topRow.appendChild(span({style:{fontSize:'9px',color:dayDone?'#007a42':'var(--text-dim)',fontWeight:'600'}},s.day));
     topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)'}},fmtDate(slotDateObj(wIdx,s.day))));
@@ -2158,7 +2532,7 @@ function renderPlan(){
       if(dp.hrs>0) parts.push(fmtHms(dp.hrs));
       if(parts.length) topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-faint)',whiteSpace:'nowrap'}},parts.join(' ')));
     }
-    topRow.appendChild(span({style:{fontSize:'10px',color:'#333',flexShrink:'0'}},isExp?'▲':'▼'));
+    topRow.appendChild(span({style:{fontSize:'10px',color:'#333',flexShrink:'0'}},isExp?'\u25b2':'\u25bc'));
     rowBtn.appendChild(topRow);
 
     // Bottom line: activity titles -- only shown when activities exist
@@ -2166,7 +2540,7 @@ function renderPlan(){
       const labels=activities.map(a=>a.label).filter(Boolean);
       if(labels.length){
         rowBtn.appendChild(div({style:{fontSize:'11px',color:dayDone?'#007a42':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
-          labels.join(' · ')));
+          labels.join(' \u00b7 ')));
       }
     }
 
@@ -2195,18 +2569,18 @@ function renderPlan(){
           const actHdr=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'4px'}});
           actHdr.appendChild(span({style:{fontSize:'9px',background:atc,color:'#000',padding:'1px 5px',borderRadius:'3px',fontWeight:'700'}},TL[act.type||'easy']||'--'));
           actHdr.appendChild(span({style:{fontSize:'12px',color:act.completed?'#007a42':'var(--text)',flex:'1'}},act.label||'Activity'));
-          if(act.completed) actHdr.appendChild(span({style:{fontSize:'9px',color:'#007a42',fontWeight:'700'}},'✓'));
+          if(act.completed) actHdr.appendChild(span({style:{fontSize:'9px',color:'#007a42',fontWeight:'700'}},'\u2713'));
 
           // Edit / delete / move buttons
           const actCtrl=div({style:{display:'flex',gap:'4px',marginLeft:'4px'}});
           actCtrl.appendChild(btn({style:{padding:'2px 7px',borderRadius:'4px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
-            onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'✎'));
+            onclick:()=>showActivityModal(wIdx,dIdx,aIdx,s)},'\u270e'));
 
           // Move to day selector -- only for incomplete (future) activities
           if(!act.completed){
             const moveWrap=div({style:{position:'relative',display:'inline-block'}});
             const moveSel=el('select',{style:{padding:'2px 5px',borderRadius:'4px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)',cursor:'pointer',outline:'none'}});
-            const moveOpt=el('option',{value:''},'↕');
+            const moveOpt=el('option',{value:''},'\u2195');
             moveSel.appendChild(moveOpt);
             week.days.forEach((wd,targetDIdx)=>{
               if(targetDIdx===dIdx) return;
@@ -2232,7 +2606,7 @@ function renderPlan(){
               const updated=activities.filter((_,i)=>i!==aIdx);
               saveDayActivities(wIdx,dIdx,updated);
               render();
-            }},'✕'));
+            }},'\u2715'));
           actHdr.appendChild(actCtrl);
           actRow.appendChild(actHdr);
 
@@ -2480,7 +2854,7 @@ function renderTrend(){
       const peakDay=days.reduce((a,b)=>b.tss>a.tss?b:a,{tss:0,ds:''});
       if(peakDay.tss>0.1){
         const ptl=div({style:{display:'flex',justifyContent:'space-between',marginTop:'6px'}});
-        ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Peak: '+fmtDate(new Date(peakDay.ds+'T12:00:00'))+' · '+peakDay.tss.toFixed(1)+' TSS'));
+        ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Peak: '+fmtDate(new Date(peakDay.ds+'T12:00:00'))+' \u00b7 '+peakDay.tss.toFixed(1)+' TSS'));
         ptl.appendChild(span({style:{fontSize:'9px',color:'#555'}},'Week: '+days.reduce((s,d)=>s+d.tss,0).toFixed(1)+' TSS'));
         loadBody.appendChild(ptl);
       }
@@ -3248,7 +3622,7 @@ function renderTrend(){
       });
       ttRow.appendChild(ttLbl);
       ttRow.appendChild(ttI);
-      ttRow.appendChild(span({style:{fontSize:'8px',color:'var(--text-dim)'}},'h:mm · syncs with race config'));
+      ttRow.appendChild(span({style:{fontSize:'8px',color:'var(--text-dim)'}},'h:mm \u00b7 syncs with race config'));
       fuelAvgCard.appendChild(ttRow);
 
       if(!allSessions.length){
@@ -3262,7 +3636,7 @@ function renderTrend(){
       const trainingHdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',
         marginBottom:'8px',paddingBottom:'5px',borderBottom:'1px solid var(--border-subtle)'}});
       trainingHdr.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.12em',textTransform:'uppercase'}},'Training data'));
-      trainingHdr.appendChild(span({style:{fontSize:'9px',color:'var(--text-dim)'}},'from '+allSessions.length+' session'+(allSessions.length===1?'':'s')+' · >1.5hr only'));
+      trainingHdr.appendChild(span({style:{fontSize:'9px',color:'var(--text-dim)'}},'from '+allSessions.length+' session'+(allSessions.length===1?'':'s')+' \u00b7 >1.5hr only'));
       fuelAvgCard.appendChild(trainingHdr);
 
       // Table
@@ -3285,7 +3659,7 @@ function renderTrend(){
         const bandLbl=el('td',{style:{fontSize:'10px',padding:'8px 6px',
           borderBottom:'1px solid var(--border-subtle)',textAlign:'left',
           color:isActive?'#fd79a8':hasDat?'var(--text-mute)':'#333'}},b);
-        if(n) bandLbl.appendChild(span({style:{fontSize:'8px',color:'var(--text-dim)',marginLeft:'2px'}},'×'+n));
+        if(n) bandLbl.appendChild(span({style:{fontSize:'8px',color:'var(--text-dim)',marginLeft:'2px'}},'\u00d7'+n));
         row.appendChild(bandLbl);
         // Carb / fluid / sodium
         ['carb','fluid','sodium'].forEach((field,fi)=>{
@@ -3308,7 +3682,7 @@ function renderTrend(){
         marginBottom:'8px',paddingBottom:'5px',borderBottom:'1px solid var(--border-subtle)'}});
       planHdr.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.12em',textTransform:'uppercase'}},'Race day plan'));
       const raceTag=targetHrs&&selRace?.name?
-        span({style:{fontSize:'9px',color:'#fd79a8'}},(selRace.name.length>10?(selRace.name.slice(0,9)+'\u2026'):selRace.name)+' · '+targetTimeStr):
+        span({style:{fontSize:'9px',color:'#fd79a8'}},(selRace.name.length>10?(selRace.name.slice(0,9)+'\u2026'):selRace.name)+' \u00b7 '+targetTimeStr):
         span({style:{fontSize:'9px',color:'var(--text-dim)'}},'set target time above');
       planHdr.appendChild(raceTag);
       fuelAvgCard.appendChild(planHdr);
@@ -3338,7 +3712,7 @@ function renderTrend(){
 
       // Projected totals
       const totLbl=span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.14em',
-        textTransform:'uppercase',display:'block',marginBottom:'6px'}},'Projected totals'+(targetHrs?' · '+targetTimeStr:''));
+        textTransform:'uppercase',display:'block',marginBottom:'6px'}},'Projected totals'+(targetHrs?' \u00b7 '+targetTimeStr:''));
       fuelAvgCard.appendChild(totLbl);
 
       const totsRow=div({style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px'}});
@@ -3368,7 +3742,7 @@ function renderTrend(){
       toggleLbl.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',textTransform:'uppercase'}},'Sessions included'));
       toggleLbl.appendChild(span({style:{fontSize:'9px',color:'var(--text)',marginLeft:'2px'}},'\u00b7 '+allSessions.length));
       toggleBtn.appendChild(toggleLbl);
-      const chevron=span({style:{fontSize:'10px',color:'var(--text-dim)',transition:'transform 0.15s'}},'▼');
+      const chevron=span({style:{fontSize:'10px',color:'var(--text-dim)',transition:'transform 0.15s'}},'\u25bc');
       toggleBtn.appendChild(chevron);
       fuelAvgCard.appendChild(toggleBtn);
 
@@ -3492,7 +3866,7 @@ function renderSettings(){
     Object.assign(CFG,cfgForm);
     const tw=totalWeeks(), bm=getBlockMonday(), be=getBlockEnd();
     Object.assign(CFG,savedCFG);
-    weeksInfo.textContent=tw+' weeks · '+fmtDate(bm)+' to '+fmtDate(be);
+    weeksInfo.textContent=tw+' weeks \u00b7 '+fmtDate(bm)+' to '+fmtDate(be);
     weeksInfo.style.color='#888';
   }
   updateWeeksPreview();
@@ -4107,19 +4481,13 @@ function showOnboarding(){
   renderStep();
 }
 
+
 // ============================================================
 // BOOT
 // ============================================================
-applyStravaBackfill();
-// Apply sample plan on first load (no existing edits)
-if(Object.keys(EDITS).length===0) applySamplePlan();
-if(isFirstRun()){
-  render();
-  showOnboarding();
-} else {
-  render();
-}
-setInterval(()=>{ renderHeader(); }, 60000);
+render();
+if(isFirstRun()) showOnboarding();
+
 </script>
 </body>
 </html>
