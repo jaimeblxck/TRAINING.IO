@@ -119,6 +119,7 @@ body{
 </div>
 <script>
 
+
 // ============================================================
 // DATA & CONFIG
 // ============================================================
@@ -2263,7 +2264,7 @@ function renderBlock(){
                 const b=btn({style:{padding:'5px 10px',borderRadius:'4px',fontSize:'10px',
                   background:isA?wtc+'30':'var(--bg-input)',border:'1px solid '+(isA?wtc:'var(--border)'),
                   color:isA?wtc:'var(--text-mute)'},
-                  onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],type:wt};S.set(SK.targets,TARGETS);renderCurWTBtns();}},wt);
+                  onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],type:wt};form.type=wt;S.set(SK.targets,TARGETS);renderCurWTBtns();}},wt);
                 typeBtnsDiv.appendChild(b);
               });
             }
@@ -3546,11 +3547,13 @@ function renderTrend(){
 
       plan.forEach((week,wI)=>{
         week.days.forEach((day,dI)=>{
-          const acts=getDayActivities(wI,dI).filter(a=>
+          const allActs=getDayActivities(wI,dI);
+          const acts=allActs.filter(a=>
             a.completed && RUN_TYPES.includes(a.type||'easy') &&
             parseFloat(a.fuelCarbsG)>0 && parseFloat(a.actualHrs)>0
           );
-          acts.forEach((a,aI)=>{
+          acts.forEach((a)=>{
+            const realAIdx=allActs.indexOf(a); // index in the FULL list \u2014 what showActivityModal expects
             const hrs=parseFloat(a.actualHrs);
             const carbs=parseFloat(a.fuelCarbsG||0);
             const fluid=parseFloat(a.fuelFluidMl||0);
@@ -3565,7 +3568,7 @@ function renderTrend(){
             const slotDs=slotDate(wI,day.day||'Mon');
             allSessions.push({
               ds:slotDs, label:a.label||a.type||'Run',
-              wIdx:wI, dIdx:dI, aIdx:aI,
+              wIdx:wI, dIdx:dI, aIdx:realAIdx,
               hrs, carbs, fluid, sodium, gutTier:gut,
               carbRate:hrs>0?Math.round(carbs/hrs):0,
               fluidRate:hrs>0?Math.round(fluid/hrs):0,
@@ -3771,7 +3774,7 @@ function renderTrend(){
         const row=div({style:{display:'flex',alignItems:'center',gap:'8px',padding:'9px 10px',
           borderBottom:isLast?'none':'1px solid var(--border-subtle)',
           background:'var(--bg-input)',cursor:'pointer'},
-          onclick:()=>{ overlay.remove?.(); showActivityModal(s.wIdx,s.dIdx,s.aIdx,null); }});
+          onclick:()=>{ showActivityModal(s.wIdx,s.dIdx,s.aIdx,null); }});
         // Gut dot (or grey if no gut logged)
         row.appendChild(div({style:{width:'8px',height:'8px',borderRadius:'50%',flexShrink:'0',
           background:s.gutTier?GUT_COLORS_MAP[s.gutTier]:'#333'}}));
@@ -4496,6 +4499,7 @@ function showOnboarding(){
 
   renderStep();
 }
+
 
 
 // ============================================================
