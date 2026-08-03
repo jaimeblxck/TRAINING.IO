@@ -1261,152 +1261,11 @@ function renderContent(){
 // TODAY TAB
 // ============================================================
 // ============================================================
-// BLOCK PROGRESS CARD (shown on Today + Plan tabs)
+// BLOCK PROGRESS CARD -- shown on Today and Plan tabs
+// Line graph of planned weekly km across the whole block,
+// split at the current week (yellow done / muted remaining).
+// Race weeks get a checker flag. Periodisation colour strip below.
 // ============================================================
-function buildBlockProgress(){
-  const wrap=div({style:{marginBottom:'16px'}});
-  try{
-    const plan=getPlan();
-    const N=TARGETS.length;
-    if(!N) return wrap;
-    const curW=Math.min(curWeek()-1,N-1); // 0-indexed current week
-
-    // Days to nearest future race
-    const now=new Date();
-    let daysToRace=null, nextRaceName=null;
-    (CFG.races||[]).forEach(r=>{
-      if(!r.date) return;
-      const rd=new Date(r.date+'T12:00:00');
-      const diff=Math.ceil((rd-now)/86400000);
-      if(diff>0&&(daysToRace===null||diff<daysToRace)){
-        daysToRace=diff; nextRaceName=r.name;
-      }
-    });
-
-    // Stats: completed = sum of actual logged km across all past+current activities
-    let doneKm=0;
-    plan.forEach((week,wi)=>{
-      week.days.forEach((_,di)=>{
-        getDayActivities(wi,di).filter(a=>a.completed).forEach(a=>{
-          doneKm+=parseFloat(a.actualKm||0);
-        });
-      });
-    });
-    const remKm=TARGETS.slice(curW).reduce((s,t)=>s+(t.km||0),0);
-
-    // Header
-    const hdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'12px'}});
-    const hdrLeft=div({});
-    hdrLeft.appendChild(div({class:'section-title'},'Block Progress'));
-    hdrLeft.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',marginTop:'1px'}},'W'+(curW+1)+' of '+N+(nextRaceName?' \u00b7 '+nextRaceName+' build':'')));
-    hdr.appendChild(hdrLeft);
-    if(daysToRace!=null){
-      const hdrRight=div({style:{textAlign:'right'}});
-      hdrRight.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'26px',color:'#fd79a8',lineHeight:'1'}},String(daysToRace)));
-      hdrRight.appendChild(div({style:{fontSize:'8px',color:'#fd79a8',letterSpacing:'0.08em'}},'DAYS TO RACE'));
-      hdr.appendChild(hdrRight);
-    }
-    wrap.appendChild(hdr);
-
-    // SVG line chart
-    const CW=320, CH=60;
-    const PL=2, PR=6, PT=14, PB=6;
-    const gW=CW-PL-PR, gH=CH-PT-PB;
-    const xStep=N>1?gW/(N-1):gW;
-    const maxKm=Math.max(...TARGETS.map(t=>t.km||0))*1.08||120;
-    const xOf=i=>PL+i*xStep;
-    const yOf=km=>PT+gH-((km||0)/maxKm)*gH;
-
-    // Split line at current week
-    const donePts=TARGETS.slice(0,curW+1).map((t,i)=>[xOf(i),yOf(t.km)]);
-    const remPts=TARGETS.slice(curW).map((t,i)=>[xOf(curW+i),yOf(t.km)]);
-    const toStr=pts=>pts.map(([x,y])=>x.toFixed(1)+','+y.toFixed(1)).join(' ');
-    const doneArea=[...donePts,[xOf(curW),yOf(0)],[xOf(0),yOf(0)]].map(([x,y])=>x.toFixed(1)+','+y.toFixed(1)).join(' ');
-
-    // Race week flag positions
-    const raceWeeks=TARGETS.map((t,i)=>({...t,i})).filter(t=>t.type==='RACE');
-
-    const svgEl=document.createElementNS('http://www.w3.org/2000/svg','svg');
-    svgEl.setAttribute('viewBox','0 0 '+CW+' '+CH);
-    svgEl.setAttribute('width','100%');
-    svgEl.setAttribute('preserveAspectRatio','none');
-    svgEl.style.display='block';
-
-    const svgContent=[
-      '<defs>',
-      '<linearGradient id="bpg" x1="0" y1="0" x2="0" y2="1">',
-      '<stop offset="0%" stop-color="#ffd166" stop-opacity="0.14"/>',
-      '<stop offset="100%" stop-color="#ffd166" stop-opacity="0.01"/>',
-      '</linearGradient>',
-      '<filter id="bpglow"><feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b"/>',
-      '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>',
-      '</defs>',
-      // Guide lines
-      '<line x1="'+PL+'" y1="'+yOf(90).toFixed(1)+'" x2="'+(CW-PR)+'" y2="'+yOf(90).toFixed(1)+'" stroke="#111128" stroke-width="0.8"/>',
-      '<line x1="'+PL+'" y1="'+yOf(60).toFixed(1)+'" x2="'+(CW-PR)+'" y2="'+yOf(60).toFixed(1)+'" stroke="#111128" stroke-width="0.8"/>',
-      // Done area fill
-      '<polygon points="'+doneArea+'" fill="url(#bpg)"/>',
-      // Remaining line (muted)
-      remPts.length>1?'<polyline points="'+toStr(remPts)+'" fill="none" stroke="#252535" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>':'',
-      // Done line (yellow)
-      donePts.length>1?'<polyline points="'+toStr(donePts)+'" fill="none" stroke="#ffd166" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>':'',
-      // Now vertical guide
-      '<line x1="'+xOf(curW).toFixed(1)+'" y1="'+PT+'" x2="'+xOf(curW).toFixed(1)+'" y2="'+(CH-PB)+'" stroke="#ffd16625" stroke-width="1" stroke-dasharray="2,2"/>',
-      // Past week dots
-      ...TARGETS.slice(0,curW).map((_,i)=>'<circle cx="'+xOf(i).toFixed(1)+'" cy="'+yOf(TARGETS[i].km).toFixed(1)+'" r="2" fill="#ffd166" opacity="0.35"/>'),
-      // NOW dot
-      '<circle cx="'+xOf(curW).toFixed(1)+'" cy="'+yOf(TARGETS[curW].km).toFixed(1)+'" r="5" fill="#ffd166" opacity="0.35" filter="url(#bpglow)"/>',
-      '<circle cx="'+xOf(curW).toFixed(1)+'" cy="'+yOf(TARGETS[curW].km).toFixed(1)+'" r="2.5" fill="#ffd166"/>',
-      // Checker flags on each RACE week
-      ...raceWeeks.map(r=>'<text x="'+(xOf(r.i)-7).toFixed(1)+'" y="'+(yOf(r.km)-5).toFixed(1)+'" font-size="12" font-family="sans-serif">\uD83C\uDFC1</text>'),
-    ].join('');
-    svgEl.innerHTML=svgContent;
-    wrap.appendChild(svgEl);
-
-    // Phase colour strip
-    const colorStrip=div({style:{display:'flex',gap:'2px',height:'4px',margin:'5px 0 3px'}});
-    TARGETS.forEach((t,i)=>{
-      const c=WTC[t.type]||'#555';
-      const done=i<=curW;
-      const seg=div({style:{flex:'1',borderRadius:'1px',background:c,opacity:done?'0.7':'0.25'}});
-      colorStrip.appendChild(seg);
-    });
-    wrap.appendChild(colorStrip);
-
-    // Phase labels
-    const phaseRow=div({style:{display:'flex',gap:'2px',marginBottom:'12px'}});
-    const SHORT={BUILD:'BUILD',PEAK:'PEAK',SHARPEN:'SHRPN',TAPER:'TAPER',RACE:'RACE',DELOAD:'DLOAD',RECOVERY:'RCVY'};
-    const groups=[];let cg=null;
-    TARGETS.forEach((t,i)=>{
-      if(!cg||cg.type!==t.type){cg={type:t.type,count:1,start:i};groups.push(cg);}
-      else cg.count++;
-    });
-    groups.forEach(g=>{
-      const lbl=div({style:{flex:String(g.count),textAlign:'center',fontSize:'6px',
-        color:WTC[g.type]||'#555',letterSpacing:'0.06em',
-        opacity:g.start<=curW?'0.9':'0.35'}},SHORT[g.type]||g.type);
-      phaseRow.appendChild(lbl);
-    });
-    wrap.appendChild(phaseRow);
-
-    // Stats
-    const statsRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}});
-    const doneBlk=div({});
-    doneBlk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',color:'#ffd166',lineHeight:'1'}},Math.round(doneKm)+'km'));
-    doneBlk.appendChild(div({style:{fontSize:'8px',color:'var(--text-mute)',letterSpacing:'0.08em',marginTop:'1px'}},'COMPLETED'));
-    const remBlk=div({style:{textAlign:'right'}});
-    remBlk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',color:'#252535',lineHeight:'1'}},Math.round(remKm)+'km'));
-    remBlk.appendChild(div({style:{fontSize:'8px',color:'#252535',letterSpacing:'0.08em',marginTop:'1px'}},'REMAINING'));
-    statsRow.appendChild(doneBlk);
-    statsRow.appendChild(remBlk);
-    wrap.appendChild(statsRow);
-
-  }catch(e){
-    wrap.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Block progress unavailable: '+e.message));
-  }
-  return wrap;
-}
-
 // ============================================================
 // BLOCK PROGRESS CARD -- shown on Today and Plan tabs
 // Line graph of planned weekly km across the whole block,
@@ -1440,12 +1299,20 @@ function buildBlockProgress(){
     });
 
     // Completed km for each week (sum of actual logged activities)
+    // Also collect vert, hrs, act count for the stats grid
+    let totalActs=0, totalVertDone=0, totalHrsDone=0;
     const doneKm=plan.map((_,wi)=>{
-      let tot=0;
-      const w=plan[wi];
-      if(!w) return 0;
-      w.days.forEach((_,di)=>{const t=getDayTotals(wi,di);tot+=t.km;});
-      return tot;
+      let km=0;
+      plan[wi]?.days.forEach((_,di)=>{
+        const acts=getDayActivities(wi,di).filter(a=>a.completed);
+        acts.forEach(a=>{
+          km+=parseFloat(a.actualKm||0);
+          totalVertDone+=parseFloat(a.actualVert||0);
+          totalHrsDone+=parseFloat(a.actualHrs||0);
+          totalActs++;
+        });
+      });
+      return km;
     });
     const totalDone=Math.round(doneKm.slice(0,curIdx).reduce((s,k)=>s+k,0));
     const totalRem =Math.round(weekKm.slice(curIdx).reduce((s,k)=>s+k,0));
@@ -1587,19 +1454,87 @@ function buildBlockProgress(){
     });
     card.appendChild(phaseRow);
 
-    // Stats
-    const statsRow=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}});
-    const doneBlk=div({});
-    doneBlk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',color:'#ffd166',lineHeight:'1'}},
-      totalDone+'km'));
-    doneBlk.appendChild(div({style:{fontSize:'8px',color:'#4a4a6a',letterSpacing:'0.08em',marginTop:'1px'}},'COMPLETED'));
-    const remBlk=div({style:{textAlign:'right'}});
-    remBlk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',color:'#252535',lineHeight:'1'}},
-      totalRem+'km'));
-    remBlk.appendChild(div({style:{fontSize:'8px',color:'#252535',letterSpacing:'0.08em',marginTop:'1px'}},'REMAINING'));
-    statsRow.appendChild(doneBlk);
-    statsRow.appendChild(remBlk);
-    card.appendChild(statsRow);
+    // 4-stat grid: sessions / km / vert / time
+    const fmtV=v=>v>=1000?(v/1000).toFixed(1)+'k':Math.round(v)+'';
+    const fmtHr=h=>{const hh=Math.floor(h),mm=Math.round((h-hh)*60);return hh+'h'+(mm>0?mm+'m':'');};
+    const statsGrid=div({style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'6px',marginBottom:'0'}});
+    [
+      [totalActs,'sessions','#60a5fa'],
+      [Math.round(totalDone)+'km','distance','#ffd166'],
+      [fmtV(totalVertDone)+'m','vert','#a29bfe'],
+      [fmtHr(totalHrsDone),'time','#00c96e'],
+    ].forEach(([val,label,color])=>{
+      const cell=div({style:{background:'var(--bg-input)',border:'1px solid var(--border-subtle)',borderRadius:'6px',padding:'8px 4px',textAlign:'center'}});
+      cell.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'17px',color:color,lineHeight:'1'}},String(val)));
+      cell.appendChild(div({style:{fontSize:'7px',color:'#333',letterSpacing:'0.08em',marginTop:'2px',textTransform:'uppercase'}},label));
+      statsGrid.appendChild(cell);
+    });
+    card.appendChild(statsGrid);
+
+    // Share button -- subtle, bottom-right, icon only
+    const shareRow=div({style:{display:'flex',justifyContent:'flex-end',marginTop:'8px'}});
+    const shareBtn=div({style:{display:'flex',alignItems:'center',gap:'5px',padding:'4px 8px',
+      background:'transparent',border:'1px solid #1c1c2e',borderRadius:'5px',
+      color:'#2a2a4a',fontSize:'9px',letterSpacing:'0.06em',cursor:'pointer'},
+      onclick:()=>{
+        const cvs=document.createElement('canvas');
+        const dpr=window.devicePixelRatio||1;
+        const CW=640,CH=400;
+        cvs.width=CW*dpr;cvs.height=CH*dpr;
+        const ctx=cvs.getContext('2d');
+        ctx.scale(dpr,dpr);
+        // Background
+        ctx.fillStyle='#07071a';ctx.fillRect(0,0,CW,CH);
+        ctx.fillStyle='#ffd16615';ctx.fillRect(0,0,CW,3);
+        // Text
+        ctx.font='11px monospace';ctx.fillStyle='#2a2a4a';ctx.fillText('TRAINING OS',28,32);
+        ctx.font='bold 36px sans-serif';ctx.fillStyle='#e0e0ff';ctx.fillText('BLOCK PROGRESS',28,72);
+        ctx.font='11px monospace';ctx.fillStyle='#fd79a8';
+        ctx.fillText('W'+curWk+' of '+nWeeks+' \u00b7 '+(nearestRace?.name||'race')+' \u00b7 '+(daysToRace!=null?daysToRace+' days to race':''),28,96);
+        ctx.fillStyle='#1c1c2e';ctx.fillRect(28,110,CW-56,1);
+        // 4 stats
+        const sts=[[totalActs,'SESSIONS','#60a5fa'],[Math.round(totalDone)+'km','DISTANCE','#ffd166'],[fmtV(totalVertDone)+'m','VERT','#a29bfe'],[fmtHr(totalHrsDone),'TIME','#00c96e']];
+        const colW=(CW-56)/4;
+        sts.forEach((s,i)=>{
+          const x=28+i*colW;
+          ctx.font='bold 42px sans-serif';ctx.fillStyle=s[2];ctx.fillText(s[0],x,170);
+          ctx.font='10px monospace';ctx.fillStyle='#4a4a6a';ctx.fillText(s[1],x,187);
+        });
+        // Phase bar
+        const barY=218,barH=8,barW=CW-56;
+        weekTypes.forEach((t,i)=>{const segW=barW/nWeeks;ctx.fillStyle=(TYPE_FG[t]||'#555')+(i<=curIdx?'bb':'44');ctx.fillRect(28+i*segW,barY,segW-2,barH);});
+        // Mini chart
+        const ctY=250,ctH=100,ctW=CW-56;
+        const mxK=Math.max(...weekKm)*1.05;
+        const cxOf=i=>28+i*(ctW/(nWeeks-1));
+        const cyOf=k=>ctY+ctH-(k/mxK)*ctH;
+        ctx.beginPath();weekKm.slice(0,curIdx+1).forEach((k,i)=>{i===0?ctx.moveTo(cxOf(i),cyOf(k)):ctx.lineTo(cxOf(i),cyOf(k));});
+        ctx.lineTo(cxOf(curIdx),ctY+ctH);ctx.lineTo(cxOf(0),ctY+ctH);ctx.closePath();ctx.fillStyle='#ffd16615';ctx.fill();
+        ctx.beginPath();weekKm.slice(curIdx).forEach((k,i)=>{i===0?ctx.moveTo(cxOf(curIdx+i),cyOf(k)):ctx.lineTo(cxOf(curIdx+i),cyOf(k));});
+        ctx.strokeStyle='#252535';ctx.lineWidth=1.5;ctx.stroke();
+        ctx.beginPath();weekKm.slice(0,curIdx+1).forEach((k,i)=>{i===0?ctx.moveTo(cxOf(i),cyOf(k)):ctx.lineTo(cxOf(i),cyOf(k));});
+        ctx.strokeStyle='#ffd166';ctx.lineWidth=2;ctx.stroke();
+        // Footer
+        ctx.font='10px monospace';ctx.fillStyle='#2a2a4a';ctx.fillText('training-os',28,CH-16);
+        cvs.toBlob(async blob=>{
+          if(!blob) return;
+          const file=new File([blob],'block-progress.png',{type:'image/png'});
+          try{
+            if(navigator.share&&navigator.canShare({files:[file]})) await navigator.share({files:[file],title:'Block Progress'});
+            else if(navigator.clipboard?.write) await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+            else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='block-progress.png';a.click();}
+          }catch(err){console.log('Share failed:',err);}
+        },'image/png');
+      }});
+    // Upload/share SVG icon
+    const svgIcon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svgIcon.setAttribute('viewBox','0 0 24 24');svgIcon.setAttribute('width','12');svgIcon.setAttribute('height','12');
+    svgIcon.setAttribute('fill','none');svgIcon.setAttribute('stroke','currentColor');svgIcon.setAttribute('stroke-width','2');svgIcon.setAttribute('stroke-linecap','round');
+    svgIcon.innerHTML='<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>';
+    shareBtn.appendChild(svgIcon);
+    shareBtn.appendChild(span({},'SHARE'));
+    shareRow.appendChild(shareBtn);
+    card.appendChild(shareRow);
 
   }catch(e){
     card.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Block progress unavailable: '+e.message));
