@@ -1596,6 +1596,58 @@ function buildBlockProgress(){
   return card;
 }
 
+// Clear all activity data and reset targets to defaults for the current block length.
+// Keeps CFG, LOG (daily readiness), and race config — only wipes RUNS, EDITS, TARGETS.
+function clearPlan(){
+  RUNS={}; S.set(SK.runs,RUNS);
+  EDITS={}; S.set(SK.edits,EDITS);
+  TARGETS=buildTargets(); S.set(SK.targets,TARGETS);
+}
+
+// Double-confirmation modal. Calls onConfirm() only after the user types the
+// confirm word and clicks the red button a second time.
+function showDoubleConfirm(title, body, confirmWord, onConfirm){
+  const overlay=div({class:'modal-bg',onclick:e=>{if(e.target===overlay)overlay.remove();}});
+  const sheet=div({class:'modal'});
+  sheet.appendChild(div({class:'modal-handle'}));
+  sheet.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'16px',
+    letterSpacing:'0.04em',marginBottom:'8px',color:'var(--text)'}},title));
+  sheet.appendChild(div({style:{fontSize:'11px',color:'var(--text-mute)',
+    lineHeight:'1.6',marginBottom:'16px'}},body));
+  // Step 1 button
+  const step1Btn=btn({class:'btn',style:{background:'#2a1010',border:'1px solid #5a2020',
+    color:'#ff6b6b',marginBottom:'12px'},onclick:()=>{
+      step1Btn.style.display='none';
+      step2.style.display='block';
+  }},'I understand — show confirmation');
+  sheet.appendChild(step1Btn);
+  // Step 2: type to confirm
+  const step2=div({style:{display:'none'}});
+  step2.appendChild(div({style:{fontSize:'10px',color:'var(--text-mute)',marginBottom:'6px'}},
+    'Type \u201c'+confirmWord+'\u201d to confirm:'));
+  const confirmInp=inp({class:'inp',type:'text',placeholder:confirmWord,
+    style:{marginBottom:'10px',textTransform:'uppercase',letterSpacing:'0.1em'}});
+  step2.appendChild(confirmInp);
+  const step2Btn=btn({class:'btn',style:{background:'#3a0808',border:'1px solid #7a1010',
+    color:'#ff4444'},onclick:()=>{
+      if(confirmInp.value.trim().toUpperCase()===confirmWord.toUpperCase()){
+        overlay.remove();
+        onConfirm();
+      } else {
+        confirmInp.style.borderColor='#ff4444';
+        confirmInp.value='';
+        confirmInp.placeholder='Try again...';
+        setTimeout(()=>{confirmInp.style.borderColor='';confirmInp.placeholder=confirmWord;},1500);
+      }
+  }},'CLEAR ALL PLAN DATA');
+  step2.appendChild(step2Btn);
+  sheet.appendChild(step2);
+  sheet.appendChild(btn({class:'btn-ghost btn-sm',style:{marginTop:'10px'},
+    onclick:()=>overlay.remove()},'Cancel'));
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+}
+
 function renderToday(){
   const wrap=div({});
   const td=today();
@@ -1981,7 +2033,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
     const parts=[];
     if(hrs>0&&c>0) parts.push('Carb rate: '+Math.round(c/hrs)+'g/hr');
     if(hrs>0&&f>0) parts.push('Fluid rate: '+Math.round(f/hrs)+'ml/hr');
-    if(hrs>0&&s>0) parts.push('Sodium rate: '+Math.round(s/hrs)+'mg/hr');
+    if(f>0&&s>0) parts.push('Sodium: '+Math.round(s/(f/1000))+'mg/L');
     if(parts.length){
       fuelRatesBox.style.display='block';
       fuelRatesBox.textContent=parts.join(' \u00b7 ');
@@ -3561,7 +3613,7 @@ function renderTrend(){
               hrs, carbs, fluid, sodium, gutTier:gut,
               carbRate:hrs>0?Math.round(carbs/hrs):0,
               fluidRate:hrs>0?Math.round(fluid/hrs):0,
-              sodiumRate:hrs>0?Math.round(sodium/hrs):0,
+              sodiumRate:parseFloat(a.fuelFluidMl)>0?Math.round(sodium/(parseFloat(a.fuelFluidMl)/1000)):0,
             });
           });
         });
@@ -3672,7 +3724,7 @@ function renderTrend(){
         // Carb / fluid / sodium
         ['carb','fluid','sodium'].forEach((field,fi)=>{
           const avg=bandAvg(b,field);
-          const units=['g/hr','ml/hr','mg/hr'][fi];
+          const units=['g/hr','ml/hr','mg/L'][fi];
           const muted=!hasDat||(activeBand&&!isActive);
           const td=el('td',{style:{fontSize:'11px',padding:'8px 6px',
             borderBottom:'1px solid var(--border-subtle)',textAlign:'right',
@@ -3707,7 +3759,7 @@ function renderTrend(){
       fuelAvgCard.appendChild(intakeLbl);
 
       const intakeRow=div({style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px',marginBottom:'14px'}});
-      [[hCarb,'g/hr','#60a5fa'],[hFluid,'ml/hr','#a29bfe'],[hSodium,'mg/hr','#fd79a8']].forEach(([val,unit,color])=>{
+      [[hCarb,'g/hr','#60a5fa'],[hFluid,'ml/hr','#a29bfe'],[hSodium,'mg/L','#fd79a8']].forEach(([val,unit,color])=>{
         const blk=div({style:{background:'var(--bg-input)',border:'1px solid var(--border-subtle)',
           borderRadius:'7px',padding:'10px 8px',textAlign:'center'}});
         blk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'20px',
@@ -3726,7 +3778,7 @@ function renderTrend(){
       const totsRow=div({style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px'}});
       const totCarb=hCarb!=null&&targetHrs?Math.round(hCarb*targetHrs):null;
       const totFluid=hFluid!=null&&targetHrs?parseFloat((hFluid*targetHrs/1000).toFixed(1)):null;
-      const totSodium=hSodium!=null&&targetHrs?parseFloat((hSodium*targetHrs/1000).toFixed(1)):null;
+      const totSodium=hSodium!=null&&hFluid!=null&&targetHrs?parseFloat(((hSodium*(hFluid*targetHrs/1000))/1000).toFixed(1)):null;
       [[totCarb,'total carbs','g'],[totFluid,'total fluid','L'],[totSodium,'total sodium','g']].forEach(([val,label,unit])=>{
         const blk=div({});
         blk.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',color:'var(--text)',lineHeight:'1'}},
@@ -3880,21 +3932,48 @@ function renderSettings(){
   updateWeeksPreview();
   cfgCard.appendChild(weeksInfo);
 
+  const _prevBlockStart=CFG.blockStartStr;
   const savCfgBtn=btn({class:'btn',onclick:()=>{
     if(!validDateStr(cfgForm.blockStartStr)){
       savCfgBtn.textContent='Invalid block start'; savCfgBtn.style.color='#ff6b6b';
       setTimeout(()=>{savCfgBtn.textContent='Save Config';savCfgBtn.style.color='';savCfgBtn.style.borderColor='';},2000);
       return;
     }
-    CFG.hrvLow=cfgForm.hrvLow; CFG.hrvHigh=cfgForm.hrvHigh;
-    CFG.rhrLow=cfgForm.rhrLow; CFG.rhrHigh=cfgForm.rhrHigh;
-    CFG.blockStartStr=cfgForm.blockStartStr; CFG.blockEndStr=cfgForm.blockEndStr;
-    S.set(SK.cfg,CFG);
-    syncTargets();
-    savCfgBtn.textContent='SAVED'; savCfgBtn.style.color='#00ff87'; savCfgBtn.style.borderColor='#00ff87';
-    setTimeout(()=>render(),800);
+    const blockStartChanged=cfgForm.blockStartStr!==_prevBlockStart;
+    const doSave=()=>{
+      CFG.hrvLow=cfgForm.hrvLow; CFG.hrvHigh=cfgForm.hrvHigh;
+      CFG.rhrLow=cfgForm.rhrLow; CFG.rhrHigh=cfgForm.rhrHigh;
+      CFG.blockStartStr=cfgForm.blockStartStr; CFG.blockEndStr=cfgForm.blockEndStr;
+      S.set(SK.cfg,CFG);
+      syncTargets();
+      savCfgBtn.textContent='SAVED'; savCfgBtn.style.color='#00ff87'; savCfgBtn.style.borderColor='#00ff87';
+      setTimeout(()=>render(),800);
+    };
+    if(blockStartChanged){
+      showDoubleConfirm(
+        'Block start changed',
+        'Changing the block start date will clear all logged activities, plan edits and weekly targets — your readiness logs and race config are kept.\n\nThis cannot be undone. Export your data first if you haven\'t already.',
+        'CLEAR',
+        ()=>{ clearPlan(); doSave(); }
+      );
+    } else {
+      doSave();
+    }
   }},'Save Config');
   cfgCard.appendChild(savCfgBtn);
+
+  // Clear Plan button — standalone, deliberately separated from Save Config
+  const clearPlanBtn=btn({class:'btn',style:{marginTop:'8px',background:'transparent',
+    border:'1px solid #2a1a1a',color:'#555',fontSize:'11px'},
+    onclick:()=>{
+      showDoubleConfirm(
+        'Clear plan data',
+        'This will delete all logged activities, plan edits and weekly targets for the current block. Your readiness logs, race config and HRV/RHR settings are kept.\n\nExport your data first if you haven\'t already.',
+        'CLEAR',
+        ()=>{ clearPlan(); render(); }
+      );
+    }},'Clear Plan Data');
+  cfgCard.appendChild(clearPlanBtn);
   wrap.appendChild(cfgCard);
 
   // -- Section 2: Races (auto-save on change, confirm on delete) -
