@@ -13,16 +13,18 @@
 :root{
   --bg:#07071a; --bg-card:#0a0a1a; --bg-input:#0e0e1f; --bg-elev:#0d0d20;
   --bg-btn:#1a1a3a; --bg-tab-active:#1e1e3a; --bg-modal:#0a0a1a;
-  --border:#1c1c2e; --border-input:#22223a; --border-btn:#3a3a6a; --border-subtle:#1a1a2e;
-  --text:#e0e0ff; --text-mute:#4a4a6a; --text-dim:#666; --text-faint:#2a2a4a;
-  --tab-text:#4a4a6a; --tab-active:#e0e0ff;
+  --border:#25253d; --border-input:#2c2c48; --border-btn:#45457a; --border-subtle:#202036;
+  --text:#e8e8ff; --text-mute:#8888ae; --text-dim:#a4a4bc; --text-faint:#5e5e82;
+  --tab-text:#8888ae; --tab-active:#f0f0ff;
+  --chart-rem:#4c4c70; --chart-grid:#1a1a30; --chart-done:#ffd166;
 }
 body.light{
   --bg:#f0f0f8; --bg-card:#ffffff; --bg-input:#e8e8f0; --bg-elev:#f8f8ff;
   --bg-btn:#e0e0f0; --bg-tab-active:#d8d8f0; --bg-modal:#ffffff;
-  --border:#d0d0e0; --border-input:#c8c8d8; --border-btn:#a0a0c0; --border-subtle:#e0e0f0;
-  --text:#0a0a2a; --text-mute:#6060a0; --text-dim:#808088; --text-faint:#c0c0d8;
-  --tab-text:#6060a0; --tab-active:#0a0a2a;
+  --border:#bcbcd2; --border-input:#b4b4cc; --border-btn:#8c8cb4; --border-subtle:#d4d4e6;
+  --text:#0a0a2a; --text-mute:#54548e; --text-dim:#4a4a58; --text-faint:#8a8aa8;
+  --tab-text:#54548e; --tab-active:#0a0a2a;
+  --chart-rem:#9a9ab8; --chart-grid:#d6d6e6; --chart-done:#c98a00;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;overscroll-behavior:none;}
@@ -1241,7 +1243,7 @@ function renderTabs(){
   bar.innerHTML='';
   const tabs=[{id:'today',label:'TODAY'},{id:'plan',label:'PLAN'},{id:'block',label:'BLOCK'},{id:'trend',label:'TREND'},{id:'settings',label:'\u2699'}];
   tabs.forEach(t=>{
-    const b=btn({class:'tab'+(ACTIVE_TAB===t.id?' active':''),onclick:()=>{ACTIVE_TAB=t.id;EXPANDED_DAY=null;EDITING_DAY=null;render();}},t.label);
+    const b=btn({class:'tab'+(ACTIVE_TAB===t.id?' active':''),onclick:()=>{ACTIVE_TAB=t.id;EXPANDED_DAY=null;EDITING_DAY=null;if(t.id==='plan'){CAL_SCROLL=true;}render();}},t.label);
     if(t.id==='settings') b.style.fontSize='16px';
     bar.appendChild(b);
   });
@@ -1361,7 +1363,7 @@ function buildBlockProgress(){
       const l=document.createElementNS('http://www.w3.org/2000/svg','line');
       l.setAttribute('x1',PAD_L);l.setAttribute('x2',W-PAD_R);
       l.setAttribute('y1',yOf(km).toFixed(1));l.setAttribute('y2',yOf(km).toFixed(1));
-      l.setAttribute('stroke','#111128');l.setAttribute('stroke-width','0.8');
+      l.style.stroke='var(--chart-grid)';l.setAttribute('stroke-width','0.8');
       svgEl.appendChild(l);
     });
 
@@ -1378,14 +1380,14 @@ function buildBlockProgress(){
     // Remaining line
     const remLine=document.createElementNS('http://www.w3.org/2000/svg','polyline');
     remLine.setAttribute('points',pts(remPoints));remLine.setAttribute('fill','none');
-    remLine.setAttribute('stroke','#252535');remLine.setAttribute('stroke-width','1.5');
+    remLine.style.stroke='var(--chart-rem)';remLine.setAttribute('stroke-width','1.5');
     remLine.setAttribute('stroke-linecap','round');remLine.setAttribute('stroke-linejoin','round');
     svgEl.appendChild(remLine);
 
     // Done line
     const doneLine=document.createElementNS('http://www.w3.org/2000/svg','polyline');
     doneLine.setAttribute('points',pts(donePoints));doneLine.setAttribute('fill','none');
-    doneLine.setAttribute('stroke','#ffd166');doneLine.setAttribute('stroke-width','2');
+    doneLine.style.stroke='var(--chart-done)';doneLine.setAttribute('stroke-width','2');
     doneLine.setAttribute('stroke-linecap','round');doneLine.setAttribute('stroke-linejoin','round');
     svgEl.appendChild(doneLine);
 
@@ -1401,7 +1403,7 @@ function buildBlockProgress(){
     donePoints.slice(0,-1).forEach(([x,y])=>{
       const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
       c.setAttribute('cx',x.toFixed(1));c.setAttribute('cy',y.toFixed(1));
-      c.setAttribute('r','2');c.setAttribute('fill','#ffd166');c.setAttribute('opacity','0.35');
+      c.setAttribute('r','2');c.style.fill='var(--chart-done)';c.setAttribute('opacity','0.35');
       svgEl.appendChild(c);
     });
 
@@ -1409,12 +1411,12 @@ function buildBlockProgress(){
     const nowX=xOf(curIdx).toFixed(1), nowY=yOf(weekKm[curIdx]).toFixed(1);
     const glowC=document.createElementNS('http://www.w3.org/2000/svg','circle');
     glowC.setAttribute('cx',nowX);glowC.setAttribute('cy',nowY);
-    glowC.setAttribute('r','5');glowC.setAttribute('fill','#ffd166');
+    glowC.setAttribute('r','5');glowC.style.fill='var(--chart-done)';
     glowC.setAttribute('opacity','0.35');glowC.setAttribute('filter','url(#bpglow)');
     svgEl.appendChild(glowC);
     const nowC=document.createElementNS('http://www.w3.org/2000/svg','circle');
     nowC.setAttribute('cx',nowX);nowC.setAttribute('cy',nowY);
-    nowC.setAttribute('r','2.5');nowC.setAttribute('fill','#ffd166');
+    nowC.setAttribute('r','2.5');nowC.style.fill='var(--chart-done)';
     svgEl.appendChild(nowC);
 
     // Checker flags on every RACE week
@@ -1471,124 +1473,6 @@ function buildBlockProgress(){
     });
     card.appendChild(statsGrid);
 
-    // Share button -- subtle, bottom-right, icon only
-    const shareRow=div({style:{display:'flex',justifyContent:'flex-end',marginTop:'8px'}});
-    const shareBtn=div({style:{display:'flex',alignItems:'center',gap:'5px',padding:'4px 8px',
-      background:'transparent',border:'1px solid #1c1c2e',borderRadius:'5px',
-      color:'#2a2a4a',fontSize:'9px',letterSpacing:'0.06em',cursor:'pointer'},
-      onclick:()=>{
-        const cvs=document.createElement('canvas');
-        const dpr=window.devicePixelRatio||2;
-        const W=560,H=340;
-        cvs.width=W*dpr;cvs.height=H*dpr;
-        const ct=cvs.getContext('2d');ct.scale(dpr,dpr);
-
-        // App variable aliases
-        const _km=Math.round(totalDone),_vert=totalVertDone,_hrs=totalHrsDone,_acts=totalActs;
-        const _types=weekTypes,_kmW=weekKm,_cur=curIdx,_n=nWeeks;
-        const _days=daysToRace,_race=nearestRace?.name||'RACE';
-        const _wk=curWk;
-        const bs=CFG.blockStartStr?new Date(CFG.blockStartStr+'T12:00:00'):null;
-        const be=CFG.raceDateStr?new Date(CFG.raceDateStr+'T12:00:00'):null;
-        const _months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        const _bsStr=bs?bs.getDate()+' '+_months[bs.getMonth()]:'';
-        const _beStr=be?be.getDate()+' '+_months[be.getMonth()]+' '+be.getFullYear():'';
-        const fmtH2=h=>{const hh=Math.floor(h),mm=Math.round((h-hh)*60);return hh+'h'+(mm>0?mm+'m':'');};
-        const TC={BUILD:'#3a9a5a',RACE:'#fd79a8',SHARPEN:'#60a5fa',PEAK:'#8a50e0',DELOAD:'#888',TAPER:'#c09030',RECOVERY:'#4080a0'};
-        const STATS=[
-          {val:_km+'km',label:'DISTANCE',color:'#ffd166'},
-          {val:_vert.toLocaleString()+'m',label:'VERT',color:'#a29bfe'},
-          {val:fmtH2(_hrs),label:'TIME',color:'#00c96e'},
-          {val:String(_acts),label:'SESSIONS',color:'#60a5fa'},
-        ];
-
-        // Icon helpers
-        function iDist(x,y,sz,col){const a=col+'99';ct.strokeStyle=a;ct.lineWidth=1.3;ct.lineCap='round';ct.setLineDash([2,2]);ct.beginPath();ct.moveTo(x,y+sz/2);ct.lineTo(x+sz*0.68,y+sz/2);ct.stroke();ct.setLineDash([]);ct.beginPath();ct.moveTo(x+sz*0.52,y+sz/2-3);ct.lineTo(x+sz,y+sz/2);ct.lineTo(x+sz*0.52,y+sz/2+3);ct.stroke();}
-        function iVert(x,y,sz,col){const a=col+'99';ct.strokeStyle=a;ct.lineWidth=1.3;ct.lineCap='round';ct.lineJoin='round';ct.beginPath();ct.moveTo(x+sz/2,y+1);ct.lineTo(x+sz,y+sz-1);ct.lineTo(x,y+sz-1);ct.closePath();ct.stroke();ct.fillStyle=a;ct.beginPath();ct.moveTo(x+sz/2,y+1);ct.lineTo(x+sz*0.66,y+sz*0.38);ct.lineTo(x+sz*0.34,y+sz*0.38);ct.closePath();ct.fill();}
-        function iTime(x,y,sz,col){const a=col+'99',cx2=x+sz/2,cy2=y+sz/2,r=sz/2-1;ct.strokeStyle=a;ct.lineWidth=1.3;ct.lineCap='round';ct.beginPath();ct.arc(cx2,cy2,r,0,Math.PI*2);ct.stroke();ct.beginPath();ct.moveTo(cx2,cy2);ct.lineTo(cx2-r*0.4,cy2-r*0.55);ct.stroke();ct.beginPath();ct.moveTo(cx2,cy2);ct.lineTo(cx2+r*0.5,cy2-r*0.2);ct.stroke();ct.beginPath();ct.arc(cx2,cy2,1.2,0,Math.PI*2);ct.fillStyle=a;ct.fill();}
-        function iSess(x,y,sz,col){const a=col+'99';ct.strokeStyle=a;ct.lineWidth=1.3;ct.lineCap='round';ct.lineJoin='round';[0.15,0.48,0.81].forEach(row=>{const ry=y+sz*row;ct.beginPath();ct.moveTo(x,ry+sz*0.09);ct.lineTo(x+sz*0.2,ry+sz*0.22);ct.lineTo(x+sz*0.44,ry-sz*0.05);ct.stroke();ct.beginPath();ct.moveTo(x+sz*0.56,ry+sz*0.08);ct.lineTo(x+sz,ry+sz*0.08);ct.stroke();});}
-        const ICONS2=[iDist,iVert,iTime,iSess];
-
-        // Background + dot grid
-        const bg=ct.createLinearGradient(0,0,W,H);bg.addColorStop(0,'#08081f');bg.addColorStop(1,'#040414');
-        ct.fillStyle=bg;ct.fillRect(0,0,W,H);
-        ct.fillStyle='#0c0c25';
-        for(let gx=24;gx<W;gx+=24)for(let gy=24;gy<H;gy+=24){ct.beginPath();ct.arc(gx,gy,0.7,0,Math.PI*2);ct.fill();}
-
-        // 2x2 stats grid
-        const colW=150,rowH=88;
-        STATS.forEach((s,i)=>{
-          const col=i%2,row=Math.floor(i/2),sx=28+col*colW,sy=22+row*rowH;
-          ct.fillStyle='#0d0d20';ct.beginPath();ct.roundRect(sx,sy,colW-8,rowH-10,6);ct.fill();
-          const fs=s.val.length>7?21:s.val.length>5?25:29;
-          ct.font='700 '+fs+'px Inter,sans-serif';ct.fillStyle=s.color;ct.letterSpacing='-0.01em';
-          ct.fillText(s.val,sx+12,sy+fs+10);
-          const isz=14,ix=sx+12,iy=sy+rowH-10-isz-2;
-          ICONS2[i](ix,iy,isz,s.color);
-          ct.font='600 8px JetBrains Mono,monospace';ct.fillStyle=s.color+'88';ct.letterSpacing='0.14em';
-          ct.fillText(s.label,ix+isz+5,iy+isz-1);
-          ct.fillStyle=s.color+'22';ct.fillRect(sx,sy+rowH-10,colW-8,3);
-          ct.fillStyle=s.color;ct.fillRect(sx,sy+rowH-10,(colW-8)*0.72,3);
-        });
-
-        // Separator
-        const sepX=28+colW*2+8;
-        ct.strokeStyle='#1a1a35';ct.lineWidth=1;ct.beginPath();ct.moveTo(sepX,18);ct.lineTo(sepX,212);ct.stroke();
-
-        // Countdown: DAYS TIL / RACE / number
-        const rightMid=sepX+(W-sepX)/2;ct.textAlign='center';
-        ct.font='700 10px JetBrains Mono,monospace';ct.fillStyle='#ffffff80';ct.letterSpacing='0.22em';
-        ct.fillText('DAYS TIL',rightMid,42);
-        ct.font='800 22px Inter,sans-serif';ct.fillStyle='#ffffffcc';ct.letterSpacing='0.04em';
-        ct.fillText(_race,rightMid,66);
-        ct.font='900 96px Inter,sans-serif';ct.fillStyle='#ffffff';ct.letterSpacing='-0.04em';
-        ct.fillText(_days!=null?String(_days):'--',rightMid,158);
-        ct.font='600 9px JetBrains Mono,monospace';ct.fillStyle='#2a2a4a';ct.letterSpacing='0.08em';
-        ct.fillText('W'+_wk+'/'+_n,rightMid,178);
-        if(_bsStr&&_beStr) ct.fillText(_bsStr+' \u2013 '+_beStr,rightMid,193);
-        ct.textAlign='left';
-
-        // Phase bar
-        _types.forEach((t,i)=>{const sw=(W-56)/_n;ct.fillStyle=(TC[t]||'#555')+(i<_cur?'bb':i===_cur?'ff':'2a');ct.beginPath();ct.roundRect(28+i*sw+1,220,sw-2,6,3);ct.fill();});
-
-        // Chart
-        const CX=28,CY=238,CW2=W-56,CH2=78,mx=Math.max(..._kmW)*1.08;
-        const xOf=i=>CX+i*(CW2/(_n-1));
-        const yOf=k=>CY+CH2-(k/mx)*CH2;
-        const fg=ct.createLinearGradient(0,CY,0,CY+CH2);fg.addColorStop(0,'#ffd16618');fg.addColorStop(1,'#ffd16602');
-        ct.beginPath();ct.moveTo(xOf(0),yOf(_kmW[0]));
-        _kmW.slice(0,_cur+1).forEach((k,i)=>ct.lineTo(xOf(i),yOf(k)));
-        ct.lineTo(xOf(_cur),CY+CH2);ct.lineTo(CX,CY+CH2);ct.closePath();ct.fillStyle=fg;ct.fill();
-        ct.beginPath();_kmW.slice(_cur).forEach((k,i)=>{i===0?ct.moveTo(xOf(_cur+i),yOf(k)):ct.lineTo(xOf(_cur+i),yOf(k));});
-        ct.strokeStyle='#252535';ct.lineWidth=1.5;ct.lineJoin='round';ct.stroke();
-        ct.beginPath();_kmW.slice(0,_cur+1).forEach((k,i)=>{i===0?ct.moveTo(xOf(i),yOf(k)):ct.lineTo(xOf(i),yOf(k));});
-        ct.strokeStyle='#ffd166';ct.lineWidth=2.5;ct.lineJoin='round';ct.stroke();
-        _kmW.slice(0,_cur).forEach((k,i)=>{ct.beginPath();ct.arc(xOf(i),yOf(k),2,0,Math.PI*2);ct.fillStyle='#ffd16666';ct.fill();});
-        const nx2=xOf(_cur),ny2=yOf(_kmW[_cur]);
-        ct.beginPath();ct.arc(nx2,ny2,7,0,Math.PI*2);ct.fillStyle='#ffd16620';ct.fill();
-        ct.beginPath();ct.arc(nx2,ny2,3,0,Math.PI*2);ct.fillStyle='#ffd166';ct.fill();
-        _types.forEach((t,i)=>{if(t==='RACE'){ct.font='12px sans-serif';ct.fillText('\uD83C\uDFC1',xOf(i)-6,yOf(_kmW[i])-6);}});
-        ct.font='10px JetBrains Mono,monospace';ct.fillStyle='#151530';ct.letterSpacing='0';ct.fillText('TRAINING OS',28,H-10);
-
-        cvs.toBlob(async blob=>{
-          if(!blob) return;
-          const file=new File([blob],'block-progress.png',{type:'image/png'});
-          try{
-            if(navigator.share&&navigator.canShare({files:[file]})) await navigator.share({files:[file],title:'Block Progress'});
-            else if(navigator.clipboard?.write) await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
-            else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='block-progress.png';a.click();}
-          }catch(err){console.log('Share failed:',err);}
-        },'image/png');
-      }});
-    // Upload/share SVG icon
-    const svgIcon=document.createElementNS('http://www.w3.org/2000/svg','svg');
-    svgIcon.setAttribute('viewBox','0 0 24 24');svgIcon.setAttribute('width','12');svgIcon.setAttribute('height','12');
-    svgIcon.setAttribute('fill','none');svgIcon.setAttribute('stroke','currentColor');svgIcon.setAttribute('stroke-width','2');svgIcon.setAttribute('stroke-linecap','round');
-    svgIcon.innerHTML='<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>';
-    shareBtn.appendChild(svgIcon);
-    shareBtn.appendChild(span({},'SHARE'));
-    shareRow.appendChild(shareBtn);
-    card.appendChild(shareRow);
 
   }catch(e){
     card.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Block progress unavailable: '+e.message));
@@ -1597,7 +1481,7 @@ function buildBlockProgress(){
 }
 
 // Clear all activity data and reset targets to defaults for the current block length.
-// Keeps CFG, LOG (daily readiness), and race config — only wipes RUNS, EDITS, TARGETS.
+// Keeps CFG, LOG (daily readiness), and race config \u2014 only wipes RUNS, EDITS, TARGETS.
 function clearPlan(){
   RUNS={}; S.set(SK.runs,RUNS);
   EDITS={}; S.set(SK.edits,EDITS);
@@ -1619,7 +1503,7 @@ function showDoubleConfirm(title, body, confirmWord, onConfirm){
     color:'#ff6b6b',marginBottom:'12px'},onclick:()=>{
       step1Btn.style.display='none';
       step2.style.display='block';
-  }},'I understand — show confirmation');
+  }},'I understand \u2014 show confirmation');
   sheet.appendChild(step1Btn);
   // Step 2: type to confirm
   const step2=div({style:{display:'none'}});
@@ -1838,6 +1722,8 @@ function renderToday(){
   wrap.appendChild(ringsRow);
   updateDecision();
 
+  // All readiness inputs live in inputsWrap so they can collapse to a summary once logged
+  const inputsWrap=div({});
   // HRV / RHR inputs -- centred per request
   const grid1=div({class:'grid2',style:{marginBottom:'12px'}});
   const hrvN=parseFloat(hrv);
@@ -1848,10 +1734,10 @@ function renderToday(){
   const hrvF=numInp('HRV',hrv,v=>{hrv=v;updateDecision();},'ms',hrvHint?.t,hrvHint?.c,true);
   const rhrF=numInp('Resting HR',rhr,v=>{rhr=v;updateDecision();},'bpm',rhrHint?.t,rhrHint?.c,true);
   grid1.appendChild(hrvF); grid1.appendChild(rhrF);
-  wrap.appendChild(grid1);
+  inputsWrap.appendChild(grid1);
 
   // Sleep -- 5-tier quality scale (button row)
-  wrap.appendChild(div({style:{marginBottom:'16px'}},[pillField('Sleep',sleep,[
+  inputsWrap.appendChild(div({style:{marginBottom:'16px'}},[pillField('Sleep',sleep,[
     {v:'excellent',l:'Excellent',color:'#00c96e'},
     {v:'good',l:'Good',color:'#a8d800'},
     {v:'fair',l:'Fair',color:'#ffd166'},
@@ -1860,7 +1746,7 @@ function renderToday(){
   ],v=>{sleep=v;updateDecision();})]));
 
   // Legs -- same button-row treatment and colour direction as Sleep
-  wrap.appendChild(div({style:{marginBottom:'16px'}},[pillField('Legs',legs,[
+  inputsWrap.appendChild(div({style:{marginBottom:'16px'}},[pillField('Legs',legs,[
     {v:'5',l:'Fresh',color:'#00c96e'},
     {v:'4',l:'Good',color:'#a8d800'},
     {v:'3',l:'OK',color:'#ffd166'},
@@ -1869,7 +1755,7 @@ function renderToday(){
   ],v=>{legs=v;updateDecision();})]));
 
   // Mood -- merged Mood + Motivation into one field
-  wrap.appendChild(div({style:{marginBottom:'16px'}},[pillField('Mood',mood,[
+  inputsWrap.appendChild(div({style:{marginBottom:'16px'}},[pillField('Mood',mood,[
     {v:'5',l:'Sharp',color:'#00c96e'},
     {v:'4',l:'Good',color:'#a8d800'},
     {v:'3',l:'OK',color:'#ffd166'},
@@ -1890,24 +1776,60 @@ function renderToday(){
   } else if(effRPE!=null){
     rpeBox.appendChild(div({style:{fontSize:'9px',color:'#444',marginTop:'4px'}},'No penalty -- recent effort within normal range'));
   }
-  wrap.appendChild(rpeBox);
+  inputsWrap.appendChild(rpeBox);
 
   const noteWrap=div({style:{marginBottom:'16px'}});
   noteWrap.appendChild(lbl('Session note'));
   const ta=el('textarea',{class:'inp',rows:'2',placeholder:'Anything worth logging...'},note);
   ta.addEventListener('input',()=>{note=ta.value;});
   noteWrap.appendChild(ta);
-  wrap.appendChild(noteWrap);
+  inputsWrap.appendChild(noteWrap);
 
   const saveBtn=btn({class:'btn',onclick:()=>{
     const {combined,effRPE}=computeScores();
     const dec=combined!=null?getDecision(combined):null;
     const entry={hrv,rhr,sleep,legs,mood,rpe:effRPE!=null?String(effRPE):'',note,decision:dec?.label,ts:Date.now()};
     LOG[td]=entry; S.set(SK.log,LOG);
-    saveBtn.textContent='LOGGED'; saveBtn.style.color='#00ff87'; saveBtn.style.borderColor='#00ff87';
-    setTimeout(()=>{saveBtn.textContent='LOG TODAY';saveBtn.style.color='';saveBtn.style.borderColor='';},1800);
+    collapsed=true; applyCollapse();
   }},'LOG TODAY');
-  wrap.appendChild(saveBtn);
+  inputsWrap.appendChild(saveBtn);
+
+  // Compact summary shown instead of the inputs once today is logged (tap Edit to reopen)
+  const SUM_MAP={
+    sleep:{excellent:['Excellent','#00c96e'],good:['Good','#a8d800'],fair:['Fair','#ffd166'],poor:['Poor','#ff6b6b'],sick:['Sick','#8b2050']},
+    legs:{5:['Fresh','#00c96e'],4:['Good','#a8d800'],3:['OK','#ffd166'],2:['Heavy','#ff9f43'],1:['Wrecked','#ff6b6b']},
+    mood:{5:['Sharp','#00c96e'],4:['Good','#a8d800'],3:['OK','#ffd166'],2:['Flat','#ff9f43'],1:['Empty','#ff6b6b']},
+  };
+  let collapsed=!!LOG[td];
+  const summaryWrap=div({style:{marginBottom:'16px',padding:'10px 12px',background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'8px'}});
+  function renderSummary(){
+    summaryWrap.innerHTML='';
+    const top=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
+    const bits=[];
+    if(String(hrv)!=='') bits.push('HRV '+hrv);
+    if(String(rhr)!=='') bits.push('RHR '+rhr);
+    if(effRPE!=null) bits.push('Effort '+effRPE.toFixed(1)+(penalty>0?' (-'+Math.round(penalty*100)+'%)':''));
+    top.appendChild(span({style:{fontSize:'10px',color:'var(--text-mute)',letterSpacing:'0.04em'}},bits.join('  \u00b7  ')||'Logged today'));
+    top.appendChild(btn({class:'btn-sm btn-ghost',style:{padding:'3px 10px',fontSize:'10px'},onclick:()=>{collapsed=false;applyCollapse();}},'Edit'));
+    summaryWrap.appendChild(top);
+    const chips=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
+    [['Sleep',SUM_MAP.sleep[sleep]],['Legs',SUM_MAP.legs[legs]],['Mood',SUM_MAP.mood[mood]]].forEach(([k,m])=>{
+      if(!m) return;
+      const chip=div({style:{display:'flex',alignItems:'center',gap:'5px',padding:'3px 8px',background:'var(--bg-input)',border:'1px solid var(--border-subtle)',borderRadius:'12px'}});
+      chip.appendChild(div({style:{width:'6px',height:'6px',borderRadius:'50%',background:m[1]}}));
+      chip.appendChild(span({style:{fontSize:'10px',color:'var(--text)'}},k+' '+m[0]));
+      chips.appendChild(chip);
+    });
+    summaryWrap.appendChild(chips);
+  }
+  function applyCollapse(){
+    inputsWrap.style.display=collapsed?'none':'block';
+    summaryWrap.style.display=collapsed?'block':'none';
+    if(collapsed) renderSummary();
+  }
+  wrap.appendChild(inputsWrap);
+  wrap.appendChild(summaryWrap);
+  applyCollapse();
 
   return wrap;
 }
@@ -2233,7 +2155,7 @@ function renderBlock(){
         const actionRow=div({style:{display:'flex',gap:'6px',marginTop:'4px'}});
         actionRow.appendChild(btn({style:{padding:'2px 8px',borderRadius:'4px',fontSize:'9px',
           background:'var(--bg-input)',border:'1px solid var(--border)',color:'var(--text-mute)',cursor:'pointer'},
-          onclick:e=>{e.stopPropagation();EDIT_WEEK=wn;ACTIVE_TAB='plan';BLOCK_EDITING=null;EXPANDED_DAY=null;EDITING_DAY=null;render();}},'Sessions ->'));
+          onclick:e=>{e.stopPropagation();EDIT_WEEK=wn;ACTIVE_TAB='plan';CAL_SCROLL=true;BLOCK_EDITING=null;EXPANDED_DAY=null;EDITING_DAY=null;render();}},'Sessions ->'));
         if(isCur){
           actionRow.appendChild(btn({style:{padding:'2px 8px',borderRadius:'4px',fontSize:'9px',
             background:'var(--bg-input)',border:'1px solid var(--border)',color:'var(--text-mute)',cursor:'pointer'},
@@ -2326,6 +2248,22 @@ function renderBlock(){
             ebtns.appendChild(btn({class:'btn-sm btn-ghost',onclick:()=>{BLOCK_EDITING=null;render();}},'Cancel'));
             editPanel.appendChild(ebtns);
             rowWrap.appendChild(editPanel);
+          } else if(isPast){
+            // Past weeks: week type only (targets stay as set, so compliance history is unchanged)
+            const ptPanel=div({style:{padding:'12px',background:'var(--bg-elev)',
+              border:'1px solid '+tc2+'30',borderTop:'none',borderRadius:'0 0 8px 8px',
+              marginTop:'-8px',paddingTop:'16px'}});
+            ptPanel.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',marginBottom:'8px'}},'WEEK TYPE'));
+            const ptBtns=div({style:{display:'flex',gap:'6px',flexWrap:'wrap'}});
+            WEEK_TYPES.forEach(wt=>{
+              const wtc=WTC[wt], isA=TARGETS[wIdx].type===wt;
+              ptBtns.appendChild(btn({style:{padding:'5px 10px',borderRadius:'4px',fontSize:'10px',
+                background:isA?wtc+'30':'var(--bg-input)',border:'1px solid '+(isA?wtc:'var(--border)'),
+                color:isA?wtc:'var(--text-mute)'},
+                onclick:()=>{TARGETS[wIdx]={...TARGETS[wIdx],type:wt};S.set(SK.targets,TARGETS);render();}},wt));
+            });
+            ptPanel.appendChild(ptBtns);
+            rowWrap.appendChild(ptPanel);
           }
 
         } else {
@@ -2439,172 +2377,14 @@ function renderBlock(){
 // ============================================================
 // PLAN TAB
 // ============================================================
-function renderPlan(){
-  if(EDIT_WEEK===null) EDIT_WEEK=curWeek();
-  const wIdx=EDIT_WEEK-1;
-  const plan=getPlan();
-  const week=plan[wIdx];
-  const target=TARGETS[wIdx];
-  const wrap=div({});
-  wrap.appendChild(buildBlockProgress());
-
-  // Week selector
-  const weekSel=div({style:{display:'flex',gap:'5px',marginBottom:'14px',flexWrap:'wrap'}});
-  plan.forEach((_,i)=>{
-    const wn=i+1, active=wn===EDIT_WEEK, isCur=wn===curWeek();
-    const t=TARGETS[i]; const pc=WTC[t?.type]||'#555';
-    const b=btn({class:'week-btn'+(active?' active':''),style:{
-      background:active?pc+'22':'var(--bg-input)',
-      border:'1px solid '+(active?pc:isCur?'var(--border-btn)':'var(--border)'),
-      color:active?pc:isCur?'var(--text-mute)':'var(--text-dim)',
-      fontWeight:active?'700':'400'},
-      onclick:()=>{EDIT_WEEK=wn;EXPANDED_DAY=null;EDITING_DAY=null;render();}},'W'+wn);
-    weekSel.appendChild(b);
-  });
-  wrap.appendChild(weekSel);
-
-  // Actuals
-  const actuals=week.days.reduce((acc,_,dIdx)=>{
-    const t=getDayTotals(wIdx,dIdx);
-    acc.km+=t.km; acc.vert+=t.vert; acc.hrs+=t.hrs;
-    if(isDayDone(wIdx,dIdx)) acc.done++;
-    return acc;
-  },{km:0,vert:0,hrs:0,done:0});
-
-  // Week header card
-  const tc_w=WTC[target?.type]||'#555';
-  const hdrCard=div({style:{marginBottom:'14px',padding:'12px 14px',borderRadius:'8px',background:'#0d1020',border:'1px solid #1c2040'}});
-  const hdrTop=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'10px'}});
-  const hdrLeft=div({});
-  const hdrBadges=div({class:'flex',style:{marginBottom:'4px'}});
-  hdrBadges.appendChild(span({style:{fontSize:'9px',background:tc_w+'25',border:'1px solid '+tc_w+'40',color:tc_w,padding:'2px 7px',borderRadius:'3px'}},target?.type||'--'));
-  hdrBadges.appendChild(span({style:{fontSize:'9px',color:'#4a6080',letterSpacing:'0.14em',textTransform:'uppercase'}},'Week '+EDIT_WEEK));
-  const {mon:pwMon,sun:pwSun}=weekDates(wIdx);
-  hdrBadges.appendChild(span({style:{fontSize:'9px',color:'#4a6080'}},fmtDate(pwMon)+' - '+fmtDate(pwSun)));
-  if(EDIT_WEEK===curWeek()) hdrBadges.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'CURRENT'));
-  hdrLeft.appendChild(hdrBadges);
-  // Target line -- always light text since card is always dark
-  hdrLeft.appendChild(div({style:{fontSize:'12px',color:'#c0ccee',letterSpacing:'0.04em',marginBottom:'8px'}},
-    'TARGET: '+(target?.km||0)+'km \u00b7 '+(target?.vert||0)+'m \u00b7 '+(target?.hrs||0)+'hr'));
-  hdrTop.appendChild(hdrLeft);
-  hdrTop.appendChild(div({style:{fontSize:'11px',color:'#6080a0',textAlign:'right'}},actuals.done+'/'+week.days.length+' done'));
-  hdrCard.appendChild(hdrTop);
-
-  // Progress bars -- sit between TARGET and metrics rows
-  const planned=week.days.reduce((acc,_,dIdx)=>{
-    const dp=getDayPlanned(wIdx,dIdx,true);
-    acc.km+=dp.km||0; acc.vert+=dp.vert||0; acc.hrs+=dp.hrs||0;
-    return acc;
-  },{km:0,vert:0,hrs:0});
-
-  [['#00ff87','km',actuals.km,target?.km||0],
-   ['#55efc4','vert',actuals.vert,target?.vert||0],
-   ['#b8ff4f','hrs',actuals.hrs,target?.hrs||0]
-  ].forEach(([col,unit,act,tgt])=>{
-    const over=act>tgt&&tgt>0;
-    const barColor=over?'#e84040':col;
-    const pct=tgt>0?Math.min(100,(act/tgt)*100):0;
-    const barWrap=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'4px'}});
-    const track=div({class:'pbar-track',style:{flex:'1',height:'6px',borderRadius:'3px',overflow:'hidden',position:'relative'}});
-    track.style.setProperty('--pbar-color',barColor);
-    const fill=div({style:{width:pct+'%',height:'100%',borderRadius:'3px',background:barColor,transition:'width 0.4s'}});
-    track.appendChild(fill);
-    barWrap.appendChild(track);
-    barWrap.appendChild(span({style:{fontSize:'8px',color:barColor,minWidth:'22px',textAlign:'right',flexShrink:'0'}},unit));
-    hdrCard.appendChild(barWrap);
-  });
-
-  // PLANNED + LOGGED as explicit flex rows -- guaranteed alignment
-  [['PLANNED',planned.km,planned.vert,planned.hrs,'#4a6080','#8aa0c0'],
-   ['LOGGED',actuals.km,actuals.vert,actuals.hrs,'#00c875','#00c875']
-  ].forEach(([label,km,vert,hrs,lblCol,valCol])=>{
-    const row=div({style:{display:'flex',alignItems:'baseline',gap:'0',marginTop:'5px'}});
-    row.appendChild(span({style:{fontSize:'8px',color:lblCol,letterSpacing:'0.1em',minWidth:'58px',flexShrink:'0'}},label));
-    const fmtKm=Math.round(km)>999?(Math.round(km)/1000).toFixed(1)+'k':Math.round(km)+'km';
-    const fmtVert=Math.round(vert)>999?(Math.round(vert)/1000).toFixed(1)+'k':Math.round(vert)+'m';
-    [fmtKm,fmtVert,fmtHrTot(hrs)].forEach(v=>{
-      row.appendChild(span({style:{fontSize:'10px',color:valCol,flex:'1'}},v));
-    });
-    hdrCard.appendChild(row);
-  });
-  wrap.appendChild(hdrCard);
-
-  // Sessions
-  week.days.forEach((_,dIdx)=>{
-    const s=getSession(wIdx,dIdx);
-    const activities=getDayActivities(wIdx,dIdx);
-    const dayDone=isDayDone(wIdx,dIdx);
-    const totals=getDayTotals(wIdx,dIdx);
-    const isEdited=!!EDITS['w'+wIdx+'-d'+dIdx];
-    const isExp=EXPANDED_DAY===dIdx;
-    const tc=TC[s.type]||'#555';
-    const dateStr=slotDate(wIdx,s.day);
-
-    // Day-level planned totals for expanded panel
-    const _dp=getDayPlanned(wIdx,dIdx,false);
-    const dayPlannedKm=_dp.km, dayPlannedVert=_dp.vert, dayPlannedHrs=_dp.hrs;
-
-    // Collapsed row -- show first/main activity label, day totals
-    const firstAct=activities[0];
-    const mainLabel=activities.length>0
-      ?(firstAct?.label||s.label||'')
-      :'';
-    const showLabel=mainLabel+(activities.length>1?' +'+(activities.length-1):'');
-
-    const rowBtn=btn({style:{width:'100%',textAlign:'left',padding:'9px 12px',
-      background:isExp?'var(--bg-elev)':dayDone?'#00c96e12':'var(--bg-card)',
-      border:'1px solid '+(isExp?tc+'50':dayDone?'#00c96e40':'var(--border)'),
-      borderRadius:isExp?'8px 8px 0 0':'8px',display:'flex',flexDirection:'column',gap:'4px',marginBottom:isExp?'0':'5px'},
-      onclick:()=>{EXPANDED_DAY=isExp?null:dIdx;render();}});
-    // Top line: day/date left -- type badges centre -- totals/chevron right
-    const topRow=div({style:{display:'flex',alignItems:'center',gap:'6px'}});
-
-    // Done tick or day+date
-    if(dayDone){
-      topRow.appendChild(span({style:{fontSize:'9px',color:'#007a42',fontWeight:'700'}},'\u2713'));
-    }
-    topRow.appendChild(span({style:{fontSize:'9px',color:dayDone?'#007a42':'var(--text-dim)',fontWeight:'600'}},s.day));
-    topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)'}},fmtDate(slotDateObj(wIdx,s.day))));
-
-    // Type badges
-    const dispTypes=activities.length>0?[...new Set(activities.map(a=>a.type||s.type))]:[];
-    const bWrap=div({style:{display:'flex',gap:'2px',flex:'1'}});
-    dispTypes.slice(0,4).forEach(t=>{
-      bWrap.appendChild(span({style:{fontSize:'8px',background:TC[t]||'#555',color:'#000',padding:'1px 4px',borderRadius:'2px',fontWeight:'700'}},TL[t]||'--'));
-    });
-    topRow.appendChild(bWrap);
-
-    // Totals right side: actuals if done, planned if future
-    const allRest=activities.length>0&&activities.every(a=>a.type==='rest');
-    if(dayDone&&(totals.km>0||totals.hrs>0)){
-      const parts=[];
-      if(totals.km>0) parts.push(Math.round(totals.km)+'km');
-      if(totals.vert>0) parts.push((totals.vert>=1000?(totals.vert/1000).toFixed(1)+'k':Math.round(totals.vert))+'m');
-      parts.push(fmtHrTot(totals.hrs));
-      topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',whiteSpace:'nowrap'}},parts.join(' ')));
-    } else if(!dayDone&&!allRest){
-      const dp=getDayPlanned(wIdx,dIdx,false);
-      const parts=[];
-      if(dp.km>0) parts.push(dp.km+'km');
-      if(dp.vert>0) parts.push((dp.vert>=1000?(dp.vert/1000).toFixed(1)+'k':dp.vert)+'m');
-      if(dp.hrs>0) parts.push(fmtHms(dp.hrs));
-      if(parts.length) topRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-faint)',whiteSpace:'nowrap'}},parts.join(' ')));
-    }
-    topRow.appendChild(span({style:{fontSize:'10px',color:'#333',flexShrink:'0'}},isExp?'\u25b2':'\u25bc'));
-    rowBtn.appendChild(topRow);
-
-    // Bottom line: activity titles -- only shown when activities exist
-    if(activities.length>0){
-      const labels=activities.map(a=>a.label).filter(Boolean);
-      if(labels.length){
-        rowBtn.appendChild(div({style:{fontSize:'11px',color:dayDone?'#007a42':'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},
-          labels.join(' \u00b7 ')));
-      }
-    }
-
-    wrap.appendChild(rowBtn);
-
-    if(isExp){
+function buildDayPanel(wIdx,dIdx){
+  const week=getPlan()[wIdx];
+  const s=getSession(wIdx,dIdx);
+  const activities=getDayActivities(wIdx,dIdx);
+  const tc=TC[s.type]||'#555';
+  const dateStr=slotDate(wIdx,s.day);
+  const _dp=getDayPlanned(wIdx,dIdx,false);
+  const dayPlannedKm=_dp.km, dayPlannedVert=_dp.vert, dayPlannedHrs=_dp.hrs;
       const panel=div({style:{background:'var(--bg-elev)',border:'1px solid '+tc+'30',borderTop:'none',borderRadius:'0 0 8px 8px',marginBottom:'6px'}});
       const pd=div({style:{padding:'12px'}});
 
@@ -2710,10 +2490,150 @@ function renderPlan(){
         pd.appendChild(addBtn);
 
         panel.appendChild(pd);
-        wrap.appendChild(panel);
-      }  // end if(isExp)
+  return panel;
+}
+
+// ============================================================
+// PLAN TAB -- calendar view (week rows)
+// ============================================================
+let CAL_SCROLL=true;
+const ICON_PATHS={
+  strength:[['path',{d:'M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12',fill:'none',stroke:'currentColor','stroke-width':'2.4','stroke-linecap':'round'}]],
+  intervals:[['path',{d:'M13 2L5 14h6l-1 8 8-12h-6z',fill:'currentColor'}]],
+  easy:[['path',{d:'M2 17c4 0 5-3 8-3s3 3 6 3h6M3 11c3-1 5-4 8-4 2 0 3 2 5 2h5',fill:'none',stroke:'currentColor','stroke-width':'2.4','stroke-linecap':'round'}]],
+  long:[['path',{d:'M1 20L9 6l4 7 3-4 7 11z',fill:'currentColor'}]],
+  race:[['path',{d:'M5 22V3',stroke:'currentColor','stroke-width':'2.4','stroke-linecap':'round'}],['path',{d:'M5 4h14v10H5z',fill:'currentColor'}],['path',{d:'M5 4h4v5H5zM13 4h3v5h-3zM9 9h4v5H9zM16 9h3v5h-3z',fill:'#0a0a16'}]],
+  walk:[['ellipse',{cx:'8',cy:'8',rx:'3',ry:'5',fill:'currentColor'}],['ellipse',{cx:'16',cy:'15',rx:'3',ry:'5',fill:'currentColor'}]],
+  sauna:[['path',{d:'M12 2c1 5 6 6 6 12a6 6 0 01-12 0c0-3 2-4 3-7 1 2 2 2 3-5z',fill:'currentColor'}]],
+  rest:[['path',{d:'M20 14.5A8.5 8.5 0 019.5 4 8.5 8.5 0 1020 14.5z',fill:'currentColor'}]],
+  ride:[['circle',{cx:'6',cy:'16',r:'4',fill:'none',stroke:'currentColor','stroke-width':'2.2'}],['circle',{cx:'18',cy:'16',r:'4',fill:'none',stroke:'currentColor','stroke-width':'2.2'}],['path',{d:'M6 16l4-8h5l3 8M10 8l3 8',fill:'none',stroke:'currentColor','stroke-width':'2','stroke-linecap':'round'}]],
+  other:[['circle',{cx:'12',cy:'12',r:'6',fill:'currentColor'}]]
+};
+function typeIcon(t,size){
+  const NS='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 24 24');
+  svg.setAttribute('width',String(size||9)); svg.setAttribute('height',String(size||9));
+  svg.style.flexShrink='0';
+  (ICON_PATHS[t]||ICON_PATHS.other).forEach(([tag,at])=>{
+    const n=document.createElementNS(NS,tag);
+    Object.keys(at).forEach(k=>n.setAttribute(k,at[k]));
+    svg.appendChild(n);
+  });
+  return svg;
+}
+function calHm(h){
+  if(!h||h<=0) return '0:00h';
+  const m=Math.round(h*60); return Math.floor(m/60)+':'+String(m%60).padStart(2,'0')+'h';
+}
+function calN(v){ return Math.round(v).toLocaleString('en-US'); }
+
+function renderPlan(){
+  if(EDIT_WEEK===null) EDIT_WEEK=curWeek();
+  const plan=getPlan();
+  const wrap=div({});
+  wrap.appendChild(buildBlockProgress());
+  const td=today();
+  const cw=curWeek();
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  const hdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',margin:'4px 2px 8px'}});
+  hdr.appendChild(span({style:{fontSize:'10px',letterSpacing:'0.14em',color:'var(--text-mute)'}},'CALENDAR'));
+  hdr.appendChild(btn({style:{fontSize:'9px',padding:'3px 9px',borderRadius:'6px',background:'var(--bg-btn)',border:'1px solid var(--border-btn)',color:'#b8ff4f'},
+    onclick:()=>{EDIT_WEEK=cw;EXPANDED_DAY=null;CAL_SCROLL=true;render();}},'TODAY'));
+  wrap.appendChild(hdr);
+  const dow=div({style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'3px',paddingLeft:'5px',marginBottom:'4px'}});
+  ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d=>dow.appendChild(div({style:{textAlign:'center',fontSize:'9px',color:'var(--text-mute)'}},d)));
+  wrap.appendChild(dow);
+
+  plan.forEach((week,wIdx)=>{
+    const wn=wIdx+1;
+    const target=TARGETS[wIdx];
+    const col=WTC[target?.type]||'#555';
+    const row=div({id:wn===EDIT_WEEK?'cal-focus':'cal-w'+wn,style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderLeft:'4px solid '+col,borderRadius:'10px',padding:'6px',marginBottom:'8px'}});
+    const wd=weekDates(wIdx);
+    const top=div({style:{display:'flex',gap:'8px',alignItems:'center',marginBottom:'5px'}});
+    top.appendChild(span({style:{fontSize:'9px',color:col,letterSpacing:'0.1em'}},target?.type||'--'));
+    top.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)'}},'Wk '+wn+' \u00b7 '+fmtDate(wd.mon)+' - '+fmtDate(wd.sun)));
+    if(wn===cw) top.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'CURRENT'));
+    row.appendChild(top);
+
+    const grid=div({style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'3px'}});
+    let logKm=0,logV=0,logH=0,plKm=0,plV=0,plH=0;
+    let expandedIdx=null;
+    week.days.forEach((_,dIdx)=>{
+      const sess=getSession(wIdx,dIdx);
+      const acts=getDayActivities(wIdx,dIdx);
+      const dObj=slotDateObj(wIdx,sess.day);
+      const dStr=slotDate(wIdx,sess.day);
+      const isToday=dStr===td;
+      const isExp=EXPANDED_DAY===dIdx && EDIT_WEEK===wn;
+      if(isExp) expandedIdx=dIdx;
+      const cell=btn({style:{minHeight:'74px',background:'var(--bg-input)',border:'1px solid '+(isToday?'#b8ff4f':isExp?col:'var(--border)'),
+        boxShadow:isToday?'0 0 0 1px #b8ff4f55':'none',borderRadius:'6px',padding:'3px 2px',display:'flex',flexDirection:'column',gap:'2px',textAlign:'left',minWidth:'0',overflow:'hidden'},
+        onclick:()=>{ if(isExp){EXPANDED_DAY=null;} else {EDIT_WEEK=wn;EXPANDED_DAY=dIdx;} CAL_SCROLL=false; render(); }});
+      const dn=dObj.getDate();
+      cell.appendChild(div({style:{fontSize:'8px',color:isToday?'#b8ff4f':'var(--text-mute)',paddingLeft:'2px'}},
+        dn===1?dn+' '+MON[dObj.getMonth()]:String(dn)));
+      const real=acts.filter(a=>a.type!=='rest');
+      if(real.length===0){
+        cell.appendChild(div({style:{fontSize:'7px',color:'var(--text-faint)',textAlign:'center',marginTop:'12px'}},'REST'));
+      }
+      real.slice(0,3).forEach(a=>{
+        const t=a.type||'easy';
+        const c=TC[t]||'#636e72';
+        const e=actEffective(a);
+        const missed=!a.completed && dStr<td;
+        const state=a.completed?'d':missed?'m':'p';
+        const chip=div({style:{borderRadius:'4px',padding:'2px 2px',textAlign:'center',lineHeight:'1.15',
+          border:'1px '+(state==='m'?'dashed #ff6b6b':'solid '+c),
+          background:state==='d'?c:'transparent',
+          color:state==='d'?'#0a0a16':state==='m'?'#ff6b6b':c,minWidth:'0'}});
+        const l1=div({style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'2px',fontSize:'9px',fontWeight:'700',whiteSpace:'nowrap'}});
+        l1.appendChild(typeIcon(t,9));
+        const txt=e.km>0?Math.round(e.km)+'km':(e.hrs>0?calHm(e.hrs):'');
+        if(txt) l1.appendChild(span({},txt));
+        chip.appendChild(l1);
+        if(e.km>0&&e.vert>0) chip.appendChild(div({style:{fontSize:'7.5px',opacity:'0.85',whiteSpace:'nowrap'}},calN(e.vert)+'m'));
+        cell.appendChild(chip);
+      });
+      if(real.length>3) cell.appendChild(div({style:{fontSize:'8px',color:'var(--text-mute)',textAlign:'center'}},'+'+(real.length-3)));
+      grid.appendChild(cell);
+      const t=getDayTotals(wIdx,dIdx); logKm+=t.km; logV+=t.vert; logH+=t.hrs;
+      const dp=getDayPlanned(wIdx,dIdx,true); plKm+=dp.km||0; plV+=dp.vert||0; plH+=dp.hrs||0;
+    });
+    row.appendChild(grid);
+
+    const tot=div({style:{display:'flex',justifyContent:'space-between',marginTop:'6px',fontSize:'9.5px'}});
+    tot.appendChild(span({style:{color:'#00c875'}},Math.round(logKm)+'km '+calN(logV)+'m '+calHm(logH)));
+    tot.appendChild(span({style:{color:'var(--text-dim)'}},'/ '+Math.round(plKm)+'km '+calN(plV)+'m '+calHm(plH)));
+    row.appendChild(tot);
+    const bar=div({style:{height:'3px',background:'var(--border)',borderRadius:'2px',marginTop:'4px',overflow:'hidden'}});
+    bar.appendChild(div({style:{height:'100%',width:(plKm>0?Math.min(100,logKm/plKm*100):0)+'%',background:'#b8ff4f',borderRadius:'2px'}}));
+    row.appendChild(bar);
+
+    if(expandedIdx!==null){
+      const sess=getSession(wIdx,expandedIdx);
+      row.appendChild(div({style:{fontSize:'10px',color:'var(--text-dim)',margin:'10px 2px 6px',letterSpacing:'0.08em'}},
+        sess.day+' '+fmtDate(slotDateObj(wIdx,sess.day))));
+      row.appendChild(buildDayPanel(wIdx,expandedIdx));
+    }
+    wrap.appendChild(row);
   });
 
+  const leg=div({style:{display:'flex',flexWrap:'wrap',gap:'4px 10px',fontSize:'8.5px',margin:'8px 4px 0'}});
+  ['strength','intervals','easy','long','race','ride','walk','sauna'].forEach(k=>{
+    const it=span({style:{display:'inline-flex',alignItems:'center',gap:'3px',color:TC[k]}});
+    it.appendChild(typeIcon(k,10)); it.appendChild(document.createTextNode(TL[k]||k));
+    leg.appendChild(it);
+  });
+  wrap.appendChild(leg);
+  wrap.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',margin:'6px 4px 0'}},'Solid = done \u00b7 outlined = planned \u00b7 dashed red = missed'));
+
+  if(CAL_SCROLL){
+    CAL_SCROLL=false;
+    setTimeout(()=>{ try{ const f=document.getElementById('cal-focus'); if(f&&f.scrollIntoView) f.scrollIntoView({block:'start'}); }catch(e){} },30);
+  }
   return wrap;
 }
 
@@ -3952,7 +3872,7 @@ function renderSettings(){
     if(blockStartChanged){
       showDoubleConfirm(
         'Block start changed',
-        'Changing the block start date will clear all logged activities, plan edits and weekly targets — your readiness logs and race config are kept.\n\nThis cannot be undone. Export your data first if you haven\'t already.',
+        'Changing the block start date will clear all logged activities, plan edits and weekly targets \u2014 your readiness logs and race config are kept.\n\nThis cannot be undone. Export your data first if you haven\'t already.',
         'CLEAR',
         ()=>{ clearPlan(); doSave(); }
       );
@@ -3962,7 +3882,7 @@ function renderSettings(){
   }},'Save Config');
   cfgCard.appendChild(savCfgBtn);
 
-  // Clear Plan button — standalone, deliberately separated from Save Config
+  // Clear Plan button \u2014 standalone, deliberately separated from Save Config
   const clearPlanBtn=btn({class:'btn',style:{marginTop:'8px',background:'transparent',
     border:'1px solid #2a1a1a',color:'#555',fontSize:'11px'},
     onclick:()=>{
@@ -4569,6 +4489,96 @@ function showOnboarding(){
 }
 
 
+
+// ============================================================
+// CONTRAST GUARD -- keeps text readable in both themes
+// Any text whose colour is too close to its background is nudged
+// (same hue) until it reaches WCAG AA 4.5:1. Runs on new DOM only.
+// ============================================================
+const CG={min:4.5,pending:false};
+function cgParse(c){
+  const m=/rgba?\(([^)]+)\)/.exec(c||''); if(!m) return null;
+  const p=m[1].split(',').map(x=>parseFloat(x));
+  return {r:p[0],g:p[1],b:p[2],a:p.length>3?p[3]:1};
+}
+function cgLum(c){
+  const f=v=>{v/=255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);};
+  return 0.2126*f(c.r)+0.7152*f(c.g)+0.0722*f(c.b);
+}
+function cgRatio(a,b){
+  const l1=cgLum(a),l2=cgLum(b);
+  return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05);
+}
+function cgBlend(fg,bg){ const a=fg.a; return {r:fg.r*a+bg.r*(1-a),g:fg.g*a+bg.g*(1-a),b:fg.b*a+bg.b*(1-a),a:1}; }
+function cgBg(e){
+  const layers=[];
+  let n=e;
+  while(n&&n.nodeType===1){
+    const cs=getComputedStyle(n);
+    if(cs.backgroundImage&&cs.backgroundImage!=='none') return null;
+    const c=cgParse(cs.backgroundColor);
+    if(c&&c.a>0){ layers.push(c); if(c.a>=1) break; }
+    n=n.parentElement;
+  }
+  let base=cgParse(getComputedStyle(document.body).backgroundColor)||{r:255,g:255,b:255,a:1};
+  if(layers.length&&layers[layers.length-1].a>=1) base=layers.pop();
+  for(let i=layers.length-1;i>=0;i--) base=cgBlend(layers[i],base);
+  return base;
+}
+function cgRgb2Hsl(c){
+  const r=c.r/255,g=c.g/255,b=c.b/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b);
+  let h=0,s=0;const l=(mx+mn)/2;
+  if(mx!==mn){const d=mx-mn;s=l>0.5?d/(2-mx-mn):d/(mx+mn);
+    if(mx===r) h=(g-b)/d+(g<b?6:0); else if(mx===g) h=(b-r)/d+2; else h=(r-g)/d+4; h/=6;}
+  return {h,s,l};
+}
+function cgHsl2Rgb(o){
+  const {h,s,l}=o;
+  if(s===0){const v=l*255;return {r:v,g:v,b:v,a:1};}
+  const q=l<0.5?l*(1+s):l+s-l*s,p=2*l-q;
+  const f=t=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;};
+  return {r:f(h+1/3)*255,g:f(h)*255,b:f(h-1/3)*255,a:1};
+}
+function cgFix(e){
+  if(e.__cg) return;
+  e.__cg=1;
+  const tag=e.tagName;
+  const isSvgText=(tag==='text');
+  if(tag==='SVG'||tag==='svg'||tag==='path'||tag==='STYLE'||tag==='SCRIPT') return;
+  let has=false;
+  for(let i=0;i<e.childNodes.length;i++){ const n=e.childNodes[i]; if(n.nodeType===3&&n.textContent.trim()){has=true;break;} }
+  if(!has){ for(let i=0;i<e.children.length;i++){ if(e.children[i].tagName&&e.children[i].tagName.toLowerCase()==='svg'){has=true;break;} } }
+  if(!has&&tag!=='INPUT'&&tag!=='TEXTAREA'&&tag!=='SELECT') return;
+  const cs=getComputedStyle(e);
+  const fg0=cgParse(isSvgText?cs.fill:cs.color); if(!fg0) return;
+  const bg=cgBg(e); if(!bg) return;
+  const fg=cgBlend(fg0,bg);
+  if(cgRatio(fg,bg)>=CG.min) return;
+  const hsl=cgRgb2Hsl(fg);
+  const dir=cgLum(bg)>0.4?-1:1;               // light bg -> darken text, dark bg -> lighten
+  let best=null;
+  for(let k=1;k<=50;k++){
+    const l=Math.min(1,Math.max(0,hsl.l+dir*k*0.02));
+    const c=cgHsl2Rgb({h:hsl.h,s:hsl.s,l});
+    if(cgRatio(c,bg)>=CG.min){best=c;break;}
+    if(l===0||l===1){best=c;break;}
+  }
+  if(best){ const v='rgb('+Math.round(best.r)+','+Math.round(best.g)+','+Math.round(best.b)+')'; if(isSvgText) e.style.fill=v; else e.style.color=v; }
+}
+function cgRun(root){
+  try{
+    const list=(root||document.body).querySelectorAll('*');
+    for(let i=0;i<list.length;i++) cgFix(list[i]);
+    if(root&&root.nodeType===1) cgFix(root);
+  }catch(e){}
+}
+function cgSchedule(){
+  if(CG.pending) return; CG.pending=true;
+  (window.requestAnimationFrame||setTimeout)(()=>{CG.pending=false;cgRun(document.body);});
+}
+if(typeof MutationObserver!=='undefined'){
+  new MutationObserver(cgSchedule).observe(document.body,{childList:true,subtree:true});
+}
 
 // ============================================================
 // BOOT
