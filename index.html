@@ -1359,6 +1359,7 @@ function renderToday(){
   const todayRun=dIdx>=0?getRunLog(wIdx,dIdx):null;
   wrap.appendChild(buildBlockProgress());
   reviewDueWeeks().forEach(i=>wrap.appendChild(buildWeekReviewCard(i,()=>render())));
+  reviewDoneWeeks().forEach(i=>wrap.appendChild(buildReviewedStrip(i)));
 
   // State held in closure vars updated by inputs
   let hrv=saved.hrv||'', rhr=saved.rhr||'', sleep=saved.sleep||'';
@@ -2568,10 +2569,39 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
+const APP_BUILD='8 Nov r10';
+function reviewDoneWeeks(){
+  const out=[]; const cw=curWeek()-1; const dow=new Date().getDay();
+  const sundayLogged=i=>{ const a=getDayActivities(i,6).filter(x=>x.type!=='rest'); return a.length>0&&a.some(x=>x.completed); };
+  const has=i=>i>=0&&i<totalWeeks()&&weekReview(i)&&weekHasLogged(i);
+  if(has(cw)&&sundayLogged(cw)) out.push(cw);
+  if((dow===1||dow===2)&&has(cw-1)) out.push(cw-1);
+  return out;
+}
+function buildReviewedStrip(i){
+  const rv=weekReview(i); const skipped=!!rv.skipped;
+  const c=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderLeft:'4px solid '+(skipped?'#ff9f43':'#00c875'),borderRadius:'10px',padding:'10px 12px',marginBottom:'14px'}});
+  c.appendChild(div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)',marginBottom:'3px'}},'WEEK REVIEW'));
+  c.appendChild(div({style:{fontSize:'12px',color:'var(--text)',marginBottom:'8px'}},
+    'Wk '+(i+1)+(skipped?' review skipped':' reviewed'+(rv.feel?' \u00b7 felt '+rv.feel:''))));
+  const row=div({style:{display:'flex',gap:'8px'}});
+  row.appendChild(btn({class:'btn-ghost',style:{flex:'1'},onclick:()=>showWeekReviewSheet(i)},skipped?'Review now':'Edit review'));
+  row.appendChild(btn({class:'btn',style:{flex:'1'},onclick:()=>{
+    let ok=false;
+    try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(buildCoachPack(lsGet(COACH_WANT_KEY)||'')).then(()=>{},()=>{}); ok=true; } }catch(e){}
+    showCoachCopy({copied:ok});
+  }},'Copy for coach'));
+  c.appendChild(row);
+  return c;
+}
 function buildWeekReviewCard(wIdx,onDone,opts){
   opts=opts||{};
   const ex=weekReview(wIdx)||{};
-  const form={feel:ex.feel||'',comment:ex.comment||'',next:ex.next||''};
+  const DK='utmb_revdraft_'+wIdx;
+  let draft=null; try{ draft=JSON.parse(localStorage.getItem(DK)||'null'); }catch(e){}
+  const form={feel:ex.feel||(draft&&draft.feel)||'',comment:ex.comment||(draft&&draft.comment)||'',next:ex.next||(draft&&draft.next)||''};
+  const saveDraft=()=>{ try{ localStorage.setItem(DK,JSON.stringify(form)); }catch(e){} };
+  const clearDraft=()=>{ try{ localStorage.removeItem(DK); }catch(e){} };
   const st=weekStats(wIdx), w=weekDates(wIdx);
   const card=div({style:{background:'var(--bg-card)',border:'1px solid var(--border-btn)',borderLeft:'4px solid #b8ff4f',borderRadius:'10px',padding:'12px',marginBottom:'14px'}});
   card.appendChild(div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-dim)',marginBottom:'2px'}},'WEEK REVIEW'+(ex.ts?' \u00b7 EDITING':'')));
@@ -2604,30 +2634,44 @@ function buildWeekReviewCard(wIdx,onDone,opts){
       const on=form.feel===o.v;
       feelRow.appendChild(btn({style:{flex:'1',padding:'9px 2px',borderRadius:'6px',fontSize:'11px',
         background:on?o.c+'30':'var(--bg-input)',border:(on?'2px':'1px')+' solid '+(on?o.c:'var(--border-btn)'),color:on?o.c:'var(--text-dim)',fontWeight:on?'700':'400'},
-        onclick:()=>{form.feel=on?'':o.v;drawFeel();}},o.v));
+        onclick:()=>{form.feel=on?'':o.v;saveDraft();drawFeel();}},o.v));
     });
   };
   drawFeel(); card.appendChild(feelRow);
   card.appendChild(lbl('Comment'));
   const c1=el('textarea',{class:'inp',rows:'2',placeholder:'What went well, what didn\'t, niggles, life stuff'});
-  c1.value=form.comment; c1.addEventListener('input',()=>{form.comment=c1.value;}); c1.style.marginBottom='10px';
+  c1.value=form.comment; c1.addEventListener('input',()=>{form.comment=c1.value;saveDraft();}); c1.style.marginBottom='10px';
   card.appendChild(c1);
   card.appendChild(lbl('For next week'));
   const c2=el('textarea',{class:'inp',rows:'2',placeholder:'What do you want from next week?'});
-  c2.value=form.next; c2.addEventListener('input',()=>{form.next=c2.value;}); c2.style.marginBottom='12px';
+  c2.value=form.next; c2.addEventListener('input',()=>{form.next=c2.value;saveDraft();}); c2.style.marginBottom='12px';
   card.appendChild(c2);
-  const row=div({style:{display:'flex',gap:'8px'}});
-  row.appendChild(btn({class:'btn-ghost',style:{flex:'1'},onclick:()=>{
-    if(!ex.ts&&!opts.sheet) saveWeekReview(wIdx,{skipped:true});
-    onDone();
-  }},opts.sheet?'Close':'Skip'));
-  row.appendChild(btn({class:'btn',style:{flex:'2'},onclick:()=>{
+  const doSave=()=>{
     saveWeekReview(wIdx,{feel:form.feel,comment:form.comment.trim(),next:form.next.trim(),
       km:Math.round(st.act.km*10)/10,vert:Math.round(st.act.vert),hrs:Math.round(st.act.hrs*100)/100,
       sessions:st.sessDone,rpe:st.rpe,ready:st.ready,pace:st.pace.pace>0?Math.round(st.pace.pace*100)/100:0});
+    clearDraft();
+  };
+  const row=div({style:{display:'flex',gap:'8px'}});
+  row.appendChild(btn({class:'btn-ghost',style:{flex:'1'},onclick:()=>{
+    if(!ex.ts&&!opts.sheet){ saveWeekReview(wIdx,{skipped:true}); clearDraft(); }
     onDone();
-  }},'Save review'));
+  }},opts.sheet?'Close':'Skip'));
+  row.appendChild(btn({class:'btn',style:{flex:'2'},onclick:()=>{ doSave(); onDone(); }},'Save review'));
   card.appendChild(row);
+  card.appendChild(btn({class:'btn-ghost',style:{width:'100%',marginTop:'8px',color:'#b8ff4f',borderColor:'#b8ff4f66'},onclick:()=>{
+    doSave();
+    if(form.next.trim()) lsSet(COACH_WANT_KEY,form.next.trim());
+    let ok=false;
+    try{
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(buildCoachPack(form.next.trim()||lsGet(COACH_WANT_KEY)||'')).then(()=>{},()=>{});
+        ok=true;
+      }
+    }catch(e){}
+    onDone();
+    showCoachCopy({copied:ok});
+  }},'Save & copy for coach'));
   return card;
 }
 function showWeekReviewSheet(wIdx){
@@ -2705,6 +2749,14 @@ function buildCoachPack(want){
   { const nm=new Date(); nm.setDate(nm.getDate()+((8-((nm.getDay()+6)%7+1))%7||7)); L.push('NEXT WEEK STARTS: '+localDateStr(nm)+' (Monday). Plan weeks Monday to Sunday.'); L.push(''); }
   L.push('WHAT I WANT: '+(want&&want.trim()?want.trim():'(nothing specific - suggest next week)'));
   L.push('');
+  const lastRev=past.slice().reverse().find(w=>w.review&&(w.review.feel||w.review.comment||w.review.forNextWeek));
+  if(lastRev){
+    L.push('LATEST WEEK REVIEW (Wk '+lastRev.wk+') - Strava is the source of truth for what was actually run; the app can be patchy');
+    L.push('- felt: '+(lastRev.review.feel||'-'));
+    if(lastRev.review.comment) L.push('- comment: '+lastRev.review.comment);
+    if(lastRev.review.forNextWeek) L.push('- for next week: '+lastRev.review.forNextWeek);
+    L.push('');
+  }
   L.push('RACES');
   races.forEach(r=>L.push('- '+r.prio+' race: '+r.name+' '+r.date+(r.dist?' ('+r.dist+')':'')+' - '+r.daysTo+' days'));
   if(!races.length) L.push('- none set');
@@ -3025,7 +3077,8 @@ function coachSheet(titleText,build){
   overlay.appendChild(sheet); document.body.appendChild(overlay);
   return overlay;
 }
-function showCoachCopy(){
+function showCoachCopy(opts){
+  opts=opts||{};
   coachSheet('Copy for coach',(sheet,close)=>{
     sheet.appendChild(lbl('What do you want from this week?'));
     const w=el('textarea',{class:'inp',rows:'3',placeholder:'e.g. keep it easy before SRF30, left calf tight, can only run Tue/Thu/Sat'});
@@ -3057,6 +3110,7 @@ function showCoachCopy(){
     }},'Copy for coach'));
     sheet.appendChild(row);
     refresh();
+    if(opts.copied){ status.style.color='#00c875'; status.textContent='Review saved and copied. Paste it into the chat.'; }
   });
 }
 function showPastePlan(){
@@ -3157,6 +3211,7 @@ function buildCoachCard(){
   row.appendChild(btn({class:'btn',style:{flex:'1'},onclick:()=>showCoachCopy()},'Copy for coach'));
   row.appendChild(btn({class:'btn-ghost',style:{flex:'1'},onclick:()=>showPastePlan()},'Paste plan'));
   card.appendChild(row);
+  card.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'8px'}},'App build '+APP_BUILD));
   const u=lsGet(UNDO_KEY);
   if(u){
     let ts=0; try{ ts=JSON.parse(u).ts; }catch(e){}
@@ -4918,7 +4973,7 @@ function renderSettings(){
   // Plan timeline: rolling -- no block dates to maintain
   const weeksInfo=div({style:{padding:'8px 10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'6px',fontSize:'10px',color:'#555'}},'');
   function updateWeeksPreview(){
-    weeksInfo.textContent='Plan runs from '+fmtDate(getBlockMonday())+' \u00b7 '+totalWeeks()+' weeks shown, rolling forward 12+ weeks ahead';
+    weeksInfo.textContent='Plan runs from '+fmtDate(getBlockMonday())+' \u00b7 '+totalWeeks()+' weeks shown, rolling forward 12+ weeks ahead \u00b7 build '+APP_BUILD;
     weeksInfo.style.color='#888';
   }
   updateWeeksPreview();
