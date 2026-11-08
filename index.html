@@ -145,14 +145,10 @@ const WEEK_TYPES = ['BUILD','PEAK','SHARPEN','TAPER','RACE','DELOAD','RECOVERY']
 
 const DEF_CFG = {
   hrvLow:45, hrvHigh:70, rhrLow:45, rhrHigh:50,
-  blockStartStr:'2026-06-06',
-  blockEndStr:'2026-09-01',   // Sunday on or after last race -- controls block length
-  raceDateStr:'2026-08-28',   // kept for backward compat -- mirrors races[0].date
-  raceName:'UTMB 2026',       // kept for backward compat -- mirrors races[0].name
-  races:[
-    {name:'Woodford to Glenbrook',  date:'2026-06-21', dist:'25km'},
-    {name:'UTMB 2026',              date:'2026-08-28', dist:'171km'},
-  ],
+  blockStartStr:(()=>{ const d=new Date(); d.setDate(d.getDate()-((d.getDay()+6)%7)); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })(),
+  raceDateStr:'',   // kept for backward compat -- mirrors the A race
+  raceName:'',
+  races:[],
   countTypes:DEFAULT_COUNT_TYPES,
   theme:'dark',
 };
@@ -2569,7 +2565,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='8 Nov r13';
+const APP_BUILD='8 Nov r17';
 function reviewDoneWeeks(){
   const out=[]; const cw=curWeek()-1; const dow=new Date().getDay();
   const sundayLogged=i=>{ const a=getDayActivities(i,6).filter(x=>x.type!=='rest'); return a.length>0&&a.some(x=>x.completed); };
@@ -2798,6 +2794,7 @@ function buildCoachPack(want){
   L.push('');
   L.push('HOW TO REPLY (plan format the app can import)');
   L.push('Reply with ONE json block like this. Dates are YYYY-MM-DD. Only list the days you want to set; a day with an empty sessions list means rest. Logged sessions are never overwritten unless I tick them.');
+  L.push('WEEKLY CHECK: also include last week as completed sessions straight from Strava so the app can correct anything I logged wrongly: add "done":true and "strava":"<activity id>" to each session with the exact Strava distance (km), climb (vert) and moving time ("h:mm:ss"). Match by day, distance and time. Strava is the source of truth.');
   L.push('If I ask for a multi-week block, add one entry to weeks for each week (start = that Monday), list all 7 days of each week, and set each week type.');
   L.push('types: easy, intervals, long, race, strength, ride, walk, sauna, other. time as "h:mm". Give any two of km/time/pace (pace "m:ss" per km) and the app fills in the third. week type: BUILD, PEAK, SHARPEN, TAPER, RACE, DELOAD, RECOVERY.');
   L.push('```json');
@@ -2992,22 +2989,39 @@ function existingSessions(wIdx,dIdx){
 function isRunT(t){ return t==='easy'||t==='long'||t==='intervals'||t==='race'; }
 function histMerge(wIdx,dIdx,sessions){
   const cur=getDayActivities(wIdx,dIdx).filter(a=>a.type!=='rest').map(a=>JSON.parse(JSON.stringify(a)));
-  const used={}; const addedS=[]; let n=0;
+  const used={}; const addedS=[]; const fixed=[]; let n=0;
   const tc=(a,t)=>(a.type||'easy')===t||(isRunT(a.type||'easy')&&isRunT(t));
+  const distT=t=>isRunT(t)||t==='walk';
   sessions.forEach(x=>{
     if(!x.done) return;
-    if(x.sid&&cur.some(a=>a.sid===x.sid)) return;
     let hit=-1;
-    cur.forEach((a,i)=>{
-      if(hit>=0||used[i]||!a.completed||!tc(a,x.type)) return;
-      const e=actEffective(a);
-      if(isRunT(x.type)||x.type==='walk'){
-        if(x.km>0&&e.km>0){ if(Math.abs(e.km-x.km)/Math.max(e.km,x.km)<=0.15) hit=i; }
-        else if(x.hrs>0&&e.hrs>0){ if(Math.abs(e.hrs-x.hrs)/Math.max(e.hrs,x.hrs)<=0.2) hit=i; }
-        else hit=i;
-      } else hit=i;
-    });
-    if(hit>=0){ used[hit]=true; return; }
+    const si=x.sid?cur.findIndex((a,i)=>a.sid===x.sid&&!used[i]):-1;
+    if(si>=0) hit=si;
+    else{
+      const cand=[]; cur.forEach((a,i)=>{ if(!used[i]&&a.completed&&tc(a,x.type)) cand.push(i); });
+      const diff=i=>{ const e=actEffective(cur[i]);
+        if(e.km<=0&&e.hrs<=0) return 0;
+        if(distT(x.type)&&x.km>0&&e.km>0) return Math.abs(e.km-x.km)/Math.max(e.km,x.km);
+        if(x.hrs>0&&e.hrs>0) return Math.abs(e.hrs-x.hrs)/Math.max(e.hrs,x.hrs);
+        return 0.5; };
+      cand.sort((p,q)=>diff(p)-diff(q));
+      if(cand.length){ const lim=distT(x.type)?(cand.length===1?0.4:0.15):1; if(diff(cand[0])<=lim) hit=cand[0]; }
+    }
+    if(hit>=0){
+      used[hit]=true; const a=cur[hit]; const e=actEffective(a);
+      const kmD=x.km>0&&Math.abs(e.km-x.km)>Math.max(0.1,0.01*x.km);
+      const vD=x.vert>0&&Math.abs(e.vert-x.vert)>5;
+      const hD=x.hrs>0&&Math.abs(e.hrs-x.hrs)>(distT(x.type)?0.025:0.05);
+      if(kmD||vD||hD){
+        const before={type:a.type||'easy',label:a.label||'',km:e.km,vert:e.vert,hrs:e.hrs};
+        if(kmD) a.actualKm=String(Math.round(x.km*100)/100);
+        if(vD) a.actualVert=String(Math.round(x.vert));
+        if(hD) a.actualHrs=String(Math.round(x.hrs*1000)/1000);
+        a.completed=true; if(x.sid) a.sid=x.sid;
+        fixed.push({before:before,x:x}); n++;
+      } else if(x.sid&&!a.sid){ a.sid=x.sid; }
+      return;
+    }
     const fill=(a,i)=>{ a.completed=true; a.actualKm=String(Math.round(x.km*100)/100); a.actualVert=String(Math.round(x.vert)); a.actualHrs=String(Math.round(x.hrs*1000)/1000);
       if(x.sid) a.sid=x.sid; if(x.detail&&!a.note) a.note=x.detail; a.ts=Date.now(); used[i]=true; };
     let pi=-1;
@@ -3016,7 +3030,7 @@ function histMerge(wIdx,dIdx,sessions){
     const a={id:newActId(),label:x.label||SESSION_LABELS[x.type]||x.type,type:x.type,actualKm:'',actualVert:'',actualHrs:'',perf:'',exec:'',note:'',completed:false,ts:Date.now(),planned:{km:0,vert:0,hrs:0}};
     cur.push(a); fill(a,cur.length-1); addedS.push(x); n++;
   });
-  return {acts:cur,added:addedS,n:n};
+  return {acts:cur,added:addedS,fixed:fixed,n:n};
 }
 function buildImportPlan(parsed){
   const td=today(); const tw=totalWeeks(); const items=[]; const skipped=[];
@@ -3032,7 +3046,7 @@ function buildImportPlan(parsed){
     const past=d.date<td;
     if(d.sessions.some(x=>x.done)){
       const hm=histMerge(wIdx,dIdx,d.sessions);
-      items.push({date:d.date,wIdx,dIdx,sessions:d.sessions,hist:true,merged:hm.acts,curText:sessionsSummary(curS),newText:hm.n?('+ '+sessionsSummary(hm.added)):'already in the app',logged:false,past,same:hm.n===0,on:hm.n>0});
+      items.push({date:d.date,wIdx,dIdx,sessions:d.sessions,hist:true,merged:hm.acts,curText:sessionsSummary(curS),newText:hm.n?(hm.fixed.map(f=>'fix: '+sessionsSummary([f.before])+'  ->  '+sessionsSummary([{type:f.x.type,label:f.before.label,km:f.x.km,vert:f.x.vert,hrs:f.x.hrs}])).concat(hm.added.length?['+ '+sessionsSummary(hm.added)]:[]).join('  |  ')):'already in the app',logged:false,past,same:hm.n===0,on:hm.n>0});
       (weekMap[wIdx]=weekMap[wIdx]||{wIdx,type:null,note:'',typeOn:true});
       return;
     }
@@ -3274,10 +3288,18 @@ function buildSeasonChart(height){
   const plan=getPlan(), nW=plan.length;
   const cur=Math.min(curWeek()-1,nW-1);
   const nextA=getNextARace();
-  let hi=nextA?weekIdxOfDate(nextA.date):cur+10;
-  hi=Math.max(cur+1,Math.min(nW-1,hi));
-  const lo=Math.max(0,cur-6);
-  hi=Math.min(hi,lo+40);
+  // Race to race: the week after the last A race through the next A race.
+  // No next A race: previous 4 weeks plus what is planned, 12 weeks in all.
+  const lastA0=getLastARace();
+  let lo,hi;
+  if(nextA){
+    hi=Math.max(cur+1,Math.min(nW-1,weekIdxOfDate(nextA.date)));
+    lo=lastA0?Math.max(0,weekIdxOfDate(lastA0.date)+1):Math.max(0,cur-4);
+    lo=Math.min(lo,cur);
+    lo=Math.max(lo,hi-40);
+  } else {
+    lo=Math.max(0,cur-4); hi=Math.min(nW-1,lo+11); hi=Math.max(hi,Math.min(nW-1,cur+1));
+  }
   const idxs=[]; for(let i=lo;i<=hi;i++) idxs.push(i);
   const n=idxs.length;
   const logged=idxs.map(i=>weekLoggedKm(i));
@@ -3374,6 +3396,29 @@ function buildSeasonChart(height){
   return {el:wrap,lo,hi,cur,nextA,planned,logged,idxs};
 }
 
+// ---- yearly totals (replace "since the block began") ----
+// Baseline = what happened before the app's log starts (from Strava), editable in Settings.
+// One-off seed for the original install only (Strava totals before its log began).
+const YTD_SEED={year:2026,until:'2026-09-21',sessions:274,km:3338,vert:111859,hrs:419};
+function ytdBase(){
+  const b=CFG.ytdBase; if(b&&typeof b==='object') return b;
+  if(CFG.anchorStr==='2026-09-21'&&(CFG.races||[]).some(r=>/utmb/i.test(r.name||''))) return YTD_SEED;
+  return {year:new Date().getFullYear(),until:'',sessions:0,km:0,vert:0,hrs:0};
+}
+function yearTotals(year){
+  const b=ytdBase(); const useBase=(+b.year===+year);
+  const ct=CFG.countTypes||DEFAULT_COUNT_TYPES; const o={sessions:0,km:0,vert:0,hrs:0,base:useBase,until:b.until};
+  if(useBase){ o.sessions=+b.sessions||0; o.km=+b.km||0; o.vert=+b.vert||0; o.hrs=+b.hrs||0; }
+  getPlan().forEach((wk,wi)=>{ wk.days.forEach((d,di)=>{
+    const ds=slotDate(wi,d.day); if(String(ds).slice(0,4)!==String(year)) return;
+    if(useBase&&b.until&&ds<b.until) return;
+    getDayActivities(wi,di).forEach(a=>{
+      if(!a.completed||a.type==='rest'||ct.indexOf(a.type||'easy')<0) return;
+      const e=actEffective(a); o.sessions++; o.km+=e.km; o.vert+=e.vert; o.hrs+=e.hrs;
+    });
+  }); });
+  return o;
+}
 function buildBlockProgress(){
   const card=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'10px',padding:'14px',marginBottom:'14px'}});
   try{
@@ -3397,19 +3442,27 @@ function buildBlockProgress(){
     card.appendChild(hdr);
     card.appendChild(ch.el);
 
-    // stats: logged since the plan began
-    let totalActs=0,totalVertDone=0,totalHrsDone=0,totalDone=0;
-    getPlan().forEach((_,wi)=>{ for(let d=0;d<7;d++){ getDayActivities(wi,d).forEach(a=>{ if(a.completed){ totalActs++; totalDone+=parseFloat(a.actualKm||0); totalVertDone+=parseFloat(a.actualVert||0); totalHrsDone+=parseFloat(a.actualHrs||0); } }); } });
+    // chart range caption so the window never looks arbitrary
+    if(ch.idxs&&ch.idxs.length){
+      const cap=div({style:{display:'flex',justifyContent:'space-between',fontSize:'8.5px',color:'var(--text-mute)',margin:'2px 0 10px'}});
+      cap.appendChild(span({},fmtDate(weekDates(ch.idxs[0]).mon)+((lastA&&ch.idxs[0]===weekIdxOfDate(lastA.date)+1)?' (after '+lastA.name+')':'')));
+      if(nextA) cap.appendChild(span({},nextA.name+' '+fmtDate(new Date(nextA.date+'T12:00:00'))));
+      card.appendChild(cap);
+    }
+    // yearly totals
+    const yr=new Date(today()+'T12:00:00').getFullYear(); const yt=yearTotals(yr);
     const fmtV=v=>v>=1000?(v/1000).toFixed(1)+'k':Math.round(v)+'';
-    const fmtHr=h=>{const hh=Math.floor(h),mm=Math.round((h-hh)*60);return hh+'h'+(mm>0?mm+'m':'');};
+    const fmtHr=h=>Math.round(h)+'h';
+    card.appendChild(div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)',marginBottom:'6px'}},yr+' TO DATE'));
     const statsGrid=div({style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'6px'}});
-    [[totalActs,'sessions','#60a5fa'],[Math.round(totalDone)+'km','distance','#ffd166'],[fmtV(totalVertDone)+'m','vert','#a29bfe'],[fmtHr(totalHrsDone),'time','#00c96e']].forEach(([val,label,color])=>{
+    [[yt.sessions,'sessions','#60a5fa'],[Math.round(yt.km).toLocaleString('en-AU')+'km','distance','#ffd166'],[fmtV(yt.vert)+'m','vert','#a29bfe'],[fmtHr(yt.hrs),'time','#00c96e']].forEach(([val,label,color])=>{
       const cell=div({style:{background:'var(--bg-input)',border:'1px solid var(--border-subtle)',borderRadius:'6px',padding:'8px 4px',textAlign:'center'}});
       cell.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'17px',color:color,lineHeight:'1'}},String(val)));
-      cell.appendChild(div({style:{fontSize:'7px',color:'#333',letterSpacing:'0.08em',marginTop:'2px',textTransform:'uppercase'}},label));
+      cell.appendChild(div({style:{fontSize:'7px',color:'var(--text-mute)',letterSpacing:'0.08em',marginTop:'2px',textTransform:'uppercase'}},label));
       statsGrid.appendChild(cell);
     });
     card.appendChild(statsGrid);
+    if(yt.base&&yt.until) card.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'6px'}},'Includes Strava totals before '+fmtDate(new Date(yt.until+'T12:00:00'))+'. Edit in Settings.'));
   }catch(e){
     card.appendChild(div({style:{fontSize:'10px',color:'#555'}},'Season progress unavailable: '+e.message));
   }
@@ -4984,6 +5037,7 @@ function buildFormatGuide(){
   L.push('- Strength, ride, walk, sauna and other sessions only need time.');
   L.push('- label is a short name such as "River 3x10min" or "Hill reps". Longer instructions go in "detail".');
   L.push('- Put the race itself in as a session with type "race" on race day.');
+  L.push('- To record a session that already happened (for example from Strava), add "done":true and optionally "strava":"<activity id>". The app then logs it as completed, or corrects the values already logged.');
   L.push('- Use plain double quotes, no comments and no trailing commas.');
   L.push('- Keep weekly volume rises sensible (about 10 percent) with a lighter week every 3 to 4 weeks, unless I say otherwise.');
   return L.join('\n');
@@ -5243,6 +5297,21 @@ function renderSettings(){
   renderToggleBtns();
   totalsCard.appendChild(toggleGrid);
   wrap.appendChild(totalsCard);
+
+  // Year baseline (totals before the app's log starts)
+  const ybCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
+  ybCard.appendChild(div({class:'section-title'},'Year Totals Baseline'));
+  ybCard.appendChild(div({style:{fontSize:'10px',color:'var(--text-dim)',lineHeight:'1.6'}},'Yearly totals add what the app has logged to this starting point, which covers training before the app log begins. Counts only the activity types ticked in Daily Totals.'));
+  const yb=Object.assign({},ytdBase());
+  const ybGrid=div({class:'grid2'});
+  const mkIn=(label,key,step)=>{ const i=inp({class:'inp',type:'number',value:yb[key]}); i.addEventListener('input',()=>{ yb[key]=parseFloat(i.value)||0; }); ybGrid.appendChild(div({},[lbl(label),i])); };
+  mkIn('Year','year'); mkIn('Sessions','sessions'); mkIn('Distance (km)','km'); mkIn('Vert (m)','vert'); mkIn('Time (hrs)','hrs');
+  const uI=inp({class:'inp',type:'date',value:yb.until||''}); uI.addEventListener('input',()=>{ yb.until=uI.value; });
+  ybGrid.appendChild(div({},[lbl('Log starts'),uI]));
+  ybCard.appendChild(ybGrid);
+  const ybBtn=btn({class:'btn',onclick:()=>{ CFG.ytdBase=yb; S.set(SK.cfg,CFG); ybBtn.textContent='SAVED'; setTimeout(()=>render(),700); }},'Save baseline');
+  ybCard.appendChild(ybBtn);
+  wrap.appendChild(ybCard);
 
   // Plan with Claude (replaces CSV plan import/export and TrainingPeaks iCal)
   const clCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
@@ -5509,7 +5578,7 @@ function showOnboarding(){
     if(step===0){
       // Welcome
       body.appendChild(div({style:{fontSize:'12px',color:'#666',lineHeight:'1.9',marginBottom:'32px'}},
-        'A training planner and daily readiness tool for trail runners.\n\nTrack load, log sessions, monitor HRV and readiness, and get coach summaries -- all from your phone.'));
+        'A rolling training planner and daily readiness tool for trail runners.\n\nPlan a week or a whole block with Claude, log your sessions, review each Sunday and keep an eye on HRV and readiness -- all from your phone.'));
 
       const resumeBtn=btn({class:'btn',style:{marginBottom:'12px'},onclick:()=>goto(1)},'Get started');
       body.appendChild(resumeBtn);
@@ -5550,7 +5619,7 @@ function showOnboarding(){
     } else if(step===2){
       // Setup: HRV/RHR + race
       body.appendChild(div({style:{fontSize:'14px',color:'var(--text)',marginBottom:'4px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.06em'}},'QUICK SETUP'));
-      body.appendChild(div({style:{fontSize:'11px',color:'#555',lineHeight:'1.7',marginBottom:'20px'}},'These two things make the app work for you. Everything else can be set later.'));
+      body.appendChild(div({style:{fontSize:'11px',color:'#555',lineHeight:'1.7',marginBottom:'20px'}},'A few details make the app work for you. Everything else can be set later.'));
 
       // HRV section
       const hrvSect=div({style:{marginBottom:'20px'}});
@@ -5581,7 +5650,7 @@ function showOnboarding(){
 
       // Race section
       const raceSect=div({style:{marginBottom:'24px'}});
-      raceSect.appendChild(div({style:{fontSize:'11px',color:'#888',marginBottom:'10px',lineHeight:'1.6'}},'Your next goal race (A race). Sets the countdown. Add distance, vert and more races in Settings later.'));
+      raceSect.appendChild(div({style:{fontSize:'11px',color:'#888',marginBottom:'10px',lineHeight:'1.6'}},'Your next goal race (A race). Optional: it drives the countdown and the season chart. Leave it blank if you have not picked one. Add more races in Settings later.'));
       const raceGrid=div({style:{display:'flex',flexDirection:'column',gap:'10px'}});
       let raceName=CFG.races?.[0]?.name||'', raceDate=CFG.races?.[0]?.date||'';
       let blockStart=CFG.blockStartStr||new Date().toISOString().split('T')[0];
@@ -5593,34 +5662,58 @@ function showOnboarding(){
       bsi.addEventListener('input',()=>blockStart=bsi.value);
       raceGrid.appendChild(div({},[lbl('Race name'),rni]));
       raceGrid.appendChild(div({},[lbl('Race date'),rdi]));
-      raceGrid.appendChild(div({},[lbl('Training start date'),bsi]));
-      raceGrid.appendChild(div({style:{fontSize:'9px',color:'#333'}},'The plan counts weeks from the Monday on or before this date. You can plan beyond your race and add more races later.'));
+      raceGrid.appendChild(div({},[lbl('Start tracking from'),bsi]));
+      raceGrid.appendChild(div({style:{fontSize:'9px',color:'#333'}},'Your calendar starts at the Monday on or before this date and rolls forward from there. Today is fine.'));
       raceSect.appendChild(raceGrid);
       body.appendChild(raceSect);
+
+      // Optional: training before the log starts, so yearly totals are right from day one
+      const ySect=div({style:{marginBottom:'24px'}});
+      ySect.appendChild(div({style:{fontSize:'11px',color:'#888',marginBottom:'10px',lineHeight:'1.6'}},'Training so far this year (optional). Takes your yearly totals from Strava or your watch up to the start date above. Leave at zero to start fresh.'));
+      let yS=0,yK=0,yV=0,yH=0;
+      const yGrid=div({class:'grid2'});
+      const yIn=(label,set)=>{ const i=inp({class:'inp',type:'number',value:'',placeholder:'0'}); i.addEventListener('input',()=>set(parseFloat(i.value)||0)); yGrid.appendChild(div({},[lbl(label),i])); };
+      yIn('Sessions',v=>yS=v); yIn('Distance (km)',v=>yK=v); yIn('Vert (m)',v=>yV=v); yIn('Time (hrs)',v=>yH=v);
+      ySect.appendChild(yGrid);
+      body.appendChild(ySect);
 
       const errMsg=div({style:{fontSize:'11px',color:'#ff6b6b',marginBottom:'10px',minHeight:'16px'}});
       body.appendChild(errMsg);
 
       body.appendChild(btn({class:'btn btn-ok',onclick:()=>{
-        if(!raceName.trim()){ errMsg.textContent='Enter a race name.'; return; }
-        if(!validDateStr(raceDate)){ errMsg.textContent='Enter a valid race date.'; return; }
-        if(!validDateStr(blockStart)){ errMsg.textContent='Enter a valid block start date.'; return; }
+        if(raceName.trim()&&!validDateStr(raceDate)){ errMsg.textContent='Enter a valid race date, or clear the race name.'; return; }
+        if(!validDateStr(blockStart)){ errMsg.textContent='Enter a valid start date.'; return; }
         // Apply to CFG
         CFG.hrvLow=hrvLow; CFG.hrvHigh=hrvHigh;
         CFG.rhrLow=rhrLow; CFG.rhrHigh=rhrHigh;
         CFG.blockStartStr=blockStart; CFG.anchorStr=localDateStr(mondayOfStr(blockStart));
-        CFG.raceDateStr=raceDate; CFG.raceName=raceName;
-        CFG.races=[{name:raceName,date:raceDate,dist:'',km:'',vert:'',prio:'A',id:newActId(),_applied:raceDate+'|A'}];
+        const hasRace=!!raceName.trim();
+        CFG.raceDateStr=hasRace?raceDate:''; CFG.raceName=hasRace?raceName:'';
+        CFG.races=hasRace?[{name:raceName,date:raceDate,dist:'',km:'',vert:'',prio:'A',id:newActId(),_applied:raceDate+'|A'}]:[];
+        CFG.ytdBase={year:new Date().getFullYear(),until:(yS||yK||yV||yH)?CFG.anchorStr:'',sessions:yS,km:yK,vert:yV,hrs:yH};
         S.set(SK.cfg,CFG);
         syncTargets();
-        if(Object.keys(EDITS).length===0) applySamplePlan();
         markOnboarded();
-        overlay.remove();
-        render();
-      }},'Start training ->'));
+        goto(3);
+      }},'Next ->'));
 
       body.appendChild(btn({style:{padding:'10px',background:'transparent',border:'none',color:'#333',fontSize:'11px',marginTop:'8px',width:'100%'},
         onclick:()=>{markOnboarded();overlay.remove();render();}},'Skip for now'));
+
+    } else if(step===3){
+      body.appendChild(div({style:{fontSize:'14px',color:'var(--text)',marginBottom:'4px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.06em'}},'HOW IT WORKS'));
+      body.appendChild(div({style:{fontSize:'11px',color:'#555',lineHeight:'1.7',marginBottom:'16px'}},'A weekly loop. Nothing here needs an account or sends your data anywhere.'));
+      [['1. Plan it with Claude','Open Settings, tap Copy for coach and paste it into a chat with Claude. Ask for what you want, for example "plan me a 12 week block for my 50k". Paste the plan back with Paste plan and check each day before it saves. You can also build a week by hand with PLAN THIS WEEK.'],
+       ['2. Log as you go','Tap a day to log distance, vert and time. Pace works itself out from any two of the three. Do a short readiness check each morning.'],
+       ['3. Review on Sunday','When Sunday is logged you get a week review. Save and copy it for your coach. If you use Strava, ask Claude to match last week to it and the app will correct anything logged wrongly.'],
+       ['Using your own Claude?','Settings > Plan with Claude > Copy format guide gives any chat the exact format this app imports.']
+      ].forEach(([h,t])=>{
+        const c=div({style:{padding:'12px 14px',background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'8px',marginBottom:'10px'}});
+        c.appendChild(div({style:{fontSize:'12px',color:'var(--text)',marginBottom:'4px'}},h));
+        c.appendChild(div({style:{fontSize:'10.5px',color:'var(--text-dim)',lineHeight:'1.65'}},t));
+        body.appendChild(c);
+      });
+      body.appendChild(btn({class:'btn btn-ok',style:{marginTop:'6px'},onclick:()=>{ overlay.remove(); ACTIVE_TAB='plan'; render(); }},'Go to my plan ->'));
     }
   }
 
