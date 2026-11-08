@@ -2569,7 +2569,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='8 Nov r11';
+const APP_BUILD='8 Nov r12';
 function reviewDoneWeeks(){
   const out=[]; const cw=curWeek()-1; const dow=new Date().getDay();
   const sundayLogged=i=>{ const a=getDayActivities(i,6).filter(x=>x.type!=='rest'); return a.length>0&&a.some(x=>x.completed); };
@@ -2798,6 +2798,7 @@ function buildCoachPack(want){
   L.push('');
   L.push('HOW TO REPLY (plan format the app can import)');
   L.push('Reply with ONE json block like this. Dates are YYYY-MM-DD. Only list the days you want to set; a day with an empty sessions list means rest. Logged sessions are never overwritten unless I tick them.');
+  L.push('If I ask for a multi-week block, add one entry to weeks for each week (start = that Monday), list all 7 days of each week, and set each week type.');
   L.push('types: easy, intervals, long, race, strength, ride, walk, sauna, other. time as "h:mm". Give any two of km/time/pace (pace "m:ss" per km) and the app fills in the third. week type: BUILD, PEAK, SHARPEN, TAPER, RACE, DELOAD, RECOVERY.');
   L.push('```json');
   L.push('{"v":1,"weeks":[{"start":"YYYY-MM-DD(Monday)","type":"TAPER","note":"optional","days":[{"date":"YYYY-MM-DD","sessions":[{"type":"easy","label":"Easy run","km":8,"vert":100,"time":"0:50"},{"type":"strength","time":"0:40"}]},{"date":"YYYY-MM-DD","sessions":[]}]}]}');
@@ -4960,6 +4961,56 @@ function renderTrend(){
 
 // SETTINGS TAB
 // ============================================================
+function buildFormatGuide(){
+  const L=[];
+  L.push('TRAINING PLAN FORMAT (for importing into my training app)');
+  L.push('');
+  L.push('When I ask for a training plan or block (for example "plan me a 12 week block for a 50km trail race on 14 March"), reply with ONE json block in exactly the format below. Keep any explanation short and outside the block.');
+  L.push('If you need something to plan well and I have not said (recent weekly km, days I can train, race date and distance, injuries), ask me first. Otherwise just give the plan.');
+  L.push('');
+  L.push('FORMAT');
+  L.push('```json');
+  L.push('{"v":1,"weeks":[{"start":"YYYY-MM-DD","type":"BUILD","note":"optional one line","days":[{"date":"YYYY-MM-DD","sessions":[{"type":"easy","label":"Easy run","km":10,"vert":100,"time":"0:55"},{"type":"strength","label":"Legs","time":"0:45"}]},{"date":"YYYY-MM-DD","sessions":[]}]}]}');
+  L.push('```');
+  L.push('');
+  L.push('RULES');
+  L.push('- One entry in weeks for each week. start is that week\'s Monday. Weeks run Monday to Sunday and today is '+today()+'.');
+  L.push('- List all 7 days of every week. A day with an empty sessions list is a rest day. A day can hold more than one session.');
+  L.push('- Dates are YYYY-MM-DD.');
+  L.push('- Session types: easy, intervals, long, race, strength, ride, walk, sauna, other.');
+  L.push('- Week types: BUILD, PEAK, SHARPEN, TAPER, RACE, DELOAD, RECOVERY.');
+  L.push('- time is "h:mm" (for example "1:30"). km is kilometres and vert is metres of climbing, both plain numbers with no units.');
+  L.push('- For runs give any two of km, time and pace ("m:ss" per km) and the app works out the third.');
+  L.push('- Strength, ride, walk, sauna and other sessions only need time.');
+  L.push('- label is a short name such as "River 3x10min" or "Hill reps". Longer instructions go in "detail".');
+  L.push('- Put the race itself in as a session with type "race" on race day.');
+  L.push('- Use plain double quotes, no comments and no trailing commas.');
+  L.push('- Keep weekly volume rises sensible (about 10 percent) with a lighter week every 3 to 4 weeks, unless I say otherwise.');
+  return L.join('\n');
+}
+function copyTextTo(txt,status){
+  const fallback=()=>{ status.style.color='#ff9f43'; status.textContent='Clipboard blocked - use Save file instead.'; };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(()=>{ status.style.color='#00c875'; status.textContent='Copied.'; },fallback);
+  } else fallback();
+}
+function exportLoggedCsv(){
+  const plan=getPlan();
+  const rows=['week,date,day,week_type,activity_name,type,km,vert_m,hrs,rpe,perf,note'];
+  plan.forEach((wk,wIdx)=>{
+    const t=TARGETS[wIdx]||{};
+    wk.days.forEach((d,dIdx)=>{
+      const dateStr=slotDate(wIdx,d.day);
+      getDayActivities(wIdx,dIdx).filter(a=>a.completed).forEach(a=>{
+        rows.push([wIdx+1,dateStr,d.day,t.type||'BUILD','"'+(a.label||'').replace(/"/g,"'")+'"',a.type||'easy',a.actualKm||0,a.actualVert||0,
+          parseFloat(a.actualHrs||0).toFixed(2),a.exec||'',a.perf||'','"'+(a.note||'').replace(/"/g,"'")+'"'].join(','));
+      });
+    });
+  });
+  if(rows.length<2) return false;
+  download(rows.join('\n'),'training-block-logged.csv','text/csv');
+  return true;
+}
 function renderSettings(){
   const wrap=div({});
   let cfgForm={...CFG};
@@ -5026,18 +5077,6 @@ function renderSettings(){
   }},'Save Config');
   cfgCard.appendChild(savCfgBtn);
 
-  // Clear Plan button \u2014 standalone, deliberately separated from Save Config
-  const clearPlanBtn=btn({class:'btn',style:{marginTop:'8px',background:'transparent',
-    border:'1px solid #2a1a1a',color:'#555',fontSize:'11px'},
-    onclick:()=>{
-      showDoubleConfirm(
-        'Clear plan data',
-        'This will delete all logged activities, plan edits and weekly targets for the current block. Your readiness logs, race config and HRV/RHR settings are kept.\n\nExport your data first if you haven\'t already.',
-        'CLEAR',
-        ()=>{ clearPlan(); render(); }
-      );
-    }},'Clear Plan Data');
-  cfgCard.appendChild(clearPlanBtn);
   wrap.appendChild(cfgCard);
 
   // -- Section 2: Races (auto-save on change, confirm on delete) -
@@ -5205,97 +5244,42 @@ function renderSettings(){
   totalsCard.appendChild(toggleGrid);
   wrap.appendChild(totalsCard);
 
-  // CSV Plan Export / Import -- above TP iCal
-  const csvCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
-  csvCard.appendChild(div({class:'section-title'},'Plan Export / Import'));
-  csvCard.appendChild(btn({class:'btn',onclick:()=>download(planToCSV(),'training-plan.csv','text/csv')},'Export plan as CSV'));
-  const csvInfo=div({style:{fontSize:'11px',color:'#555'}});
-  const csvI=inp({type:'file',accept:'.csv',style:{display:'none'}});
-  csvI.addEventListener('change',()=>{
-    const file=csvI.files[0]; if(!file) return;
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      try{
-        const result=csvToEdits(ev.target.result);
-        EDITS=result.edits; S.set(SK.edits,EDITS);
-        csvInfo.textContent='Imported '+result.importedCount+' sessions.';
-        csvInfo.style.color='#00ff87';
-      }catch(e){csvInfo.textContent='CSV import failed: '+e.message;csvInfo.style.color='#ff6b6b';}
-    };
-    reader.readAsText(file);
-  });
-  csvCard.appendChild(div({style:{fontSize:'9px',color:'#555',lineHeight:'1.6'}},'Export first for correct column format. Edit in Numbers or Excel, then import back.'));
-  csvCard.appendChild(div({},[btn({class:'btn',onclick:()=>csvI.click()},'Import CSV plan'),csvI,csvInfo]));
-
-  // Export Block CSV -- logged activities only
-  const blockCsvBtn=btn({class:'btn',onclick:()=>{
-    const plan=getPlan();
-    const rows=['week,date,day,week_type,activity_name,type,km,vert_m,hrs,rpe,perf,note'];
-    plan.forEach((wk,wIdx)=>{
-      const t=TARGETS[wIdx]||{};
-      wk.days.forEach((d,dIdx)=>{
-        const dateStr=slotDate(wIdx,d.day);
-        getDayActivities(wIdx,dIdx).filter(a=>a.completed).forEach(a=>{
-          rows.push([
-            wIdx+1, dateStr, d.day, t.type||'BUILD',
-            '"'+(a.label||'').replace(/"/g,"'")+'"',
-            a.type||'easy',
-            a.actualKm||0, a.actualVert||0,
-            parseFloat(a.actualHrs||0).toFixed(2),
-            a.exec||'', a.perf||'',
-            '"'+(a.note||'').replace(/"/g,"'")+'"',
-          ].join(','));
-        });
-      });
-    });
-    if(rows.length<2){alert('No logged activities to export yet.');return;}
-    download(rows.join('\n'),'training-block-logged.csv','text/csv');
-  }},'Export logged block as CSV');
-  csvCard.appendChild(blockCsvBtn);
-  csvCard.appendChild(div({style:{fontSize:'9px',color:'#555',lineHeight:'1.6'}},'Exports all completed activities with actual km/vert/hrs. Use for post-block analysis.'));
-  wrap.appendChild(csvCard);
-
-  // TrainingPeaks iCal card
-  const tpCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
-  const tpHdrRow=div({style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'2px'}});
-  tpHdrRow.appendChild(div({class:'section-title',style:{marginBottom:'0'}},'TrainingPeaks Calendar'));
-  const tpHelpBtn=btn({style:{padding:'0 6px',height:'18px',borderRadius:'9px',fontSize:'9px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)',lineHeight:'18px'},onclick:showTPInstructions},'?');
-  tpHdrRow.appendChild(tpHelpBtn);
-  tpCard.appendChild(tpHdrRow);
-  tpCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},'Paste raw iCal text from your iOS Shortcut. Tap ? for setup instructions.'));
-  const icsStatus=div({style:{fontSize:'11px',minHeight:'16px'}});
-  const icsTa=el('textarea',{class:'inp',rows:'4',placeholder:'Paste iCal text here (BEGIN:VCALENDAR...)'},'');
-  icsTa.style.fontFamily='monospace';
-  icsTa.style.fontSize='10px';
-  icsTa.style.color='#555';
-  tpCard.appendChild(icsTa);
-  const tpBtnRow=div({style:{display:'flex',gap:'8px'}});
-  tpBtnRow.appendChild(btn({class:'btn btn-ok',style:{flex:'1'},onclick:()=>{
-    const text=icsTa.value.trim();
-    if(!text){icsStatus.textContent='Paste iCal text first.';icsStatus.style.color='#ff6b6b';return;}
-    if(!text.includes('BEGIN:VCALENDAR')){icsStatus.textContent='Not valid iCal -- check you copied the full calendar text.';icsStatus.style.color='#ff6b6b';return;}
-    clearSamplePlan();
-    const result=applyICSToEdits(text);
-    icsStatus.textContent=result.msg+(hasSamplePlan()?'':' Sample plan cleared.');
-    icsStatus.style.color=result.ok?'#00ff87':'#ff6b6b';
-    if(result.ok){ icsTa.value=''; setTimeout(()=>render(),1200); }
-  }},'Import Calendar'));
-  tpBtnRow.appendChild(btn({class:'btn-sm btn-ghost',onclick:showTPInstructions},'How?'));
-  tpCard.appendChild(tpBtnRow);
-  tpCard.appendChild(icsStatus);
-  if(hasSamplePlan()){
-    const sampleRow=div({style:{display:'flex',alignItems:'center',gap:'10px',borderTop:'1px solid var(--border-subtle)',paddingTop:'8px'}});
-    sampleRow.appendChild(span({style:{fontSize:'10px',color:'#555',flex:'1'}},'Sample plan loaded (weeks 1-4)'));
-    sampleRow.appendChild(btn({class:'btn-sm btn-danger',onclick:()=>{
-      if(confirm('Clear the sample plan? Your own edits will be kept.')) clearSamplePlan(); render();
-    }},'Clear sample'));
-    tpCard.appendChild(sampleRow);
-  } else if(Object.keys(EDITS).length===0){
-    const sampleRow=div({style:{borderTop:'1px solid var(--border-subtle)',paddingTop:'8px'}});
-    sampleRow.appendChild(btn({class:'btn-sm',style:{fontSize:'9px'},onclick:()=>{applySamplePlan();render();}},'Restore sample plan'));
-    tpCard.appendChild(sampleRow);
+  // Plan with Claude (replaces CSV plan import/export and TrainingPeaks iCal)
+  const clCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
+  clCard.appendChild(div({class:'section-title'},'Plan with Claude'));
+  clCard.appendChild(div({style:{fontSize:'10px',color:'var(--text-dim)',lineHeight:'1.6'}},'Copy your summary into a chat with Claude and ask for what you want, for example "plan me a 12 week block for Buffalo 100". Paste the plan it returns and check every day before anything saves.'));
+  const clRow=div({style:{display:'flex',gap:'8px'}});
+  clRow.appendChild(btn({class:'btn',style:{flex:'1'},onclick:()=>showCoachCopy()},'Copy for coach'));
+  clRow.appendChild(btn({class:'btn',style:{flex:'1'},onclick:()=>showPastePlan()},'Paste plan'));
+  clCard.appendChild(clRow);
+  const clStatus=div({style:{fontSize:'10px',minHeight:'14px'}},'');
+  clCard.appendChild(div({style:{borderTop:'1px solid var(--border)',paddingTop:'10px',fontSize:'10px',color:'var(--text-dim)',lineHeight:'1.6'}},'Format guide: for anyone else using their own Claude. Paste it into a chat first and Claude will answer in the format this app imports. It holds no personal data.'));
+  const gRow=div({style:{display:'flex',gap:'8px'}});
+  gRow.appendChild(btn({class:'btn-ghost',style:{flex:'1'},onclick:()=>copyTextTo(buildFormatGuide(),clStatus)},'Copy format guide'));
+  gRow.appendChild(btn({class:'btn-ghost',style:{flex:'1'},onclick:()=>{
+    try{ download(buildFormatGuide(),'training-plan-format.txt','text/plain'); clStatus.style.color='#00c875'; clStatus.textContent='Saved as a file.'; }catch(e){ clStatus.style.color='#ff6b6b'; clStatus.textContent='Could not save a file.'; }
+  }},'Save as file'));
+  clCard.appendChild(gRow);
+  clCard.appendChild(clStatus);
+  const undoRaw=lsGet(UNDO_KEY);
+  if(undoRaw){
+    clCard.appendChild(btn({class:'btn-ghost btn-sm',onclick:()=>{ if(undoLastImport()){ render(); } }},'Undo last import'));
   }
-  wrap.appendChild(tpCard);
+  clCard.appendChild(btn({class:'btn-ghost btn-sm',onclick:()=>{ if(!exportLoggedCsv()){ clStatus.style.color='#ff9f43'; clStatus.textContent='No logged sessions to export yet.'; } }},'Export logged sessions (CSV)'));
+  wrap.appendChild(clCard);
+
+  // Clear Plan button \u2014 standalone, deliberately separated from Save Config
+  const clearPlanBtn=btn({class:'btn',style:{marginTop:'4px',width:'100%',background:'transparent',
+    border:'1px solid #2a1a1a',color:'#555',fontSize:'11px'},
+    onclick:()=>{
+      showDoubleConfirm(
+        'Clear plan data',
+        'This will delete all logged activities, plan edits and weekly targets for the current block. Your readiness logs, race config and HRV/RHR settings are kept.\n\nExport your data first if you haven\'t already.',
+        'CLEAR',
+        ()=>{ clearPlan(); render(); }
+      );
+    }},'Clear Plan Data');
+  wrap.appendChild(clearPlanBtn);
 
   wrap.appendChild(div({style:{marginTop:'20px',fontSize:'9px',color:'#333',lineHeight:'1.8'}},'All data in browser storage. Export regularly to avoid loss on browser clear.\nSafari: Share > Add to Home Screen for full-screen app.'));
 
