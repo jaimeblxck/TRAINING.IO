@@ -1259,7 +1259,7 @@ function renderHeader(){
 
   const {mon:wMon,sun:wSun}=weekDates(cw-1);
   const pillRow=div({style:{display:'flex',gap:'6px',marginTop:'10px',flexWrap:'wrap'}});
-  pillRow.appendChild(span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#888',padding:'3px 8px',borderRadius:'4px'}},nextRace?weeksToRace(nextRace)+' WKS TO '+nextRace.name.toUpperCase().split(' ')[0]:(lastA?weeksBetween(lastA.date,td)+' WKS SINCE '+lastA.name.toUpperCase().split(' ')[0]:'WK '+cw)));
+  pillRow.appendChild(span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#888',padding:'3px 8px',borderRadius:'4px'}},nextRace?weeksToRace(nextRace)+' WKS TO '+nextRace.name.toUpperCase().split(' ')[0]:(lastA?weeksBetween(lastA.date,td)+' WKS SINCE '+lastA.name.toUpperCase().split(' ')[0]:'THIS WEEK')));
   pillRow.appendChild(span({style:{fontSize:'9px',background:phColor+'18',border:'1px solid '+phColor+'35',color:phColor,padding:'3px 8px',borderRadius:'4px'}},phase));
   pillRow.appendChild(span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555',padding:'3px 8px',borderRadius:'4px'}},fmtDate(wMon)+' - '+fmtDate(wSun)));
   // Show second upcoming race if exists
@@ -1398,7 +1398,7 @@ function renderToday(){
     const bwrap=div({style:{display:'flex',gap:'2px'}});
     badgeTypes.forEach(t=>bwrap.appendChild(span({style:{fontSize:'9px',background:TC[t]||'#555',color:'#000',padding:'2px 5px',borderRadius:'3px',fontWeight:'700'}},TL[t]||'--')));
     hdrRow.appendChild(bwrap);
-    hdrRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',flex:'1'}},'TODAY \u00b7 WK '+(wIdx+1)));
+    hdrRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',flex:'1'}},'TODAY \u00b7 '+fmtDate(weekDates(wIdx).mon)+' - '+fmtDate(weekDates(wIdx).sun)));
     hdrRow.appendChild(span({style:{fontSize:'8px',color:'#000',background:'#b8d400',padding:'2px 6px',borderRadius:'3px',fontWeight:'700',letterSpacing:'0.06em'}},'CURRENT'));
     const doneCount=allTodayActs.filter(a=>a.completed).length;
     if(doneCount>0){
@@ -1979,7 +1979,7 @@ function showWeekSheet(wIdx){
   const overlay=div({class:'modal-bg',onclick:e=>{if(e.target===overlay)overlay.remove();}});
   const sheet=div({class:'modal'});
   sheet.appendChild(div({class:'modal-handle'}));
-  sheet.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',letterSpacing:'0.04em',marginBottom:'2px'}},'Week '+(wIdx+1)+' \u00b7 '+fmtDate(wd.mon)+' - '+fmtDate(wd.sun)));
+  sheet.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'18px',letterSpacing:'0.04em',marginBottom:'2px'}},fmtDate(wd.mon)+' - '+fmtDate(wd.sun)));
   sheet.appendChild(div({style:{fontSize:'10px',color:'var(--text-mute)',marginBottom:'12px'}},t.auto?'Type set automatically from a race \u2014 pick one to override.':'Week type and targets'));
   sheet.appendChild(lbl('Week type'));
   const pills=div({style:{display:'flex',flexWrap:'wrap',gap:'5px',marginBottom:'12px'}});
@@ -2171,7 +2171,7 @@ function showWeekBuilder(wIdx){
   const hr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:'12px',gap:'8px'}});
   hr.appendChild(div({},[
     div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)'}},'WEEK BUILDER'),
-    div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'22px',letterSpacing:'0.04em'}},'Wk '+(wIdx+1)+' \u00b7 '+fmtDate(wd.mon)+' - '+fmtDate(wd.sun))
+    div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'22px',letterSpacing:'0.04em'}},fmtDate(wd.mon)+' - '+fmtDate(wd.sun))
   ]));
   hr.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',textAlign:'right',maxWidth:'120px',lineHeight:'1.4'}},
     existingN>0?existingN+' planned session'+(existingN>1?'s':'')+' - picking a source replaces them':'blank week \u00b7 no sessions logged'));
@@ -2319,7 +2319,7 @@ function showWeekBuilder(wIdx){
       background:'var(--bg-input)',border:'1px solid '+(on?'#b8ff4f':'var(--border)'),display:'block'},onclick:()=>pick('choose',i)});
     const top=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'4px'}});
     const wt=typeKnown(tg,i)?tg.type:'';
-    top.appendChild(span({style:{fontSize:'10px',color:'var(--text)'}},'Wk '+(i+1)+' \u00b7 '+fmtDate(w.mon)+' - '+fmtDate(w.sun)));
+    top.appendChild(span({style:{fontSize:'10px',color:'var(--text)'}},fmtDate(w.mon)+' - '+fmtDate(w.sun)));
     top.appendChild(span({style:{fontSize:'8.5px',letterSpacing:'0.08em',color:WTC[wt]||'var(--text-mute)'}},wt));
     card.appendChild(top);
     const ic=div({style:{display:'flex',gap:'4px',alignItems:'center',marginBottom:'4px'}});
@@ -2349,7 +2349,7 @@ function showWeekBuilder(wIdx){
       const info=div({style:{fontSize:'10px',color:'var(--text-dim)',marginBottom:'8px'}});
       const upd=()=>{
         const f=applyScale(); const tot=totals();
-        info.textContent='Wk '+(form.srcIdx+1)+': '+Math.round(base)+'km \u2192 '+Math.round(tot.km)+'km ('+(f>=1?'+':'')+Math.round((f-1)*100)+'%)';
+        info.textContent=fmtDate(weekDates(form.srcIdx).mon)+': '+Math.round(base)+'km \u2192 '+Math.round(tot.km)+'km ('+(f>=1?'+':'')+Math.round((f-1)*100)+'%)';
         pctOut.textContent=(form.pct>=0?'+':'')+form.pct+'%';
       };
       const pctOut=span({style:{fontSize:'11px',color:'var(--text)',minWidth:'38px',textAlign:'right'}},'');
@@ -2569,7 +2569,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='8 Nov r12';
+const APP_BUILD='8 Nov r13';
 function reviewDoneWeeks(){
   const out=[]; const cw=curWeek()-1; const dow=new Date().getDay();
   const sundayLogged=i=>{ const a=getDayActivities(i,6).filter(x=>x.type!=='rest'); return a.length>0&&a.some(x=>x.completed); };
@@ -2583,7 +2583,7 @@ function buildReviewedStrip(i){
   const c=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderLeft:'4px solid '+(skipped?'#ff9f43':'#00c875'),borderRadius:'10px',padding:'10px 12px',marginBottom:'14px'}});
   c.appendChild(div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)',marginBottom:'3px'}},'WEEK REVIEW'));
   c.appendChild(div({style:{fontSize:'12px',color:'var(--text)',marginBottom:'8px'}},
-    'Wk '+(i+1)+(skipped?' review skipped':' reviewed'+(rv.feel?' \u00b7 felt '+rv.feel:''))));
+    'Week of '+fmtDate(weekDates(i).mon)+(skipped?' review skipped':' reviewed'+(rv.feel?' \u00b7 felt '+rv.feel:''))));
   const row=div({style:{display:'flex',gap:'8px'}});
   row.appendChild(btn({class:'btn-ghost',style:{flex:'1'},onclick:()=>showWeekReviewSheet(i)},skipped?'Review now':'Edit review'));
   row.appendChild(btn({class:'btn',style:{flex:'1'},onclick:()=>{
@@ -2607,7 +2607,7 @@ function buildWeekReviewCard(wIdx,onDone,opts){
   card.appendChild(div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-dim)',marginBottom:'2px'}},'WEEK REVIEW'+(ex.ts?' \u00b7 EDITING':'')));
   const wt=TARGETS[wIdx];
   card.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'20px',letterSpacing:'0.04em',marginBottom:'8px'}},
-    'Wk '+(wIdx+1)+' \u00b7 '+fmtDate(w.mon)+' - '+fmtDate(w.sun)+(typeKnown(wt,wIdx)?'  \u00b7  '+wt.type:'')));
+    fmtDate(w.mon)+' - '+fmtDate(w.sun)+(typeKnown(wt,wIdx)?'  \u00b7  '+wt.type:'')));
   const grid=div({style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'6px',marginBottom:'12px'}});
   const cell=(l,big,sub,col)=>{
     const c=div({style:{background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'8px',padding:'7px 6px',textAlign:'center',minWidth:'0'}});
@@ -2751,7 +2751,7 @@ function buildCoachPack(want){
   L.push('');
   const lastRev=past.slice().reverse().find(w=>w.review&&(w.review.feel||w.review.comment||w.review.forNextWeek));
   if(lastRev){
-    L.push('LATEST WEEK REVIEW (Wk '+lastRev.wk+') - Strava is the source of truth for what was actually run; the app can be patchy');
+    L.push('LATEST WEEK REVIEW (week of '+lastRev.start+') - Strava is the source of truth for what was actually run; the app can be patchy');
     L.push('- felt: '+(lastRev.review.feel||'-'));
     if(lastRev.review.comment) L.push('- comment: '+lastRev.review.comment);
     if(lastRev.review.forNextWeek) L.push('- for next week: '+lastRev.review.forNextWeek);
@@ -2762,7 +2762,7 @@ function buildCoachPack(want){
   if(!races.length) L.push('- none set');
   L.push('');
   const wl=w=>{
-    let s='Wk '+w.wk+' '+w.start+' to '+w.end+(w.type?' ['+w.type+']':'')+' | plan '+(w.plan?w.plan.km+'km '+w.plan.vert+'m '+w.plan.time+'h':'n/a')+' | actual '+w.actual.km+'km '+w.actual.vert+'m '+(w.actual.time||'0:00')+'h | sessions '+w.sessions;
+    let s='Week '+w.start+' to '+w.end+(w.type?' ['+w.type+']':'')+' | plan '+(w.plan?w.plan.km+'km '+w.plan.vert+'m '+w.plan.time+'h':'n/a')+' | actual '+w.actual.km+'km '+w.actual.vert+'m '+(w.actual.time||'0:00')+'h | sessions '+w.sessions;
     if(w.peakRpe) s+=' | peak RPE '+w.peakRpe;
     if(w.avgPace) s+=' | avg pace '+w.avgPace;
     if(w.readiness!=null) s+=' | readiness '+w.readiness;
@@ -3210,7 +3210,7 @@ function showImportReview(parsed){
         const its=plan.items.filter(i=>i.wIdx===wi);
         const allOn=its.length&&its.every(i=>i.on);
         const hb=btn({style:{display:'flex',alignItems:'center',gap:'8px',background:'transparent',border:'none',padding:'0',color:'var(--text)'},onclick:()=>{ its.forEach(i=>{ i.on=!allOn&&(!i.logged||false)&&!i.same; }); draw(); }});
-        hb.appendChild(tick(allOn)); hb.appendChild(span({style:{fontSize:'11px',fontWeight:'700'}},'Wk '+(wi+1)+' \u00b7 '+fmtDate(wd.mon)+' - '+fmtDate(wd.sun)));
+        hb.appendChild(tick(allOn)); hb.appendChild(span({style:{fontSize:'11px',fontWeight:'700'}},fmtDate(wd.mon)+' - '+fmtDate(wd.sun)));
         hd.appendChild(hb);
         if(wk&&wk.typeChange){
           const tb=btn({style:{display:'flex',alignItems:'center',gap:'5px',background:'transparent',border:'none',padding:'0',fontSize:'9.5px',color:'var(--text-dim)'},onclick:()=>{ wk.typeOn=!wk.typeOn; draw(); }});
@@ -3715,7 +3715,7 @@ function renderPlan(){
     const wd=weekDates(wIdx);
     const top=div({style:{display:'flex',gap:'8px',alignItems:'center',marginBottom:'5px'}});
     top.appendChild(span({style:{fontSize:'9px',color:col,letterSpacing:'0.1em'}},known?target.type:(weekHasSessions(wIdx)?'NO TYPE':'NOT PLANNED')));
-    top.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)'}},'Wk '+wn+' \u00b7 '+fmtDate(wd.mon)+' - '+fmtDate(wd.sun)));
+    top.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)'}},fmtDate(wd.mon)+' - '+fmtDate(wd.sun)));
     if(wn===cw) top.appendChild(span({style:{fontSize:'8px',color:'#b8ff4f'}},'CURRENT'));
     const bst={fontSize:'9px',padding:'3px 8px',borderRadius:'6px',background:'var(--bg-btn)',border:'1px solid var(--border-btn)',color:'var(--text-dim)',letterSpacing:'0.06em'};
     const canBuild=!weekHasLogged(wIdx);
