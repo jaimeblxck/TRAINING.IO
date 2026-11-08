@@ -2566,7 +2566,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='8 Nov r19';
+const APP_BUILD='8 Nov r20';
 function reviewDoneWeeks(){
   const out=[]; const cw=curWeek()-1; const dow=new Date().getDay();
   const sundayLogged=i=>{ const a=getDayActivities(i,6).filter(x=>x.type!=='rest'); return a.length>0&&a.some(x=>x.completed); };
@@ -5072,7 +5072,10 @@ function renderSettings(){
 
   // Appearance card
   const apCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
-  apCard.appendChild(div({class:'section-title'},'Appearance'));
+  const apHead=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline'}});
+  apHead.appendChild(div({class:'section-title'},'Appearance'));
+  apHead.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.06em'}},'build '+APP_BUILD));
+  apCard.appendChild(apHead);
   const themeRow=div({style:{display:'flex',gap:'8px'}});
   [['dark','Dark'],['light','Light']].forEach(([val,label])=>{
     const active=(CFG.theme||'dark')===val;
@@ -5092,10 +5095,7 @@ function renderSettings(){
   // Config card
   // -- Section 1: Configuration (HRV/RHR + block dates) ---------
   const cfgCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'12px'});
-  const cfgHead=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline'}});
-  cfgHead.appendChild(div({class:'section-title'},'Configuration'));
-  cfgHead.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.06em'}},'build '+APP_BUILD));
-  cfgCard.appendChild(cfgHead);
+  cfgCard.appendChild(div({class:'section-title'},'Configuration'));
 
   // HRV / RHR
   const hg=div({class:'grid2'});
@@ -5387,7 +5387,7 @@ function renderSettings(){
   cards.clear=clearPlanBtn;
 
   // Most used first; vitals, year baseline and backup sit at the bottom
-  ['cl','races','ap','totals','cfg','yb','bk','clear'].forEach(k=>{ if(cards[k]) wrap.appendChild(cards[k]); });
+  ['ap','races','cl','totals','cfg','yb','bk','clear'].forEach(k=>{ if(cards[k]) wrap.appendChild(cards[k]); });
 
   wrap.appendChild(div({style:{marginTop:'20px',fontSize:'9px',color:'#333',lineHeight:'1.8'}},'All data in browser storage. Export regularly to avoid loss on browser clear.\nSafari: Share > Add to Home Screen for full-screen app.'));
 
