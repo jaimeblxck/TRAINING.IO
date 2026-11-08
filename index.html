@@ -33,6 +33,7 @@ body{
   font-family:'JetBrains Mono',monospace;
   font-size:13px; line-height:1.4;
   -webkit-font-smoothing:antialiased;
+  padding-top:env(safe-area-inset-top);
   padding-bottom:env(safe-area-inset-bottom);
 }
 #app{min-height:100vh;}
@@ -2567,7 +2568,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='9 Nov r24';
+const APP_BUILD='9 Nov r25';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
