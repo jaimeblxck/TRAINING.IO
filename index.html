@@ -1270,7 +1270,7 @@ function renderHeader(){
 function renderTabs(){
   const bar=document.getElementById('tabs');
   bar.innerHTML='';
-  const tabs=[{id:'today',label:'TODAY'},{id:'plan',label:'PLAN'},{id:'block',label:'SEASON'},{id:'trend',label:'TREND'},{id:'settings',label:'\u2699'}];
+  const tabs=[{id:'today',label:'TODAY'},{id:'plan',label:'PLAN'},{id:'block',label:'SEASON'},{id:'trend',label:'TRENDS'},{id:'settings',label:'\u2699'}];
   tabs.forEach(t=>{
     const b=btn({class:'tab'+(ACTIVE_TAB===t.id?' active':''),onclick:()=>{ACTIVE_TAB=t.id;EXPANDED_DAY=null;EDITING_DAY=null;if(t.id==='plan'){CAL_SCROLL=true;CAL_RANGE=null;}render();}},t.label);
     if(t.id==='settings') b.style.fontSize='16px';
@@ -1354,8 +1354,6 @@ function renderToday(){
   const todaySess=dIdx>=0?getSession(wIdx,dIdx):null;
   const todayRun=dIdx>=0?getRunLog(wIdx,dIdx):null;
   wrap.appendChild(buildBlockProgress());
-  reviewDueWeeks().forEach(i=>wrap.appendChild(buildWeekReviewCard(i,()=>render())));
-  reviewDoneWeeks().forEach(i=>wrap.appendChild(buildReviewedStrip(i)));
 
   // State held in closure vars updated by inputs
   let hrv=saved.hrv||'', rhr=saved.rhr||'', sleep=saved.sleep||'';
@@ -1497,6 +1495,9 @@ function renderToday(){
     sessCardWrap.appendChild(sessCard);
   }
   wrap.appendChild(sessCardWrap);
+  // week review sits right under today's activities
+  reviewDueWeeks().forEach(i=>wrap.appendChild(buildWeekReviewCard(i,()=>render())));
+  reviewDoneWeeks().forEach(i=>wrap.appendChild(buildReviewedStrip(i)));
 
   // Decision banner
   const decBanner=div({style:{padding:'14px 16px',marginBottom:'20px',borderRadius:'8px',border:'1px solid var(--border)',background:'var(--bg-card)'}});
@@ -2565,7 +2566,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='8 Nov r18';
+const APP_BUILD='8 Nov r19';
 function reviewDoneWeeks(){
   const out=[]; const cw=curWeek()-1; const dow=new Date().getDay();
   const sundayLogged=i=>{ const a=getDayActivities(i,6).filter(x=>x.type!=='rest'); return a.length>0&&a.some(x=>x.completed); };
@@ -3724,7 +3725,6 @@ function renderPlan(){
   if(EDIT_WEEK===null) EDIT_WEEK=curWeek();
   const plan=getPlan();
   const wrap=div({});
-  wrap.appendChild(buildBlockProgress());
   const td=today();
   const cw=curWeek();
   const nW=plan.length;
@@ -5067,6 +5067,7 @@ function exportLoggedCsv(){
 }
 function renderSettings(){
   const wrap=div({});
+  const cards={};
   let cfgForm={...CFG};
 
   // Appearance card
@@ -5086,12 +5087,15 @@ function renderSettings(){
     themeRow.appendChild(b);
   });
   apCard.appendChild(themeRow);
-  wrap.appendChild(apCard);
+  cards.ap=apCard;
 
   // Config card
   // -- Section 1: Configuration (HRV/RHR + block dates) ---------
   const cfgCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'12px'});
-  cfgCard.appendChild(div({class:'section-title'},'Configuration'));
+  const cfgHead=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline'}});
+  cfgHead.appendChild(div({class:'section-title'},'Configuration'));
+  cfgHead.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.06em'}},'build '+APP_BUILD));
+  cfgCard.appendChild(cfgHead);
 
   // HRV / RHR
   const hg=div({class:'grid2'});
@@ -5115,7 +5119,7 @@ function renderSettings(){
   // Plan timeline: rolling -- no block dates to maintain
   const weeksInfo=div({style:{padding:'8px 10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'6px',fontSize:'10px',color:'#555'}},'');
   function updateWeeksPreview(){
-    weeksInfo.textContent='Plan runs from '+fmtDate(getBlockMonday())+' \u00b7 '+totalWeeks()+' weeks shown, rolling forward 12+ weeks ahead \u00b7 build '+APP_BUILD;
+    weeksInfo.textContent='Plan runs from '+fmtDate(getBlockMonday())+' \u00b7 '+totalWeeks()+' weeks shown, rolling forward 12+ weeks ahead';
     weeksInfo.style.color='#888';
   }
   updateWeeksPreview();
@@ -5131,7 +5135,7 @@ function renderSettings(){
   }},'Save Config');
   cfgCard.appendChild(savCfgBtn);
 
-  wrap.appendChild(cfgCard);
+  cards.cfg=cfgCard;
 
   // -- Section 2: Races (auto-save on change, confirm on delete) -
   const racesCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
@@ -5154,12 +5158,34 @@ function renderSettings(){
   }
 
   const racesContainer=div({});
+  let openRace=null;
+  const isBlankRace=r=>!!r&&!r.name&&!r.date;
   function renderRacesEditor(){
     racesContainer.innerHTML='';
-    if(!cfgForm.races||!cfgForm.races.length){
-      cfgForm.races=[{name:'',date:'',dist:'',km:'',vert:''}];
-    }
-    cfgForm.races.forEach((r,i)=>{
+    if(!cfgForm.races) cfgForm.races=[];
+    const td0=today();
+    const order=cfgForm.races.map((r,i)=>({r,i})).sort((a,b)=>((a.r.date||'9999')>=td0?0:1)-((b.r.date||'9999')>=td0?0:1)||(a.r.date||'9999').localeCompare(b.r.date||'9999'));
+    if(!order.length) racesContainer.appendChild(div({style:{fontSize:'11px',color:'var(--text-dim)',padding:'6px 0'}},'No races yet.'));
+    order.forEach(({r,i})=>{
+      const past=!!r.date&&r.date<td0; const pc=prioColor(r.prio||guessPrio(r)); const isOpen=openRace===i;
+      const toggle=()=>{
+        let target=isOpen?null:i;
+        if(openRace!==null&&isBlankRace(cfgForm.races[openRace])){ cfgForm.races.splice(openRace,1); if(target!==null&&target>openRace) target--; saveRaces(); }
+        openRace=target; renderRacesEditor();
+      };
+      const row=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)',opacity:past?'0.65':'1',cursor:'pointer'},onclick:toggle});
+      const lft=div({style:{display:'flex',alignItems:'center',gap:'8px',minWidth:0}});
+      lft.appendChild(span({style:{fontSize:'9px',letterSpacing:'0.06em',padding:'4px 8px',borderRadius:'6px',border:'1px solid '+pc,color:pc,background:pc+'14',flexShrink:'0'}},r.prio||guessPrio(r)));
+      const inf=div({style:{minWidth:0}});
+      inf.appendChild(div({style:{fontSize:'12px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},r.name||'New race'));
+      inf.appendChild(div({style:{fontSize:'9.5px',color:'var(--text-mute)',marginTop:'2px'}},r.date&&validDateStr(r.date)?fmtDate(new Date(r.date+'T12:00:00'))+(past?' \u00b7 finished':''):'No date yet'));
+      lft.appendChild(inf); row.appendChild(lft);
+      const rgt=div({style:{textAlign:'right',flexShrink:'0',marginLeft:'8px'}});
+      rgt.appendChild(div({style:{fontSize:'11px',color:past?'var(--text-mute)':pc}},r.date&&validDateStr(r.date)?(past?weeksBetween(r.date,td0)+' wks ago':daysTo(r.date)+'d'):'--'));
+      rgt.appendChild(div({style:{fontSize:'8px',letterSpacing:'0.1em',color:'var(--text-mute)',marginTop:'2px'}},isOpen?'CLOSE':'EDIT'));
+      row.appendChild(rgt);
+      racesContainer.appendChild(row);
+      if(!isOpen) return;
       const raceCard=div({style:{padding:'10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'7px',marginBottom:'8px'}});
       // Name
       const nameI=inp({class:'inp',type:'text',value:r.name,placeholder:'Race name'});
@@ -5205,7 +5231,7 @@ function renderSettings(){
           const confirmRow=div({class:'race-del-confirm',style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'8px',padding:'8px',background:'#1a0a0a',borderRadius:'5px',border:'1px solid #2a1a1a'}});
           confirmRow.appendChild(span({style:{fontSize:'10px',color:'#ff6b6b',flex:'1'}},'Remove '+(r.name||'this race')+'?'));
           confirmRow.appendChild(btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',background:'#ff6b6b',border:'none',color:'#000',fontWeight:'700'},
-            onclick:()=>{cfgForm.races.splice(i,1); saveRaces(); renderRacesEditor();}},'Yes, remove'));
+            onclick:()=>{openRace=null; cfgForm.races.splice(i,1); saveRaces(); renderRacesEditor();}},'Yes, remove'));
           confirmRow.appendChild(btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
             onclick:()=>confirmRow.remove()},'Cancel'));
           raceCard.appendChild(confirmRow);
@@ -5229,21 +5255,31 @@ function renderSettings(){
       ttWrap.appendChild(ttI);
       row3.appendChild(ttWrap);
       raceCard.appendChild(row3);
-      raceCard.appendChild(div({style:{fontSize:'8px',color:'#444',marginTop:'5px',lineHeight:'1.5'}},'Distance and Vert are both optional -- fill in both to show this race\'s vert ratio on the Trend page. Target time is used for the fuel race plan.'));
+      raceCard.appendChild(div({style:{fontSize:'8px',color:'#444',marginTop:'5px',lineHeight:'1.5'}},'Distance and Vert are both optional -- fill in both to show this race\'s vert ratio on the Trends page. Target time is used for the fuel race plan.'));
       racesContainer.appendChild(raceCard);
     });
     // Add race button
     racesContainer.appendChild(btn({style:{padding:'8px 12px',borderRadius:'5px',fontSize:'10px',background:'var(--bg-input)',border:'1px dashed var(--border-btn)',color:'var(--text-mute)',width:'100%'},
       onclick:()=>{
         if(!cfgForm.races) cfgForm.races=[];
+        if(openRace!==null&&isBlankRace(cfgForm.races[openRace])) cfgForm.races.splice(openRace,1);
         cfgForm.races.push({name:'',date:'',dist:'',km:'',vert:'',targetTime:'',prio:(getRaces().some(x=>x.date>=today()&&x.prio==='A')?'B':'A')});
+        openRace=cfgForm.races.length-1;
         saveRaces();
         renderRacesEditor();
       }},'+ Add race'));
   }
   renderRacesEditor();
   racesCard.appendChild(racesContainer);
-  wrap.appendChild(racesCard);
+  racesCard.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',lineHeight:'1.6'}},'Changes save as you type. Save races tidies up and closes the editor.'));
+  const savRaceBtn=btn({class:'btn',onclick:()=>{
+    if(openRace!==null&&isBlankRace(cfgForm.races[openRace])) cfgForm.races.splice(openRace,1);
+    openRace=null; saveRaces(); renderRacesEditor();
+    savRaceBtn.textContent='SAVED'; savRaceBtn.style.color='#00ff87'; savRaceBtn.style.borderColor='#00ff87';
+    setTimeout(()=>{ savRaceBtn.textContent='Save races'; savRaceBtn.style.color=''; savRaceBtn.style.borderColor=''; },900);
+  }},'Save races');
+  racesCard.appendChild(savRaceBtn);
+  cards.races=racesCard;
 
   // Backup card
   const bkCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
@@ -5267,7 +5303,7 @@ function renderSettings(){
     fileI,
     importInfo,
   ]));
-  wrap.appendChild(bkCard);
+  cards.bk=bkCard;
   const totalsCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
   totalsCard.appendChild(div({class:'section-title'},'Daily Totals -- Activity Types'));
   totalsCard.appendChild(div({style:{fontSize:'10px',color:'#555',lineHeight:'1.7'}},'Toggle which activity types contribute to daily km/vert/hr totals and weekly progress bars.'));
@@ -5296,7 +5332,7 @@ function renderSettings(){
   }
   renderToggleBtns();
   totalsCard.appendChild(toggleGrid);
-  wrap.appendChild(totalsCard);
+  cards.totals=totalsCard;
 
   // Year baseline (totals before the app's log starts)
   const ybCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
@@ -5311,7 +5347,7 @@ function renderSettings(){
   ybCard.appendChild(ybGrid);
   const ybBtn=btn({class:'btn',onclick:()=>{ CFG.ytdBase=yb; S.set(SK.cfg,CFG); ybBtn.textContent='SAVED'; setTimeout(()=>render(),700); }},'Save baseline');
   ybCard.appendChild(ybBtn);
-  wrap.appendChild(ybCard);
+  cards.yb=ybCard;
 
   // Plan with Claude (replaces CSV plan import/export and TrainingPeaks iCal)
   const clCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
@@ -5335,7 +5371,7 @@ function renderSettings(){
     clCard.appendChild(btn({class:'btn-ghost btn-sm',onclick:()=>{ if(undoLastImport()){ render(); } }},'Undo last import'));
   }
   clCard.appendChild(btn({class:'btn-ghost btn-sm',onclick:()=>{ if(!exportLoggedCsv()){ clStatus.style.color='#ff9f43'; clStatus.textContent='No logged sessions to export yet.'; } }},'Export logged sessions (CSV)'));
-  wrap.appendChild(clCard);
+  cards.cl=clCard;
 
   // Clear Plan button \u2014 standalone, deliberately separated from Save Config
   const clearPlanBtn=btn({class:'btn',style:{marginTop:'4px',width:'100%',background:'transparent',
@@ -5348,7 +5384,10 @@ function renderSettings(){
         ()=>{ clearPlan(); render(); }
       );
     }},'Clear Plan Data');
-  wrap.appendChild(clearPlanBtn);
+  cards.clear=clearPlanBtn;
+
+  // Most used first; vitals, year baseline and backup sit at the bottom
+  ['cl','races','ap','totals','cfg','yb','bk','clear'].forEach(k=>{ if(cards[k]) wrap.appendChild(cards[k]); });
 
   wrap.appendChild(div({style:{marginTop:'20px',fontSize:'9px',color:'#333',lineHeight:'1.8'}},'All data in browser storage. Export regularly to avoid loss on browser clear.\nSafari: Share > Add to Home Screen for full-screen app.'));
 
