@@ -2565,7 +2565,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='8 Nov r17';
+const APP_BUILD='8 Nov r18';
 function reviewDoneWeeks(){
   const out=[]; const cw=curWeek()-1; const dow=new Date().getDay();
   const sundayLogged=i=>{ const a=getDayActivities(i,6).filter(x=>x.type!=='rest'); return a.length>0&&a.some(x=>x.completed); };
@@ -3402,7 +3402,7 @@ function buildSeasonChart(height){
 const YTD_SEED={year:2026,until:'2026-09-21',sessions:274,km:3338,vert:111859,hrs:419};
 function ytdBase(){
   const b=CFG.ytdBase; if(b&&typeof b==='object') return b;
-  if(CFG.anchorStr==='2026-09-21'&&(CFG.races||[]).some(r=>/utmb/i.test(r.name||''))) return YTD_SEED;
+  if(CFG.anchorStr==='2026-09-21') return YTD_SEED;
   return {year:new Date().getFullYear(),until:'',sessions:0,km:0,vert:0,hrs:0};
 }
 function yearTotals(year){
