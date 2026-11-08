@@ -2569,7 +2569,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='8 Nov r10';
+const APP_BUILD='8 Nov r11';
 function reviewDoneWeeks(){
   const out=[]; const cw=curWeek()-1; const dow=new Date().getDay();
   const sundayLogged=i=>{ const a=getDayActivities(i,6).filter(x=>x.type!=='rest'); return a.length>0&&a.some(x=>x.completed); };
@@ -2891,7 +2891,8 @@ function normSession(raw,warn,ctx){
     else if(hrs>0&&!(km>0)) km=Math.round(hrs*60/pace*10)/10;
   }
   return {type:t.type,label:String(raw.label||raw.name||raw.title||raw.notes||raw.note||'').slice(0,60),
-    detail:String(raw.detail||raw.description||'').slice(0,300),km:km,vert:vert,hrs:hrs};
+    detail:String(raw.detail||raw.description||'').slice(0,300),km:km,vert:vert,hrs:hrs,
+    done:(raw.done===true||raw.done==='true'||raw.done==='yes'||raw.status==='done'),sid:String(raw.strava||raw.stravaId||raw.sid||'')};
 }
 function extractJsonText(txt){
   let m=txt.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -2987,6 +2988,35 @@ function existingSessions(wIdx,dIdx){
     const e=actEffective(a); return {type:a.type||'easy',label:a.label||'',km:e.km,vert:e.vert,hrs:e.hrs,done:!!a.completed};
   });
 }
+function isRunT(t){ return t==='easy'||t==='long'||t==='intervals'||t==='race'; }
+function histMerge(wIdx,dIdx,sessions){
+  const cur=getDayActivities(wIdx,dIdx).filter(a=>a.type!=='rest').map(a=>JSON.parse(JSON.stringify(a)));
+  const used={}; const addedS=[]; let n=0;
+  const tc=(a,t)=>(a.type||'easy')===t||(isRunT(a.type||'easy')&&isRunT(t));
+  sessions.forEach(x=>{
+    if(!x.done) return;
+    if(x.sid&&cur.some(a=>a.sid===x.sid)) return;
+    let hit=-1;
+    cur.forEach((a,i)=>{
+      if(hit>=0||used[i]||!a.completed||!tc(a,x.type)) return;
+      const e=actEffective(a);
+      if(isRunT(x.type)||x.type==='walk'){
+        if(x.km>0&&e.km>0){ if(Math.abs(e.km-x.km)/Math.max(e.km,x.km)<=0.15) hit=i; }
+        else if(x.hrs>0&&e.hrs>0){ if(Math.abs(e.hrs-x.hrs)/Math.max(e.hrs,x.hrs)<=0.2) hit=i; }
+        else hit=i;
+      } else hit=i;
+    });
+    if(hit>=0){ used[hit]=true; return; }
+    const fill=(a,i)=>{ a.completed=true; a.actualKm=String(Math.round(x.km*100)/100); a.actualVert=String(Math.round(x.vert)); a.actualHrs=String(Math.round(x.hrs*1000)/1000);
+      if(x.sid) a.sid=x.sid; if(x.detail&&!a.note) a.note=x.detail; a.ts=Date.now(); used[i]=true; };
+    let pi=-1;
+    cur.forEach((a,i)=>{ if(pi<0&&!used[i]&&!a.completed&&tc(a,x.type)) pi=i; });
+    if(pi>=0){ fill(cur[pi],pi); addedS.push(x); n++; return; }
+    const a={id:newActId(),label:x.label||SESSION_LABELS[x.type]||x.type,type:x.type,actualKm:'',actualVert:'',actualHrs:'',perf:'',exec:'',note:'',completed:false,ts:Date.now(),planned:{km:0,vert:0,hrs:0}};
+    cur.push(a); fill(a,cur.length-1); addedS.push(x); n++;
+  });
+  return {acts:cur,added:addedS,n:n};
+}
 function buildImportPlan(parsed){
   const td=today(); const tw=totalWeeks(); const items=[]; const skipped=[];
   const weekMap={};
@@ -2999,6 +3029,12 @@ function buildImportPlan(parsed){
     const curS=existingSessions(wIdx,dIdx);
     const same=sessionsSummary(curS)===sessionsSummary(d.sessions)&&!logged;
     const past=d.date<td;
+    if(d.sessions.some(x=>x.done)){
+      const hm=histMerge(wIdx,dIdx,d.sessions);
+      items.push({date:d.date,wIdx,dIdx,sessions:d.sessions,hist:true,merged:hm.acts,curText:sessionsSummary(curS),newText:hm.n?('+ '+sessionsSummary(hm.added)):'already in the app',logged:false,past,same:hm.n===0,on:hm.n>0});
+      (weekMap[wIdx]=weekMap[wIdx]||{wIdx,type:null,note:'',typeOn:true});
+      return;
+    }
     items.push({date:d.date,wIdx,dIdx,sessions:d.sessions,curText:sessionsSummary(curS),newText:sessionsSummary(d.sessions),logged,past,same,
       on:!logged&&!same&&!past});
     (weekMap[wIdx]=weekMap[wIdx]||{wIdx,type:null,note:'',typeOn:true});
@@ -3023,6 +3059,7 @@ function applyImportPlan(plan){
   plan.items.filter(it=>it.on).forEach(it=>{
     const key='w'+it.wIdx+'-d'+it.dIdx;
     if(!(key in undo.runs)) undo.runs[key]=(RUNS[key]===undefined)?null:JSON.parse(JSON.stringify(RUNS[key]));
+    if(it.hist){ saveDayActivities(it.wIdx,it.dIdx,it.merged); return; }
     const acts=it.sessions.map(s=>{
       const a={id:newActId(),label:s.label||SESSION_LABELS[s.type]||s.type,type:s.type,actualKm:'',actualVert:'',actualHrs:'',perf:'',exec:'',note:'',
         completed:false,ts:Date.now(),planned:{km:Math.round(s.km*10)/10,vert:Math.round(s.vert),hrs:Math.round(s.hrs*1000)/1000}};
@@ -3034,7 +3071,7 @@ function applyImportPlan(plan){
     touchedWeeks[it.wIdx]=true;
   });
   plan.weeks.forEach(w=>{
-    const hasDays=plan.items.some(it=>it.on&&it.wIdx===w.wIdx);
+    const hasDays=plan.items.some(it=>it.on&&!it.hist&&it.wIdx===w.wIdx);
     if(!(w.typeOn&&w.typeChange)&&!w.note&&!hasDays) return;
     if(!(w.wIdx in undo.targets)) undo.targets[w.wIdx]=TARGETS[w.wIdx]?JSON.parse(JSON.stringify(TARGETS[w.wIdx])):null;
     touchedWeeks[w.wIdx]=true;
@@ -3188,7 +3225,7 @@ function showImportReview(parsed){
           const b=div({style:{flex:'1',minWidth:'0'}});
           const dt=new Date(it.date+'T12:00:00');
           b.appendChild(div({style:{fontSize:'10px',color:'var(--text)',marginBottom:'2px'}},DOWN[it.dIdx]+' '+fmtDate(dt)+
-            (it.logged?'  \u00b7  LOGGED - ticking replaces it':'')+(it.past&&!it.logged?'  \u00b7  past':'')+(it.same?'  \u00b7  no change':'')));
+            (it.hist?'  \u00b7  FROM STRAVA':'')+(it.logged?'  \u00b7  LOGGED - ticking replaces it':'')+(it.past&&!it.logged&&!it.hist?'  \u00b7  past':'')+(it.same?'  \u00b7  no change':'')));
           if(!it.same||it.logged){
             if(it.curText!=='rest') b.appendChild(div({style:{fontSize:'9.5px',color:'var(--text-mute)',textDecoration:'line-through'}},it.curText));
           }
