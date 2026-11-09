@@ -2568,7 +2568,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='9 Nov r25';
+const APP_BUILD='9 Nov r28';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
@@ -4751,12 +4751,14 @@ function renderTrend(){
   //   3. Projected session totals
   //   4. Collapsible sessions drawer for review / correction
   const fuelAvgCard=card([],{marginBottom:'14px'});
+  let fuelRaceIdx=0;
 
   function buildFuelAverages(){
     fuelAvgCard.innerHTML='';
     try{
       const races=getRaces();
-      let selectedRaceIdx=0; // default to first race
+      if(fuelRaceIdx>=races.length) fuelRaceIdx=0;
+      let selectedRaceIdx=fuelRaceIdx;
 
       // Parse target time string "h:mm" -> decimal hours
       function parseTargetTime(s){
@@ -4835,21 +4837,21 @@ function renderTrend(){
       function bandAvg(b,field){ const n=bandData[b].sessions.length; return n?Math.round(bandData[b][field]/n):null; }
 
       // -- Header --
-      const hdr=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}});
-      hdr.appendChild(div({class:'section-title'},'Fuel Averages / Race Plan'));
+      const hdr=div({style:{marginBottom:'12px'}});
+      hdr.appendChild(div({class:'section-title',style:{whiteSpace:'nowrap',marginBottom:'10px'}},'Fuel Averages / Race Plan'));
 
       // Race selector pills -- only shown if >1 race configured
       if(races.length>1){
-        const pills=div({style:{display:'flex',gap:'4px'}});
+        const pills=div({style:{display:'flex',gap:'6px',overflowX:'auto',paddingBottom:'2px'}});
         races.forEach((race,ri)=>{
           const rawName=(race.name||'Race').trim();
-          const shortName=rawName.length>8?rawName.slice(0,7)+'\u2026':rawName;
+          const shortName=rawName.length>14?rawName.slice(0,13)+'\u2026':rawName;
           const isActive=ri===selectedRaceIdx;
-          const p=btn({style:{padding:'4px 9px',borderRadius:'4px',fontSize:'10px',
+          const p=btn({style:{padding:'6px 10px',borderRadius:'6px',fontSize:'10px',whiteSpace:'nowrap',flex:'0 0 auto',
             background:isActive?'var(--bg-tab-active)':'var(--bg-input)',
             border:'1px solid '+(isActive?'var(--border-btn)':'var(--border)'),
             color:isActive?'var(--text)':'var(--text-dim)'},
-            onclick:()=>{ selectedRaceIdx=ri; buildFuelAverages(); }},shortName);
+            onclick:()=>{ fuelRaceIdx=ri; buildFuelAverages(); }},shortName);
           pills.appendChild(p);
         });
         hdr.appendChild(pills);
@@ -5041,18 +5043,49 @@ function renderTrend(){
   buildFuelAverages();
   wrap.appendChild(fuelAvgCard);
 
-  const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-14);
-  wrap.appendChild(div({class:'section-title'},'Recent Log'));
-  if(!entries.length) wrap.appendChild(div({style:{fontSize:'11px',color:'#333'}},'No entries yet.'));
-  entries.slice().reverse().forEach(([date,entry])=>{
-    const dc=DC[entry.decision]||'#555';
-    const row=div({class:'row-sep'});
-    row.appendChild(span({style:{fontSize:'10px',color:'#444',minWidth:'80px'}},date));
-    if(entry.hrv) row.appendChild(span({style:{fontSize:'10px',color:'#60a5fa'}},'HRV '+entry.hrv));
-    if(entry.rhr) row.appendChild(span({style:{fontSize:'10px',color:'#a78bfa'}},'RHR '+entry.rhr));
-    if(entry.decision) row.appendChild(span({style:{marginLeft:'auto',fontSize:'9px',color:dc,border:'1px solid '+dc+'40',padding:'2px 6px',borderRadius:'4px'}},entry.decision));
-    wrap.appendChild(row);
-  });
+  wrap.appendChild(div({class:'section-title'},'Recent Readings'));
+  const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-28);
+  const getPts=key=>entries.filter(([d,e])=>e[key]!==undefined&&e[key]!==''&&!isNaN(parseFloat(e[key]))).map(([d,e])=>({d,t:new Date(d+'T12:00:00').getTime(),v:parseFloat(e[key])}));
+  const HC='#60a5fa', RC='#a78bfa';
+  const hp=getPts('hrv'), rp=getPts('rhr');
+  const box=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'12px',padding:'12px 14px',marginBottom:'12px'}});
+  if(!hp.length&&!rp.length){ box.appendChild(div({style:{fontSize:'11px',color:'var(--text-dim)'}},'No readings yet.')); wrap.appendChild(box); }
+  else {
+    const mean=a=>a.reduce((x,p)=>x+p.v,0)/a.length;
+    const both=hp.length&&rp.length;
+    const dual=both&&(Math.max(mean(hp),mean(rp))/Math.min(mean(hp),mean(rp))>1.6);
+    const hd=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'6px',gap:'8px'}});
+    const stat=(lbl,pts,c)=>pts.length?div({},[span({style:{fontSize:'9px',letterSpacing:'0.12em',color:c,marginRight:'5px'}},lbl),span({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'20px',color:c,lineHeight:'1'}},String(pts[pts.length-1].v)),span({style:{fontSize:'9px',color:'var(--text-mute)',marginLeft:'4px'}},'avg '+Math.round(mean(pts)))]):div({});
+    hd.appendChild(stat('HRV',hp,HC)); hd.appendChild(stat('RHR',rp,RC)); box.appendChild(hd);
+    const W=340,H=130,pl=dual?28:28,pr=dual?28:6,pt=8,pb=16;
+    const all=hp.concat(rp);
+    const t0=Math.min.apply(null,all.map(p=>p.t)), t1=Math.max.apply(null,all.map(p=>p.t)), sp=Math.max(1,t1-t0);
+    const X=p=>pl+(t1>t0?(p.t-t0)/sp:0.5)*(W-pl-pr);
+    const rng=pts=>{ const vs=pts.map(p=>p.v); let lo=Math.min.apply(null,vs),hi=Math.max.apply(null,vs); const pd=Math.max(2,(hi-lo)*0.25); return [Math.floor(lo-pd),Math.ceil(hi+pd)]; };
+    let rh=hp.length?rng(hp):null, rr=rp.length?rng(rp):null;
+    if(!dual){ const r=rng(all); rh=r; rr=r; }
+    const Yf=r=>v=>pt+(1-(v-r[0])/(r[1]-r[0]))*(H-pt-pb);
+    const Yh=rh?Yf(rh):null, Yr=rr?Yf(rr):null;
+    let g='';
+    const grid=rh||rr, Yg=dual?(Yh||Yr):Yf(rng(all)), rg=dual?(rh||rr):rng(all);
+    [0,1,2].forEach(i=>{ const y=pt+i*(H-pt-pb)/2; g+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+y+'" y2="'+y+'" stroke="var(--border)" stroke-width="1"/>'; });
+    const ticks=(r,x,anchor,c)=>[0,1,2].map(i=>{ const y=pt+i*(H-pt-pb)/2; const v=Math.round(r[1]-(r[1]-r[0])*i/2); return '<text x="'+x+'" y="'+(y+3)+'" text-anchor="'+anchor+'" font-size="8" fill="'+c+'">'+v+'</text>'; }).join('');
+    if(dual){ g+=ticks(rh,pl-4,'end',HC)+ticks(rr,W-pr+4,'start',RC); }
+    else g+=ticks(rg,pl-4,'end','var(--text-mute)');
+    const line=(pts,Y,c)=>{ if(!pts.length) return '';
+      let o='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(mean(pts))+'" y2="'+Y(mean(pts))+'" stroke="'+c+'" stroke-opacity="0.3" stroke-dasharray="3 3" stroke-width="1"/>';
+      if(pts.length>1) o+='<polyline points="'+pts.map(p=>X(p).toFixed(1)+','+Y(p.v).toFixed(1)).join(' ')+'" fill="none" stroke="'+c+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+      pts.forEach((p,i)=>{ o+='<circle cx="'+X(p).toFixed(1)+'" cy="'+Y(p.v).toFixed(1)+'" r="'+(i===pts.length-1?4:2.5)+'" fill="'+c+'"/>'; });
+      return o; };
+    g+=line(hp,Yh,HC)+line(rp,Yr,RC);
+    const fd=d=>fmtDate(new Date(d+'T12:00:00'));
+    const dts=all.map(p=>p.d).sort();
+    g+='<text x="'+pl+'" y="'+(H-3)+'" font-size="8" fill="var(--text-mute)">'+fd(dts[0])+'</text><text x="'+(W-pr)+'" y="'+(H-3)+'" text-anchor="end" font-size="8" fill="var(--text-mute)">'+fd(dts[dts.length-1])+'</text>';
+    const holder=div({}); holder.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">'+g+'</svg>';
+    box.appendChild(holder);
+    if(both) box.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'4px'}},dual?'HRV scale on the left, resting HR scale on the right':'HRV and resting HR share one scale'));
+    wrap.appendChild(box);
+  }
 
   return wrap;
 }
