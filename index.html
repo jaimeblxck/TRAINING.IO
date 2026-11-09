@@ -2568,7 +2568,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='9 Nov r28';
+const APP_BUILD='9 Nov r29';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
@@ -5046,7 +5046,7 @@ function renderTrend(){
   wrap.appendChild(div({class:'section-title'},'Recent Readings'));
   const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-28);
   const getPts=key=>entries.filter(([d,e])=>e[key]!==undefined&&e[key]!==''&&!isNaN(parseFloat(e[key]))).map(([d,e])=>({d,t:new Date(d+'T12:00:00').getTime(),v:parseFloat(e[key])}));
-  const HC='#60a5fa', RC='#a78bfa';
+  const HC='#2f86e6', RC='#e8750a';
   const hp=getPts('hrv'), rp=getPts('rhr');
   const box=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'12px',padding:'12px 14px',marginBottom:'12px'}});
   if(!hp.length&&!rp.length){ box.appendChild(div({style:{fontSize:'11px',color:'var(--text-dim)'}},'No readings yet.')); wrap.appendChild(box); }
@@ -5055,7 +5055,7 @@ function renderTrend(){
     const both=hp.length&&rp.length;
     const dual=both&&(Math.max(mean(hp),mean(rp))/Math.min(mean(hp),mean(rp))>1.6);
     const hd=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'6px',gap:'8px'}});
-    const stat=(lbl,pts,c)=>pts.length?div({},[span({style:{fontSize:'9px',letterSpacing:'0.12em',color:c,marginRight:'5px'}},lbl),span({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'20px',color:c,lineHeight:'1'}},String(pts[pts.length-1].v)),span({style:{fontSize:'9px',color:'var(--text-mute)',marginLeft:'4px'}},'avg '+Math.round(mean(pts)))]):div({});
+    const stat=(lbl,pts,c)=>pts.length?div({},[span({style:{fontSize:'9px',letterSpacing:'0.12em',color:c,marginRight:'5px'}},(lbl==='RHR'?'\u25a0 ':'\u25cf ')+lbl),span({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'20px',color:c,lineHeight:'1'}},String(pts[pts.length-1].v)),span({style:{fontSize:'9px',color:'var(--text-mute)',marginLeft:'4px'}},'avg '+Math.round(mean(pts)))]):div({});
     hd.appendChild(stat('HRV',hp,HC)); hd.appendChild(stat('RHR',rp,RC)); box.appendChild(hd);
     const W=340,H=130,pl=dual?28:28,pr=dual?28:6,pt=8,pb=16;
     const all=hp.concat(rp);
@@ -5072,18 +5072,21 @@ function renderTrend(){
     const ticks=(r,x,anchor,c)=>[0,1,2].map(i=>{ const y=pt+i*(H-pt-pb)/2; const v=Math.round(r[1]-(r[1]-r[0])*i/2); return '<text x="'+x+'" y="'+(y+3)+'" text-anchor="'+anchor+'" font-size="8" fill="'+c+'">'+v+'</text>'; }).join('');
     if(dual){ g+=ticks(rh,pl-4,'end',HC)+ticks(rr,W-pr+4,'start',RC); }
     else g+=ticks(rg,pl-4,'end','var(--text-mute)');
-    const line=(pts,Y,c)=>{ if(!pts.length) return '';
+    const line=(pts,Y,c,sq,tag)=>{ if(!pts.length) return '';
       let o='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(mean(pts))+'" y2="'+Y(mean(pts))+'" stroke="'+c+'" stroke-opacity="0.3" stroke-dasharray="3 3" stroke-width="1"/>';
       if(pts.length>1) o+='<polyline points="'+pts.map(p=>X(p).toFixed(1)+','+Y(p.v).toFixed(1)).join(' ')+'" fill="none" stroke="'+c+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
-      pts.forEach((p,i)=>{ o+='<circle cx="'+X(p).toFixed(1)+'" cy="'+Y(p.v).toFixed(1)+'" r="'+(i===pts.length-1?4:2.5)+'" fill="'+c+'"/>'; });
+      pts.forEach((p,i)=>{ const x=X(p),y=Y(p.v),big=i===pts.length-1,r=big?4.5:3;
+        o+=sq?'<rect x="'+(x-r).toFixed(1)+'" y="'+(y-r).toFixed(1)+'" width="'+(2*r)+'" height="'+(2*r)+'" fill="'+c+'"/>':'<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="'+r+'" fill="'+c+'"/>'; });
+      const lp=pts[pts.length-1], ly=Y(lp.v);
+      o+='<text x="'+(X(lp)-8)+'" y="'+(sq?Math.min(ly+17,H-pb-2):Math.max(ly-9,pt+8))+'" text-anchor="end" font-size="9" font-weight="700" fill="'+c+'">'+tag+'</text>';
       return o; };
-    g+=line(hp,Yh,HC)+line(rp,Yr,RC);
+    g+=line(hp,Yh,HC,false,'HRV')+line(rp,Yr,RC,true,'RHR');
     const fd=d=>fmtDate(new Date(d+'T12:00:00'));
     const dts=all.map(p=>p.d).sort();
     g+='<text x="'+pl+'" y="'+(H-3)+'" font-size="8" fill="var(--text-mute)">'+fd(dts[0])+'</text><text x="'+(W-pr)+'" y="'+(H-3)+'" text-anchor="end" font-size="8" fill="var(--text-mute)">'+fd(dts[dts.length-1])+'</text>';
     const holder=div({}); holder.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="display:block">'+g+'</svg>';
     box.appendChild(holder);
-    if(both) box.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'4px'}},dual?'HRV scale on the left, resting HR scale on the right':'HRV and resting HR share one scale'));
+    if(both) box.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'4px'}},dual?'Blue circles: HRV, scale on the left. Orange squares: resting HR, scale on the right.':'Blue circles: HRV. Orange squares: resting HR. One shared scale.'));
     wrap.appendChild(box);
   }
 
