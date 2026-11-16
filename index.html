@@ -2568,7 +2568,7 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='9 Nov r29';
+const APP_BUILD='17 Nov r30';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
@@ -4756,7 +4756,8 @@ function renderTrend(){
   function buildFuelAverages(){
     fuelAvgCard.innerHTML='';
     try{
-      const races=getRaces();
+      const tdF=today();
+      const races=getRaces().filter(r=>!validDateStr(r.date)||r.date>=tdF).sort((x,y)=>(validDateStr(x.date)?x.date:'9999').localeCompare(validDateStr(y.date)?y.date:'9999'));
       if(fuelRaceIdx>=races.length) fuelRaceIdx=0;
       let selectedRaceIdx=fuelRaceIdx;
 
