@@ -1168,7 +1168,7 @@ function download(content,filename,mime){
   a.download=filename; a.click();
 }
 function exportAll(){
-  const bundle={version:2,exportedAt:new Date().toISOString(),CFG,LOG,EDITS,TARGETS,RUNS};
+  const bundle={version:2,exportedAt:new Date().toISOString(),CFG,LOG,EDITS,TARGETS,RUNS,DEBRIEFS:getDebriefs()};
   download(JSON.stringify(bundle,null,2),'training-os-backup.json','application/json');
 }
 function importAll(json){
@@ -1180,6 +1180,7 @@ function importAll(json){
     if(b.EDITS){EDITS=b.EDITS;S.set(SK.edits,EDITS);}
     if(b.TARGETS){TARGETS=b.TARGETS;S.set(SK.targets,TARGETS);}
     if(b.RUNS){RUNS=b.RUNS;S.set(SK.runs,RUNS);}
+    if(b.DEBRIEFS){setDebriefs(b.DEBRIEFS);}
     return 'Data restored. Reloading...';
   }catch(e){ return 'Import failed: '+e.message; }
 }
@@ -1497,6 +1498,7 @@ function renderToday(){
   }
   wrap.appendChild(sessCardWrap);
   try{ const wc=buildWeekCard(); if(wc) wrap.appendChild(wc); }catch(e){}
+  try{ buildDebriefCards().forEach(c=>wrap.appendChild(c)); }catch(e){}
   // week review sits right under today's activities
   reviewDueWeeks().forEach(i=>wrap.appendChild(buildWeekReviewCard(i,()=>render())));
   reviewDoneWeeks().forEach(i=>wrap.appendChild(buildReviewedStrip(i)));
@@ -1868,6 +1870,7 @@ function showActivityModal(wIdx, dIdx, aIdx, planSession){
     }
     saveDayActivities(wIdx,dIdx,updated);
     overlay.remove(); render();
+    if(!planning&&type==='race'&&isLoggedDay){ setTimeout(()=>{ try{ openRaceDebrief(wIdx,dIdx,aIdx); }catch(e){} },60); }
   }},'SAVE');
   btnRow.appendChild(saveBtn);
 
@@ -2568,7 +2571,300 @@ function reviewDueWeeks(){
   if((dow===1||dow===2)&&need(cw-1)) out.push(cw-1);
   return out;
 }
-const APP_BUILD='17 Nov r30';
+
+// ============================================================
+// RACE DEBRIEF
+// ============================================================
+const DEBRIEF_KEY='utmb_debrief_v1';
+let DEBRIEF_EDIT={};
+function getDebriefs(){ try{ return JSON.parse(lsGet(DEBRIEF_KEY)||'{}')||{}; }catch(e){ return {}; } }
+function setDebriefs(d){ lsSet(DEBRIEF_KEY,JSON.stringify(d)); }
+function dbKey(it){ return String(it.act.id||(it.ds+'-'+it.aI)); }
+function dbHM(h){ if(h==null||isNaN(h)) return '--'; const t=Math.round(h*3600); const hh=Math.floor(t/3600), mm=Math.floor(t%3600/60), ss=t%60; return hh+':'+String(mm).padStart(2,'0')+':'+String(ss).padStart(2,'0'); }
+function dbParseHM(s){ if(s==null||s==='') return null; s=String(s).trim(); if(s.indexOf(':')<0){ const n=parseFloat(s); return isNaN(n)?null:n; } const p=s.split(':'); return (parseInt(p[0])||0)+(parseInt(p[1])||0)/60+(parseInt(p[2])||0)/3600; }
+function dbPace(sec){ if(!sec||!isFinite(sec)) return '--'; const m=Math.floor(sec/60), r=Math.round(sec%60); return (r===60?(m+1)+':00':m+':'+String(r).padStart(2,'0')); }
+function recentRaceActs(maxDays){
+  const out=[], td=today(), tdT=new Date(td+'T12:00:00').getTime();
+  const plan=getPlan(), cw=curWeek()-1;
+  for(let w=Math.max(0,cw-1); w<=Math.min(plan.length-1,cw); w++){
+    plan[w].days.forEach((day,dI)=>{
+      const ds=slotDate(w,day.day||'Mon');
+      getDayActivities(w,dI).forEach((a,aI)=>{
+        if(a.type==='race'&&a.completed&&ds<=td){
+          const age=Math.round((tdT-new Date(ds+'T12:00:00').getTime())/86400000);
+          if(age<=maxDays) out.push({w:w,dI:dI,aI:aI,act:a,ds:ds});
+        }
+      });
+    });
+  }
+  return out;
+}
+function fuelPlanForHours(hrs){
+  const rows=[];
+  getPlan().forEach((wk,wI)=>wk.days.forEach((d,dI)=>getDayActivities(wI,dI).forEach(a=>{
+    if(a.completed&&['easy','long','intervals','race'].indexOf(a.type||'easy')>=0&&parseFloat(a.fuelCarbsG)>0&&parseFloat(a.actualHrs)>0){
+      const h=parseFloat(a.actualHrs), fl=parseFloat(a.fuelFluidMl)||0;
+      rows.push({h:h,c:parseFloat(a.fuelCarbsG)/h,f:fl/h,s:fl>0?(parseFloat(a.fuelSodiumMg)||0)/(fl/1000):0});
+    }
+  })));
+  const band=h=>h<2?0:(h<4?1:2);
+  let pick=rows.filter(r=>band(r.h)===band(hrs));
+  if(!pick.length) pick=rows;
+  if(!pick.length) return null;
+  const avg=k=>Math.round(pick.reduce((a,r)=>a+r[k],0)/pick.length);
+  return {carb:avg('c'),fluid:avg('f'),sodium:avg('s')};
+}
+function dbRaceFor(it){ return (getRaces()||[]).find(r=>r.date===it.ds)||null; }
+function dbLapStats(laps){
+  if(!laps||laps.length<2) return null;
+  const dist=laps.map(l=>l.d||1000), tot=dist.reduce((a,b)=>a+b,0), tt=laps.reduce((a,l)=>a+l.t,0);
+  let cum=0, t1=0, d1=0;
+  laps.forEach((l,i)=>{ if(cum<tot/2){ t1+=l.t; d1+=dist[i]; } cum+=dist[i]; });
+  const p1=t1/d1*1000, p2=(tt-t1)/(tot-d1)*1000;
+  const hrs=laps.filter(l=>l.hr>0);
+  return {p1:p1,p2:p2,avgPace:tt/tot*1000,totalSec:tt,hrAvg:hrs.length?Math.round(hrs.reduce((a,l)=>a+l.hr,0)/hrs.length):null};
+}
+function dbChartHTML(laps){
+  const n=laps.length, P=laps.map(l=>l.t/(l.d||1000)*1000), avgP=P.reduce((a,b)=>a+b,0)/n;
+  const H=laps.map(l=>l.hr||0), hasHr=H.some(x=>x>0);
+  const W=340,Hh=92,cx=18,mid=46,bw=(W-cx-4)/n; let g='';
+  g+='<line x1="'+cx+'" x2="'+(W-4)+'" y1="'+mid+'" y2="'+mid+'" stroke="var(--border)"/>';
+  P.forEach((p,i)=>{ const d=(avgP-p)/avgP*140, h=Math.max(1,Math.min(40,Math.abs(d))), y=d>=0?mid-h:mid;
+    g+='<rect x="'+(cx+i*bw+0.5).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+Math.max(1,bw-1).toFixed(1)+'" height="'+h.toFixed(1)+'" fill="#2f86e6"/>'; });
+  if(hasHr){ const pos=H.filter(x=>x>0), lo=Math.min.apply(null,pos), hi=Math.max.apply(null,pos);
+    g+='<polyline fill="none" stroke="#e8750a" stroke-width="1.6" stroke-dasharray="4 2" points="'+H.map((h,i)=>(cx+i*bw+bw/2).toFixed(1)+','+(86-((h||lo)-lo)/((hi-lo)||1)*20).toFixed(1)).join(' ')+'"/>'; }
+  g+='<text x="2" y="14" font-size="8" fill="var(--text-mute)">fast</text><text x="2" y="84" font-size="8" fill="var(--text-mute)">slow</text>';
+  return '<svg viewBox="0 0 '+W+' '+Hh+'" width="100%" style="display:block">'+g+'</svg>';
+}
+function dbRequestText(it){
+  const a=it.act, r=dbRaceFor(it)||{}, hrs=dbParseHM(r.targetTime)||parseFloat(a.actualHrs)||null, pl=fuelPlanForHours(hrs||3);
+  const L=[];
+  L.push('RACE DEBRIEF REQUEST (Training OS)');
+  L.push('');
+  L.push('Please pull this race from my Strava and reply with ONE json block in exactly the format below. Strava is the source of truth.');
+  L.push('Race: '+(r.name||a.label||'Race')+' | '+it.ds+' | '+(a.actualKm||r.km||'?')+'km | '+(a.actualVert||r.vert||'?')+'m'+(a.sid?' | Strava activity id: '+a.sid:' | find it by date and distance'));
+  if(r.targetTime) L.push('Goal time: '+r.targetTime);
+  if(pl) L.push('Fuel plan: '+pl.carb+' g/hr carbs, '+pl.fluid+' ml/hr fluid, '+pl.sodium+' mg/L sodium');
+  L.push('');
+  L.push('FORMAT (laps = one entry per kilometre in order, t = seconds, hr = average heart rate, d = metres if the last lap is short):');
+  L.push('```json');
+  L.push('{"v":1,"debrief":{"strava":"<activity id>","finish":"h:mm:ss","km":0,"vert":0,"avgHr":0,"maxHr":0,"laps":[{"t":240,"hr":152},{"t":249,"hr":160},{"t":158,"hr":170,"d":756}],"note":"2-3 sentences on how the race played out: pacing, fade, anything notable"}}');
+  L.push('```');
+  return L.join('\n');
+}
+function dbParseImport(txt,it){
+  let s=String(txt||'');
+  const m=s.match(/```(?:json)?\s*([\s\S]*?)```/); if(m) s=m[1];
+  const i=s.indexOf('{'), j=s.lastIndexOf('}');
+  if(i<0||j<=i) return {error:'No JSON found. Paste the block Claude sent back.'};
+  let o; try{ o=JSON.parse(s.slice(i,j+1)); }catch(e){ return {error:'That JSON could not be read. Copy the whole block and try again.'}; }
+  const d=o.debrief||o;
+  if(!d||!Array.isArray(d.laps)||d.laps.length<2) return {error:'No laps found in that reply.'};
+  const laps=[];
+  for(let k=0;k<d.laps.length;k++){ const l=d.laps[k], t=parseFloat(l.t); if(!(t>0)) return {error:'Lap '+(k+1)+' has no valid time.'}; laps.push({t:Math.round(t),hr:parseFloat(l.hr)>0?Math.round(parseFloat(l.hr)):0,d:parseFloat(l.d)>0?Math.round(parseFloat(l.d)):1000}); }
+  if(it.act.sid&&d.strava&&String(d.strava)!==String(it.act.sid)) return {error:'That reply is for a different Strava activity ('+d.strava+').'};
+  return {strava:d.strava?String(d.strava):'',finish:d.finish||'',km:parseFloat(d.km)||null,vert:parseFloat(d.vert)||null,avgHr:parseFloat(d.avgHr)||null,maxHr:parseFloat(d.maxHr)||null,laps:laps,note:d.note?String(d.note).slice(0,600):''};
+}
+function showDebriefImport(it,done){
+  coachSheet('Import race data',(sheet,close)=>{
+    sheet.appendChild(div({style:{fontSize:'11px',color:'var(--text-dim)',lineHeight:'1.6',marginBottom:'10px'}},'1. Copy the request and send it to Claude. 2. Paste Claude\u2019s reply here.'));
+    const st1=div({style:{fontSize:'10px',minHeight:'14px',marginBottom:'6px',color:'#00c875'}},'');
+    sheet.appendChild(btn({class:'btn',style:{width:'100%',marginBottom:'6px'},onclick:()=>copyTextTo(dbRequestText(it),st1)},'Copy request'));
+    sheet.appendChild(st1);
+    const ta=el('textarea',{class:'inp',rows:'7',placeholder:'Paste Claude\u2019s reply here'});
+    ta.style.fontSize='10px'; ta.style.marginBottom='8px'; sheet.appendChild(ta);
+    const msg=div({style:{fontSize:'10px',minHeight:'14px',marginBottom:'8px',color:'#ff6b6b'}},''); sheet.appendChild(msg);
+    const row=div({style:{display:'flex',gap:'8px'}});
+    row.appendChild(btn({class:'btn-ghost',style:{flex:'1'},onclick:close},'Cancel'));
+    row.appendChild(btn({class:'btn-ghost',style:{flex:'1'},onclick:()=>{
+      if(navigator.clipboard&&navigator.clipboard.readText){ navigator.clipboard.readText().then(t=>{ ta.value=t; msg.textContent=''; },()=>{ msg.textContent='Clipboard blocked - tap in the box and paste manually.'; }); }
+      else msg.textContent='Tap in the box and paste manually.';
+    }},'Paste'));
+    row.appendChild(btn({class:'btn',style:{flex:'2'},onclick:()=>{
+      const p=dbParseImport(ta.value,it); if(p.error){ msg.textContent=p.error; return; }
+      const all=getDebriefs(), k=dbKey(it), d=all[k]||{};
+      d.imp={finish:p.finish,km:p.km,vert:p.vert,avgHr:p.avgHr,maxHr:p.maxHr,laps:p.laps,note:p.note,ts:Date.now()};
+      all[k]=d; setDebriefs(all);
+      if(p.strava&&!it.act.sid){ const acts=getDayActivities(it.w,it.dI); if(acts[it.aI]){ acts[it.aI].sid=p.strava; saveDayActivities(it.w,it.dI,acts); } }
+      close(); done();
+    }},'Import'));
+    sheet.appendChild(row);
+  });
+}
+function buildDebriefCard(it,onChange){
+  const a=it.act, key=dbKey(it), all=getDebriefs(), saved=all[key]||{};
+  const race=dbRaceFor(it), goalH=race?dbParseHM(race.targetTime):null;
+  const actHrs=parseFloat(a.actualHrs)||0, actKm=parseFloat(a.actualKm)||parseFloat(race&&race.km)||0;
+  const pl=fuelPlanForHours(goalH||actHrs||3);
+  const A='#b8ff4f', OR='#e8750a';
+  const st={rpe:(saved.rpe!=null?saved.rpe:(parseInt(a.exec)||null)),cramp:saved.cramp||null,gut:saved.gut||null,report:saved.report||'',sections:null};
+  if(saved.sections&&saved.sections.length){ st.sections=saved.sections.map(x=>Object.assign({},x)); }
+  else {
+    const has=parseFloat(a.fuelCarbsG)>0&&actHrs>0;
+    const fl=parseFloat(a.fuelFluidMl)||0;
+    st.sections=[{unit:'km',from:'0',to:String(actKm||''),
+      carb:has?Math.round(parseFloat(a.fuelCarbsG)/actHrs):(pl?pl.carb:null),
+      fluid:has?Math.round(fl/actHrs):(pl?pl.fluid:null),
+      sodium:has&&fl>0?Math.round((parseFloat(a.fuelSodiumMg)||0)/(fl/1000)):(pl?pl.sodium:null),
+      touched:!!has}];
+  }
+  const card=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderLeft:'3px solid '+A,borderRadius:'12px',padding:'14px',marginBottom:'12px',position:'relative'}});
+  const lab=t=>div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)',margin:'12px 0 6px'}},t);
+  const mkBtn=(t,fn,extra)=>btn({style:Object.assign({width:'22px',height:'26px',borderRadius:'6px',border:'1px solid var(--border)',background:'var(--bg-card)',color:'var(--text)',fontSize:'13px',padding:'0'},extra||{}),onclick:fn},t);
+  const num=(val,step,onSet)=>{
+    const w=div({style:{display:'flex',alignItems:'center',justifyContent:'center',gap:'3px'}});
+    const i=el('input',{type:'number',inputmode:'decimal',placeholder:'-'}); i.value=(val==null?'':String(val));
+    i.style.cssText='width:44px;text-align:center;font-family:"Bebas Neue",cursive;font-size:17px;background:transparent;border:none;color:var(--text);padding:0;';
+    i.addEventListener('change',()=>onSet(i.value===''?null:parseFloat(i.value)));
+    w.appendChild(mkBtn('\u2212',()=>onSet(Math.max(0,(val||0)-step)))); w.appendChild(i); w.appendChild(mkBtn('+',()=>onSet((val||0)+step)));
+    return w; };
+  const seg=(opts,sel,on)=>{ const r=div({style:{display:'flex',border:'1px solid var(--border)',borderRadius:'8px',overflow:'hidden'}});
+    opts.forEach((o,i)=>{ const s2=o===sel; r.appendChild(btn({style:{flex:'1',textAlign:'center',fontSize:'10px',padding:'8px 0',border:'none',borderLeft:i?'1px solid var(--border)':'none',borderRadius:'0',background:s2?A:'var(--bg-input)',color:s2?'#0a0a16':'var(--text)',fontWeight:s2?'700':'400',whiteSpace:'nowrap'},onclick:()=>on(s2?null:o)},(s2?'\u2713 ':'')+o)); });
+    return r; };
+  const draw=()=>{
+    card.innerHTML='';
+    const imp=saved.imp||null, ls=imp?dbLapStats(imp.laps):null;
+    const name=(race&&race.name)||a.label||'Race';
+    const hd=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline'}});
+    hd.appendChild(div({},[div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)'}},'RACE DEBRIEF'),div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'20px',letterSpacing:'0.04em'}},name+(actKm?' \u00b7 '+(Math.round(actKm*10)/10)+'km':'')),div({style:{fontSize:'10px',color:'var(--text-mute)'}},fmtDate(new Date(it.ds+'T12:00:00')))]));
+    hd.appendChild(btn({style:{background:'none',border:'none',color:'var(--text-mute)',fontSize:'20px',padding:'0 4px'},'aria-label':'Skip debrief',onclick:()=>{ const x=getDebriefs(); x[key]=Object.assign(x[key]||{},{skipped:true}); setDebriefs(x); delete DEBRIEF_EDIT[key]; onChange(); }},'\u00d7'));
+    card.appendChild(hd);
+    // auto box
+    card.appendChild(lab(imp?'FROM STRAVA':'FROM YOUR LOG'));
+    const box=div({style:{background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'10px',padding:'10px 12px'}});
+    const kv=(k,v)=>div({style:{display:'flex',justifyContent:'space-between',fontSize:'11px',padding:'2px 0',gap:'8px'}},[span({style:{color:'var(--text-mute)'}},k),span({style:{color:'var(--text)',textAlign:'right'}},v)]);
+    const finH=(imp&&dbParseHM(imp.finish))||(ls?ls.totalSec/3600:actHrs);
+    let fin=finH?dbHM(finH):'--';
+    if(goalH&&finH){ const diff=Math.round((finH-goalH)*3600), ad=Math.abs(diff), mm=Math.floor(ad/60), ss=ad%60; fin+='  vs goal '+race.targetTime+'  ('+(diff>=0?'+':'\u2212')+mm+':'+String(ss).padStart(2,'0')+')'; }
+    box.appendChild(kv('Finish',fin));
+    if(ls){ box.appendChild(kv('Pace','1st half '+dbPace(ls.p1)+' \u2192 2nd half '+dbPace(ls.p2)+' /km'));
+      const hr=(imp.avgHr||ls.hrAvg); if(hr) box.appendChild(kv('Heart rate',hr+' avg'+(imp.maxHr?'  (max '+imp.maxHr+')':'')));
+      const ch=div({style:{marginTop:'8px'}}); ch.innerHTML=dbChartHTML(imp.laps); box.appendChild(ch);
+      box.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'2px'}},'Bars: each km vs your race average (up = faster, down = slower). Dashed line: heart rate.'));
+      if(imp.note) box.appendChild(div({style:{fontSize:'10.5px',color:'var(--text-dim)',marginTop:'8px',lineHeight:'1.5'}},'Claude: '+imp.note));
+    } else {
+      box.appendChild(kv('Distance',(actKm?Math.round(actKm*10)/10+'km':'--')+(a.actualVert?'  \u00b7  '+a.actualVert+'m':'')));
+    }
+    box.appendChild(btn({class:'btn-ghost',style:{width:'100%',marginTop:'10px'},onclick:()=>showDebriefImport(it,()=>{ const x=getDebriefs()[key]||{}; saved.imp=x.imp; draw(); })},ls?'Re-import race data':'Import race data from Claude'));
+    card.appendChild(box);
+    // fuel
+    card.appendChild(lab('FUEL \u2014 PLANNED VS USED (PER HOUR)'));
+    st.sections.forEach((sec,si)=>{
+      const sc=div({style:{background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'10px',padding:'10px',marginBottom:'8px'}});
+      const h=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'8px',flexWrap:'wrap'}});
+      h.appendChild(span({style:{fontSize:'9px',letterSpacing:'0.12em',color:'var(--text-mute)'}},st.sections.length===1?'WHOLE RACE':'SECTION '+(si+1)));
+      const rb=(k)=>{ const i=el('input',{type:'text',inputmode:'decimal'}); i.value=sec[k]||''; i.style.cssText='width:46px;text-align:center;font-size:11px;padding:4px 2px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);'; i.addEventListener('change',()=>{ sec[k]=i.value; }); return i; };
+      h.appendChild(rb('from')); h.appendChild(span({style:{fontSize:'10px',color:'var(--text-mute)'}},'to')); h.appendChild(rb('to'));
+      h.appendChild(btn({style:{fontSize:'10px',padding:'4px 6px',borderRadius:'6px',border:'1px solid var(--border)',background:'var(--bg-card)',color:'var(--text-dim)'},onclick:()=>{ sec.unit=sec.unit==='km'?'time':'km'; draw(); }},(sec.unit==='km'?'km':'h:mm')+' \u25be'));
+      if(st.sections.length>1) h.appendChild(btn({style:{marginLeft:'auto',background:'none',border:'none',fontSize:'16px',color:'var(--text-mute)',padding:'0 4px'},'aria-label':'Remove section',onclick:()=>{ st.sections.splice(si,1); draw(); }},'\u00d7'));
+      sc.appendChild(h);
+      const g=div({style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px'}});
+      [['carb','CARBS g',pl&&pl.carb,5,'g'],['fluid','FLUID ml',pl&&pl.fluid,25,'ml'],['sodium','SODIUM mg/L',pl&&pl.sodium,50,'']].forEach(f=>{
+        const used=sec[f[0]], plan=f[2];
+        let delta=''; if(used!=null&&plan){ const d=Math.round(used-plan); delta=d===0?'on plan':(d>0?'+'+d:'\u2212'+Math.abs(d)); }
+        g.appendChild(div({style:{textAlign:'center'}},[div({style:{fontSize:'8px',letterSpacing:'0.1em',color:'var(--text-mute)'}},f[1]),div({style:{fontSize:'10px',color:'var(--text-dim)',margin:'1px 0 4px'}},'plan '+(plan?plan+f[4]:'--')),num(used,f[3],v=>{ sec[f[0]]=v; sec.touched=true; draw(); }),div({style:{fontSize:'10px',marginTop:'3px',color:delta.charAt(0)==='\u2212'?OR:'var(--text-dim)'}},delta||'\u00a0')]));
+      });
+      sc.appendChild(g); card.appendChild(sc);
+    });
+    card.appendChild(btn({style:{width:'100%',border:'1px dashed var(--border)',borderRadius:'10px',padding:'9px',background:'transparent',fontSize:'11px',color:'var(--text-dim)'},onclick:()=>{ const last=st.sections[st.sections.length-1]; st.sections.push({unit:last.unit,from:last.to||'',to:'',carb:pl?pl.carb:null,fluid:pl?pl.fluid:null,sodium:pl?pl.sodium:null,touched:false}); draw(); }},'+ Add section'));
+    card.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'4px'}},'Starts at the plan. Change only what differed. Split by km or time, for example by crew stop or aid station.'));
+    // RPE
+    card.appendChild(lab('OVERALL RPE'));
+    const rr=div({style:{display:'grid',gridTemplateColumns:'repeat(10,1fr)',gap:'3px'}});
+    for(let i=1;i<=10;i++){ const on=i===st.rpe; rr.appendChild(btn({style:{textAlign:'center',padding:'9px 0',fontSize:'12px',borderRadius:'6px',border:'1px solid '+(on?A:'var(--border)'),background:on?A:'var(--bg-input)',color:on?'#0a0a16':'var(--text)',fontWeight:on?'700':'400'},onclick:()=>{ st.rpe=on?null:i; draw(); }},String(i))); }
+    card.appendChild(rr);
+    card.appendChild(div({style:{display:'flex',justifyContent:'space-between',fontSize:'8.5px',color:'var(--text-mute)',marginTop:'3px'}},[span({},'easy'),span({},'all out')]));
+    card.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'2px'}},'Same RPE as your activity log; saving here updates the log.'));
+    // cramps + gut
+    const cg=div({style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginTop:'4px'}});
+    cg.appendChild(div({},[lab('CRAMPING'),seg(['None','Mild','Bad'],st.cramp,v=>{ st.cramp=v; draw(); })]));
+    cg.appendChild(div({},[lab('GUT'),seg(['Great','OK','Issues'],st.gut,v=>{ st.gut=v; draw(); })]));
+    card.appendChild(cg);
+    // report
+    card.appendChild(lab('RACE REPORT (GOES TO YOUR COACH)'));
+    const ta=el('textarea',{class:'inp',rows:'6',placeholder:'How the race played out. Pacing vs plan, how the taper felt, strategy, what to change next time.'});
+    ta.value=st.report; ta.style.fontSize='11px'; ta.style.lineHeight='1.5';
+    ta.addEventListener('input',()=>{ st.report=ta.value; });
+    card.appendChild(ta);
+    // buttons
+    const bt=div({style:{display:'flex',gap:'8px',marginTop:'14px'}});
+    bt.appendChild(btn({class:'btn',style:{flex:'1'},onclick:save},'Save debrief'));
+    bt.appendChild(btn({class:'btn-ghost',onclick:()=>{ const x=getDebriefs(); x[key]=Object.assign(x[key]||{},{skipped:true}); setDebriefs(x); delete DEBRIEF_EDIT[key]; onChange(); }},saved.saved?'Close':'Skip'));
+    card.appendChild(bt);
+  };
+  const save=()=>{
+    const x=getDebriefs(), prev=x[key]||{};
+    const secs=st.sections.map(sec=>({unit:sec.unit,from:sec.from,to:sec.to,carb:sec.touched?sec.carb:null,fluid:sec.touched?sec.fluid:null,sodium:sec.touched?sec.sodium:null,plan:pl?{carb:pl.carb,fluid:pl.fluid,sodium:pl.sodium}:null,touched:!!sec.touched}));
+    x[key]=Object.assign(prev,{saved:true,skipped:false,hidden:false,ts:Date.now(),name:(race&&race.name)||a.label||'Race',date:it.ds,km:actKm||null,vert:parseFloat(a.actualVert)||null,hrs:actHrs||null,goal:race&&race.targetTime||'',rpe:st.rpe,cramp:st.cramp,gut:st.gut,report:st.report.trim(),sections:secs});
+    setDebriefs(x);
+    // write back to the activity log: RPE, and fuel totals when entered
+    const acts=getDayActivities(it.w,it.dI), act=acts[it.aI];
+    if(act){
+      if(st.rpe!=null) act.exec=String(st.rpe);
+      if(actHrs>0&&secs.some(sc=>sc.touched&&sc.carb!=null)){
+        let c=0,f=0,sod=0;
+        secs.forEach(sc=>{ if(!sc.touched) return;
+          let h=0; if(sc.unit==='km'){ const fr=parseFloat(sc.from)||0, to=parseFloat(sc.to)||0; h=actKm>0?actHrs*Math.max(0,to-fr)/actKm:0; } else { h=Math.max(0,(dbParseHM(sc.to)||0)-(dbParseHM(sc.from)||0)); }
+          const fl=(sc.fluid||0)*h; c+=(sc.carb||0)*h; f+=fl; sod+=(sc.sodium||0)*fl/1000; });
+        if(c>0){ act.fuelCarbsG=String(Math.round(c)); act.fuelFluidMl=String(Math.round(f)); act.fuelSodiumMg=String(Math.round(sod)); }
+      }
+      saveDayActivities(it.w,it.dI,acts);
+    }
+    delete DEBRIEF_EDIT[key]; onChange();
+  };
+  draw();
+  return card;
+}
+function openRaceDebrief(w,dI,aI){
+  const act=getDayActivities(w,dI)[aI]; if(!act||act.type!=='race'||!act.completed) return;
+  const ds=slotDate(w,(getPlan()[w]&&getPlan()[w].days[dI]&&getPlan()[w].days[dI].day)||'Mon');
+  const it={w:w,dI:dI,aI:aI,act:act,ds:ds}, key=dbKey(it), d=getDebriefs()[key]||{};
+  if(d.skipped||d.saved) return;
+  coachSheet('Race debrief',(sheet,close)=>{
+    const c=buildDebriefCard(it,()=>{ close(); render(); });
+    c.style.marginBottom='0'; sheet.appendChild(c);
+  });
+}
+function buildDebriefStrip(it,onChange){
+  const key=dbKey(it), d=getDebriefs()[key]||{};
+  const c=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderLeft:'4px solid #00c875',borderRadius:'10px',padding:'10px 12px',marginBottom:'14px',position:'relative'}});
+  c.appendChild(btn({style:{position:'absolute',top:'4px',right:'6px',background:'none',border:'none',color:'var(--text-mute)',fontSize:'18px',lineHeight:'1',padding:'6px 8px'},'aria-label':'Dismiss',onclick:()=>{ const x=getDebriefs(); x[key].hidden=true; setDebriefs(x); onChange(); }},'\u00d7'));
+  c.appendChild(div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)',marginBottom:'3px'}},'RACE DEBRIEF'));
+  c.appendChild(div({style:{fontSize:'12px',color:'var(--text)',marginBottom:'8px'}},(d.name||'Race')+' saved'+(d.rpe?' \u00b7 RPE '+d.rpe:'')));
+  const row=div({style:{display:'flex',gap:'8px'}});
+  row.appendChild(btn({class:'btn-ghost',style:{flex:'1'},onclick:()=>{ DEBRIEF_EDIT[key]=true; onChange(); }},'Edit debrief'));
+  row.appendChild(btn({class:'btn',style:{flex:'1'},onclick:()=>{ let ok=false; try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(buildCoachPack(lsGet(COACH_WANT_KEY)||'')).then(()=>{},()=>{}); ok=true; } }catch(e){} showCoachCopy({copied:ok}); }},'Copy for coach'));
+  c.appendChild(row); return c;
+}
+function buildDebriefCards(){
+  const out=[], all=getDebriefs();
+  recentRaceActs(7).forEach(it=>{
+    const key=dbKey(it), d=all[key]||{};
+    if(d.skipped||d.hidden) return;
+    if(d.saved&&!DEBRIEF_EDIT[key]) out.push(buildDebriefStrip(it,()=>render()));
+    else out.push(buildDebriefCard(it,()=>render()));
+  });
+  return out;
+}
+function debriefLines(){
+  const all=getDebriefs(), L=[], items=Object.keys(all).map(k=>all[k]).filter(d=>d&&d.saved).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,3);
+  if(!items.length) return {lines:L,json:[]};
+  L.push('RACE REVIEWS (post-race debriefs: use these for future tapers, pacing, race strategy and fuel planning)');
+  items.forEach(d=>{
+    const ls=d.imp?dbLapStats(d.imp.laps):null;
+    L.push('- '+d.date+' '+d.name+(d.km?' '+Math.round(d.km*10)/10+'km':'')+(d.vert?' '+d.vert+'m':'')+': finish '+(d.hrs?dbHM(d.hrs):'--')+(d.goal?' vs goal '+d.goal:'')+(d.rpe?' | RPE '+d.rpe:'')+(d.cramp?' | cramping '+d.cramp.toLowerCase():'')+(d.gut?' | gut '+d.gut.toLowerCase():''));
+    (d.sections||[]).forEach(sc=>{ if(!sc.touched) return; const p=sc.plan||{};
+      L.push('    fuel '+sc.from+'-'+sc.to+(sc.unit==='km'?'km':' (h:mm)')+' planned->used: carbs '+(p.carb||'?')+'->'+sc.carb+' g/hr, fluid '+(p.fluid||'?')+'->'+sc.fluid+' ml/hr, sodium '+(p.sodium||'?')+'->'+sc.sodium+' mg/L'); });
+    if(ls) L.push('    pacing: 1st half '+dbPace(ls.p1)+'/km, 2nd half '+dbPace(ls.p2)+'/km'+((d.imp.avgHr||ls.hrAvg)?', HR avg '+(d.imp.avgHr||ls.hrAvg):''));
+    if(d.report) L.push('    report: '+d.report.replace(/\s+/g,' '));
+    if(d.imp&&d.imp.note) L.push('    strava read: '+d.imp.note);
+  });
+  L.push('');
+  const js=items.map(d=>({name:d.name,date:d.date,km:d.km,vert:d.vert,finish:d.hrs?dbHM(d.hrs):'',goal:d.goal,rpe:d.rpe,cramp:d.cramp,gut:d.gut,fuel:(d.sections||[]).filter(sc=>sc.touched).map(sc=>({from:sc.from,to:sc.to,unit:sc.unit,plan:sc.plan,used:{carb:sc.carb,fluid:sc.fluid,sodium:sc.sodium}})),pace:d.imp?(function(){ const q=dbLapStats(d.imp.laps); return q?{firstHalfSecPerKm:Math.round(q.p1),secondHalfSecPerKm:Math.round(q.p2),hrAvg:d.imp.avgHr||q.hrAvg}:null; })():null,report:d.report,stravaNote:d.imp&&d.imp.note||''}));
+  return {lines:L,json:js};
+}
+
+const APP_BUILD='17 Nov r33';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
@@ -2800,6 +3096,7 @@ function buildCoachPack(want){
   ready.forEach(r=>L.push('- '+r.date+': '+(r.score!=null?r.score:'-')+(r.decision?' '+r.decision:'')+(r.hrv?' HRV '+r.hrv:'')+(r.rhr?' RHR '+r.rhr:'')+(r.sleep?' sleep '+r.sleep:'')+(r.legs?' legs '+r.legs+'/5':'')+(r.mood?' mood '+r.mood+'/5':'')));
   if(!ready.length) L.push('- none logged');
   L.push('');
+  const dbl=debriefLines(); dbl.lines.forEach(x=>L.push(x)); json.raceReviews=dbl.json;
   L.push('HOW TO REPLY (plan format the app can import)');
   L.push('Reply with ONE json block like this. Dates are YYYY-MM-DD. Only list the days you want to set; a day with an empty sessions list means rest. Logged sessions are never overwritten unless I tick them.');
   L.push('WEEKLY CHECK: also include last week as completed sessions straight from Strava so the app can correct anything I logged wrongly: add "done":true and "strava":"<activity id>" to each session with the exact Strava distance (km), climb (vert) and moving time ("h:mm:ss"). Match by day, distance and time. Strava is the source of truth.');
