@@ -2721,6 +2721,12 @@ function buildDebriefCard(it,onChange){
     i.addEventListener('change',()=>onSet(i.value===''?null:parseFloat(i.value)));
     w.appendChild(mkBtn('\u2212',()=>onSet(Math.max(0,(val||0)-step)))); w.appendChild(i); w.appendChild(mkBtn('+',()=>onSet((val||0)+step)));
     return w; };
+  const numT=(val,onSet)=>{
+    const i=el('input',{type:'text',inputmode:'numeric',placeholder:'-'}); i.value=(val==null?'':String(Math.round(val)));
+    i.style.cssText='width:100%;box-sizing:border-box;text-align:center;font-family:"Bebas Neue",cursive;font-size:20px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:6px 2px;';
+    i.addEventListener('focus',()=>{ try{ i.select(); }catch(e){} });
+    i.addEventListener('change',()=>{ const v=parseFloat(String(i.value).replace(/[^0-9.]/g,'')); onSet(isNaN(v)?null:v); });
+    return i; };
   const seg=(opts,sel,on)=>{ const r=div({style:{display:'flex',border:'1px solid var(--border)',borderRadius:'8px',overflow:'hidden'}});
     opts.forEach((o,i)=>{ const s2=o===sel; r.appendChild(btn({style:{flex:'1',textAlign:'center',fontSize:'10px',padding:'8px 0',border:'none',borderLeft:i?'1px solid var(--border)':'none',borderRadius:'0',background:s2?A:'var(--bg-input)',color:s2?'#0a0a16':'var(--text)',fontWeight:s2?'700':'400',whiteSpace:'nowrap'},onclick:()=>on(s2?null:o)},(s2?'\u2713 ':'')+o)); });
     return r; };
@@ -2769,7 +2775,7 @@ function buildDebriefCard(it,onChange){
         let delta=''; if(used!=null&&plan!=null){ const d=Math.round(used-plan); delta=d===0?'on plan':(d>0?'+'+d:'\u2212'+Math.abs(d)); }
         let rate=''; if(used!=null&&hrsS>0){ rate=f[0]==='sodium'?'':Math.round(used/hrsS)+(f[0]==='carb'?' g/hr':' ml/hr'); }
         g.appendChild(div({style:{textAlign:'center'}},[div({style:{fontSize:'8px',letterSpacing:'0.1em',color:'var(--text-mute)'}},f[1]),div({style:{fontSize:'10px',color:'var(--text-dim)',margin:'1px 0 4px'}},'plan '+(plan!=null?plan+f[2]:'--')),
-          num(used,f[3],v=>{ if(!sec.touched){ sec.carb=val('carb'); sec.fluid=val('fluid'); sec.sodium=val('sodium'); sec.touched=true; } sec[f[0]]=v; draw(); }),
+          numT(used,v=>{ if(!sec.touched){ sec.carb=val('carb'); sec.fluid=val('fluid'); sec.sodium=val('sodium'); sec.touched=true; } sec[f[0]]=v; draw(); }),
           div({style:{fontSize:'10px',marginTop:'3px',color:delta.charAt(0)==='\u2212'?OR:'var(--text-dim)'}},delta||'\u00a0'),
           div({style:{fontSize:'9px',color:'var(--text-mute)'}},rate||'\u00a0')]));
       });
@@ -2871,7 +2877,7 @@ function debriefLines(){
   return {lines:L,json:js};
 }
 
-const APP_BUILD='17 Nov r34';
+const APP_BUILD='17 Nov r35';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
