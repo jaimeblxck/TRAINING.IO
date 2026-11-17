@@ -2644,7 +2644,7 @@ function dbRequestText(it){
   L.push('Please pull this race from my Strava and reply with ONE json block in exactly the format below. Strava is the source of truth.');
   L.push('Race: '+(r.name||a.label||'Race')+' | '+it.ds+' | '+(a.actualKm||r.km||'?')+'km | '+(a.actualVert||r.vert||'?')+'m'+(a.sid?' | Strava activity id: '+a.sid:' | find it by date and distance'));
   if(r.targetTime) L.push('Goal time: '+r.targetTime);
-  if(pl) L.push('Fuel plan: '+pl.carb+' g/hr carbs, '+pl.fluid+' ml/hr fluid, '+pl.sodium+' mg/L sodium');
+  if(pl){ L.push('Fuel plan: '+pl.carb+' g/hr carbs, '+pl.fluid+' ml/hr fluid, '+pl.sodium+' mg/L sodium'); const hh=hrs||parseFloat(a.actualHrs)||0; if(hh>0) L.push('Whole-race fuel plan: about '+Math.round(pl.carb*hh)+' g carbs, '+Math.round(pl.fluid*hh)+' ml fluid, '+Math.round(pl.sodium*pl.fluid*hh/1000)+' mg sodium'); }
   L.push('');
   L.push('FORMAT (laps = one entry per kilometre in order, t = seconds, hr = average heart rate, d = metres if the last lap is short):');
   L.push('```json');
@@ -2698,16 +2698,19 @@ function buildDebriefCard(it,onChange){
   const pl=fuelPlanForHours(goalH||actHrs||3);
   const A='#b8ff4f', OR='#e8750a';
   const st={rpe:(saved.rpe!=null?saved.rpe:(parseInt(a.exec)||null)),cramp:saved.cramp||null,gut:saved.gut||null,report:saved.report||'',sections:null};
-  if(saved.sections&&saved.sections.length){ st.sections=saved.sections.map(x=>Object.assign({},x)); }
+  if(saved.sections&&saved.sections.length&&saved.sections[0].mode==='total'){ st.sections=saved.sections.map(x=>Object.assign({},x)); }
   else {
-    const has=parseFloat(a.fuelCarbsG)>0&&actHrs>0;
-    const fl=parseFloat(a.fuelFluidMl)||0;
+    const has=parseFloat(a.fuelCarbsG)>0;
     st.sections=[{unit:'km',from:'0',to:String(actKm||''),
-      carb:has?Math.round(parseFloat(a.fuelCarbsG)/actHrs):(pl?pl.carb:null),
-      fluid:has?Math.round(fl/actHrs):(pl?pl.fluid:null),
-      sodium:has&&fl>0?Math.round((parseFloat(a.fuelSodiumMg)||0)/(fl/1000)):(pl?pl.sodium:null),
+      carb:has?Math.round(parseFloat(a.fuelCarbsG)):null,
+      fluid:has?Math.round(parseFloat(a.fuelFluidMl)||0):null,
+      sodium:has?Math.round(parseFloat(a.fuelSodiumMg)||0):null,
       touched:!!has}];
   }
+  const secH=(sec)=>{ const tot=actHrs||goalH||0, blank=(sec.to===''||sec.to==null);
+    if(sec.unit==='km'){ const km=actKm||parseFloat(race&&race.km)||0, fr=parseFloat(sec.from)||0, to=blank?km:(parseFloat(sec.to)||0); return km>0?tot*Math.max(0,to-fr)/km:0; }
+    const fr=dbParseHM(sec.from)||0, to=blank?tot:(dbParseHM(sec.to)||0); return Math.max(0,to-fr); };
+  const planTot=(sec)=>{ if(!pl) return null; const h=secH(sec), f=pl.fluid*h; return {carb:Math.round(pl.carb*h),fluid:Math.round(f),sodium:Math.round(pl.sodium*f/1000),h:h}; };
   const card=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderLeft:'3px solid '+A,borderRadius:'12px',padding:'14px',marginBottom:'12px',position:'relative'}});
   const lab=t=>div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)',margin:'12px 0 6px'}},t);
   const mkBtn=(t,fn,extra)=>btn({style:Object.assign({width:'22px',height:'26px',borderRadius:'6px',border:'1px solid var(--border)',background:'var(--bg-card)',color:'var(--text)',fontSize:'13px',padding:'0'},extra||{}),onclick:fn},t);
@@ -2748,26 +2751,32 @@ function buildDebriefCard(it,onChange){
     box.appendChild(btn({class:'btn-ghost',style:{width:'100%',marginTop:'10px'},onclick:()=>showDebriefImport(it,()=>{ const x=getDebriefs()[key]||{}; saved.imp=x.imp; draw(); })},ls?'Re-import race data':'Import race data from Claude'));
     card.appendChild(box);
     // fuel
-    card.appendChild(lab('FUEL \u2014 PLANNED VS USED (PER HOUR)'));
+    card.appendChild(lab('FUEL \u2014 PLANNED VS USED (TOTAL PER SECTION)'));
     st.sections.forEach((sec,si)=>{
       const sc=div({style:{background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'10px',padding:'10px',marginBottom:'8px'}});
       const h=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'8px',flexWrap:'wrap'}});
       h.appendChild(span({style:{fontSize:'9px',letterSpacing:'0.12em',color:'var(--text-mute)'}},st.sections.length===1?'WHOLE RACE':'SECTION '+(si+1)));
-      const rb=(k)=>{ const i=el('input',{type:'text',inputmode:'decimal'}); i.value=sec[k]||''; i.style.cssText='width:46px;text-align:center;font-size:11px;padding:4px 2px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);'; i.addEventListener('change',()=>{ sec[k]=i.value; }); return i; };
+      const rb=(k)=>{ const i=el('input',{type:'text',inputmode:'decimal'}); i.value=sec[k]||''; i.style.cssText='width:46px;text-align:center;font-size:11px;padding:4px 2px;border-radius:6px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);'; i.addEventListener('change',()=>{ sec[k]=i.value; draw(); }); return i; };
       h.appendChild(rb('from')); h.appendChild(span({style:{fontSize:'10px',color:'var(--text-mute)'}},'to')); h.appendChild(rb('to'));
       h.appendChild(btn({style:{fontSize:'10px',padding:'4px 6px',borderRadius:'6px',border:'1px solid var(--border)',background:'var(--bg-card)',color:'var(--text-dim)'},onclick:()=>{ sec.unit=sec.unit==='km'?'time':'km'; draw(); }},(sec.unit==='km'?'km':'h:mm')+' \u25be'));
       if(st.sections.length>1) h.appendChild(btn({style:{marginLeft:'auto',background:'none',border:'none',fontSize:'16px',color:'var(--text-mute)',padding:'0 4px'},'aria-label':'Remove section',onclick:()=>{ st.sections.splice(si,1); draw(); }},'\u00d7'));
       sc.appendChild(h);
+      const pt=planTot(sec), hrsS=secH(sec);
+      const val=(k)=>sec.touched?sec[k]:(pt?pt[k]:null);
       const g=div({style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px'}});
-      [['carb','CARBS g',pl&&pl.carb,5,'g'],['fluid','FLUID ml',pl&&pl.fluid,25,'ml'],['sodium','SODIUM mg/L',pl&&pl.sodium,50,'']].forEach(f=>{
-        const used=sec[f[0]], plan=f[2];
-        let delta=''; if(used!=null&&plan){ const d=Math.round(used-plan); delta=d===0?'on plan':(d>0?'+'+d:'\u2212'+Math.abs(d)); }
-        g.appendChild(div({style:{textAlign:'center'}},[div({style:{fontSize:'8px',letterSpacing:'0.1em',color:'var(--text-mute)'}},f[1]),div({style:{fontSize:'10px',color:'var(--text-dim)',margin:'1px 0 4px'}},'plan '+(plan?plan+f[4]:'--')),num(used,f[3],v=>{ sec[f[0]]=v; sec.touched=true; draw(); }),div({style:{fontSize:'10px',marginTop:'3px',color:delta.charAt(0)==='\u2212'?OR:'var(--text-dim)'}},delta||'\u00a0')]));
+      [['carb','CARBS g','g',10],['fluid','FLUID ml','ml',50],['sodium','SODIUM mg','mg',100]].forEach(f=>{
+        const used=val(f[0]), plan=pt?pt[f[0]]:null;
+        let delta=''; if(used!=null&&plan!=null){ const d=Math.round(used-plan); delta=d===0?'on plan':(d>0?'+'+d:'\u2212'+Math.abs(d)); }
+        let rate=''; if(used!=null&&hrsS>0){ rate=f[0]==='sodium'?'':Math.round(used/hrsS)+(f[0]==='carb'?' g/hr':' ml/hr'); }
+        g.appendChild(div({style:{textAlign:'center'}},[div({style:{fontSize:'8px',letterSpacing:'0.1em',color:'var(--text-mute)'}},f[1]),div({style:{fontSize:'10px',color:'var(--text-dim)',margin:'1px 0 4px'}},'plan '+(plan!=null?plan+f[2]:'--')),
+          num(used,f[3],v=>{ if(!sec.touched){ sec.carb=val('carb'); sec.fluid=val('fluid'); sec.sodium=val('sodium'); sec.touched=true; } sec[f[0]]=v; draw(); }),
+          div({style:{fontSize:'10px',marginTop:'3px',color:delta.charAt(0)==='\u2212'?OR:'var(--text-dim)'}},delta||'\u00a0'),
+          div({style:{fontSize:'9px',color:'var(--text-mute)'}},rate||'\u00a0')]));
       });
       sc.appendChild(g); card.appendChild(sc);
     });
-    card.appendChild(btn({style:{width:'100%',border:'1px dashed var(--border)',borderRadius:'10px',padding:'9px',background:'transparent',fontSize:'11px',color:'var(--text-dim)'},onclick:()=>{ const last=st.sections[st.sections.length-1]; st.sections.push({unit:last.unit,from:last.to||'',to:'',carb:pl?pl.carb:null,fluid:pl?pl.fluid:null,sodium:pl?pl.sodium:null,touched:false}); draw(); }},'+ Add section'));
-    card.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'4px'}},'Starts at the plan. Change only what differed. Split by km or time, for example by crew stop or aid station.'));
+    card.appendChild(btn({style:{width:'100%',border:'1px dashed var(--border)',borderRadius:'10px',padding:'9px',background:'transparent',fontSize:'11px',color:'var(--text-dim)'},onclick:()=>{ const last=st.sections[st.sections.length-1]; st.sections.push({unit:last.unit,from:last.to||'',to:'',carb:null,fluid:null,sodium:null,touched:false}); draw(); }},'+ Add section'));
+    card.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'4px'}},'Totals for each section, starting at the plan. Change only what differed. Split by km or time, for example by crew stop or aid station.'));
     // RPE
     card.appendChild(lab('OVERALL RPE'));
     const rr=div({style:{display:'grid',gridTemplateColumns:'repeat(10,1fr)',gap:'3px'}});
@@ -2794,19 +2803,17 @@ function buildDebriefCard(it,onChange){
   };
   const save=()=>{
     const x=getDebriefs(), prev=x[key]||{};
-    const secs=st.sections.map(sec=>({unit:sec.unit,from:sec.from,to:sec.to,carb:sec.touched?sec.carb:null,fluid:sec.touched?sec.fluid:null,sodium:sec.touched?sec.sodium:null,plan:pl?{carb:pl.carb,fluid:pl.fluid,sodium:pl.sodium}:null,touched:!!sec.touched}));
+    const secs=st.sections.map(sec=>{ const pt=planTot(sec), u=!!sec.touched; return {mode:'total',unit:sec.unit,from:sec.from,to:sec.to,hrs:Math.round(secH(sec)*1000)/1000,carb:u?sec.carb:null,fluid:u?sec.fluid:null,sodium:u?sec.sodium:null,plan:pt?{carb:pt.carb,fluid:pt.fluid,sodium:pt.sodium}:null,touched:u}; });
     x[key]=Object.assign(prev,{saved:true,skipped:false,hidden:false,ts:Date.now(),name:(race&&race.name)||a.label||'Race',date:it.ds,km:actKm||null,vert:parseFloat(a.actualVert)||null,hrs:actHrs||null,goal:race&&race.targetTime||'',rpe:st.rpe,cramp:st.cramp,gut:st.gut,report:st.report.trim(),sections:secs});
     setDebriefs(x);
     // write back to the activity log: RPE, and fuel totals when entered
     const acts=getDayActivities(it.w,it.dI), act=acts[it.aI];
     if(act){
       if(st.rpe!=null) act.exec=String(st.rpe);
-      if(actHrs>0&&secs.some(sc=>sc.touched&&sc.carb!=null)){
-        let c=0,f=0,sod=0;
-        secs.forEach(sc=>{ if(!sc.touched) return;
-          let h=0; if(sc.unit==='km'){ const fr=parseFloat(sc.from)||0, to=parseFloat(sc.to)||0; h=actKm>0?actHrs*Math.max(0,to-fr)/actKm:0; } else { h=Math.max(0,(dbParseHM(sc.to)||0)-(dbParseHM(sc.from)||0)); }
-          const fl=(sc.fluid||0)*h; c+=(sc.carb||0)*h; f+=fl; sod+=(sc.sodium||0)*fl/1000; });
-        if(c>0){ act.fuelCarbsG=String(Math.round(c)); act.fuelFluidMl=String(Math.round(f)); act.fuelSodiumMg=String(Math.round(sod)); }
+      if(secs.length&&secs.every(sc=>sc.touched&&sc.carb!=null)){
+        act.fuelCarbsG=String(secs.reduce((q,sc)=>q+(sc.carb||0),0));
+        act.fuelFluidMl=String(secs.reduce((q,sc)=>q+(sc.fluid||0),0));
+        act.fuelSodiumMg=String(secs.reduce((q,sc)=>q+(sc.sodium||0),0));
       }
       saveDayActivities(it.w,it.dI,acts);
     }
@@ -2853,18 +2860,18 @@ function debriefLines(){
   items.forEach(d=>{
     const ls=d.imp?dbLapStats(d.imp.laps):null;
     L.push('- '+d.date+' '+d.name+(d.km?' '+Math.round(d.km*10)/10+'km':'')+(d.vert?' '+d.vert+'m':'')+': finish '+(d.hrs?dbHM(d.hrs):'--')+(d.goal?' vs goal '+d.goal:'')+(d.rpe?' | RPE '+d.rpe:'')+(d.cramp?' | cramping '+d.cramp.toLowerCase():'')+(d.gut?' | gut '+d.gut.toLowerCase():''));
-    (d.sections||[]).forEach(sc=>{ if(!sc.touched) return; const p=sc.plan||{};
-      L.push('    fuel '+sc.from+'-'+sc.to+(sc.unit==='km'?'km':' (h:mm)')+' planned->used: carbs '+(p.carb||'?')+'->'+sc.carb+' g/hr, fluid '+(p.fluid||'?')+'->'+sc.fluid+' ml/hr, sodium '+(p.sodium||'?')+'->'+sc.sodium+' mg/L'); });
+    (d.sections||[]).forEach(sc=>{ if(!sc.touched) return; const p=sc.plan||{}, tot=sc.mode==='total';
+      L.push('    fuel '+sc.from+'-'+(sc.to||'end')+(sc.unit==='km'?'km':' (h:mm)')+' planned->used'+(tot?' (totals)':' (per hour)')+': carbs '+(p.carb==null?'?':p.carb)+'->'+sc.carb+(tot?' g':' g/hr')+', fluid '+(p.fluid==null?'?':p.fluid)+'->'+sc.fluid+(tot?' ml':' ml/hr')+', sodium '+(p.sodium==null?'?':p.sodium)+'->'+sc.sodium+(tot?' mg':' mg/L')+(tot&&sc.hrs>0?' ('+Math.round(sc.carb/sc.hrs)+' g/hr carbs, '+Math.round(sc.fluid/sc.hrs)+' ml/hr fluid over '+dbHM(sc.hrs)+')':'')); });
     if(ls) L.push('    pacing: 1st half '+dbPace(ls.p1)+'/km, 2nd half '+dbPace(ls.p2)+'/km'+((d.imp.avgHr||ls.hrAvg)?', HR avg '+(d.imp.avgHr||ls.hrAvg):''));
     if(d.report) L.push('    report: '+d.report.replace(/\s+/g,' '));
     if(d.imp&&d.imp.note) L.push('    strava read: '+d.imp.note);
   });
   L.push('');
-  const js=items.map(d=>({name:d.name,date:d.date,km:d.km,vert:d.vert,finish:d.hrs?dbHM(d.hrs):'',goal:d.goal,rpe:d.rpe,cramp:d.cramp,gut:d.gut,fuel:(d.sections||[]).filter(sc=>sc.touched).map(sc=>({from:sc.from,to:sc.to,unit:sc.unit,plan:sc.plan,used:{carb:sc.carb,fluid:sc.fluid,sodium:sc.sodium}})),pace:d.imp?(function(){ const q=dbLapStats(d.imp.laps); return q?{firstHalfSecPerKm:Math.round(q.p1),secondHalfSecPerKm:Math.round(q.p2),hrAvg:d.imp.avgHr||q.hrAvg}:null; })():null,report:d.report,stravaNote:d.imp&&d.imp.note||''}));
+  const js=items.map(d=>({name:d.name,date:d.date,km:d.km,vert:d.vert,finish:d.hrs?dbHM(d.hrs):'',goal:d.goal,rpe:d.rpe,cramp:d.cramp,gut:d.gut,fuel:(d.sections||[]).filter(sc=>sc.touched).map(sc=>({from:sc.from,to:sc.to,unit:sc.unit,hours:sc.hrs,mode:sc.mode||'rate',plan:sc.plan,used:{carb:sc.carb,fluid:sc.fluid,sodium:sc.sodium}})),pace:d.imp?(function(){ const q=dbLapStats(d.imp.laps); return q?{firstHalfSecPerKm:Math.round(q.p1),secondHalfSecPerKm:Math.round(q.p2),hrAvg:d.imp.avgHr||q.hrAvg}:null; })():null,report:d.report,stravaNote:d.imp&&d.imp.note||''}));
   return {lines:L,json:js};
 }
 
-const APP_BUILD='17 Nov r33';
+const APP_BUILD='17 Nov r34';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
