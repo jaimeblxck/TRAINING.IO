@@ -2879,7 +2879,7 @@ function debriefLines(){
   return {lines:L,json:js};
 }
 
-const APP_BUILD='19 Nov r37';
+const APP_BUILD='19 Nov r38';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
@@ -3865,6 +3865,152 @@ function buildWeekCard(){
 }
 
 // ---- SEASON TAB ----
+function buildRacesCard(onAfter){
+  let cfgForm={...CFG};
+  const racesCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
+  racesCard.appendChild(div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)',marginBottom:'2px'}},'RACES'));
+
+  if(!cfgForm.races){
+    cfgForm.races=validDateStr(cfgForm.raceDateStr)?[{name:cfgForm.raceName||'Race',date:cfgForm.raceDateStr,dist:''}]:[];
+  }
+
+  function saveRaces(){
+    const validRaces=(cfgForm.races||[]).filter(r=>r.name&&validDateStr(r.date));
+    if(validRaces.length){
+      const lastRace=validRaces[validRaces.length-1];
+      CFG.raceDateStr=lastRace.date; CFG.raceName=lastRace.name;
+    }
+    CFG.races=cfgForm.races; S.set(SK.cfg,CFG);
+    syncTargets();
+    applyRaceWeekDefaults();
+    if(onAfter) onAfter();
+  }
+
+  const racesContainer=div({});
+  let openRace=null;
+  const isBlankRace=r=>!!r&&!r.name&&!r.date;
+  function renderRacesEditor(){
+    racesContainer.innerHTML='';
+    if(!cfgForm.races) cfgForm.races=[];
+    const td0=today();
+    const order=cfgForm.races.map((r,i)=>({r,i})).sort((a,b)=>((a.r.date||'9999')>=td0?0:1)-((b.r.date||'9999')>=td0?0:1)||(a.r.date||'9999').localeCompare(b.r.date||'9999'));
+    if(!order.length) racesContainer.appendChild(div({style:{fontSize:'11px',color:'var(--text-dim)',padding:'6px 0'}},'No races yet.'));
+    order.forEach(({r,i})=>{
+      const past=!!r.date&&r.date<td0; const pc=prioColor(r.prio||guessPrio(r)); const isOpen=openRace===i;
+      const toggle=()=>{
+        let target=isOpen?null:i;
+        if(openRace!==null&&isBlankRace(cfgForm.races[openRace])){ cfgForm.races.splice(openRace,1); if(target!==null&&target>openRace) target--; saveRaces(); }
+        openRace=target; renderRacesEditor();
+      };
+      const row=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)',opacity:past?'0.65':'1',cursor:'pointer'},onclick:toggle});
+      const lft=div({style:{display:'flex',alignItems:'center',gap:'8px',minWidth:0}});
+      lft.appendChild(span({style:{fontSize:'9px',letterSpacing:'0.06em',padding:'4px 8px',borderRadius:'6px',border:'1px solid '+pc,color:pc,background:pc+'14',flexShrink:'0'}},r.prio||guessPrio(r)));
+      const inf=div({style:{minWidth:0}});
+      inf.appendChild(div({style:{fontSize:'12px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},r.name||'New race'));
+      inf.appendChild(div({style:{fontSize:'9.5px',color:'var(--text-mute)',marginTop:'2px'}},r.date&&validDateStr(r.date)?fmtDate(new Date(r.date+'T12:00:00'))+(past?' \u00b7 finished':''):'No date yet'));
+      lft.appendChild(inf); row.appendChild(lft);
+      const rgt=div({style:{textAlign:'right',flexShrink:'0',marginLeft:'8px'}});
+      rgt.appendChild(div({style:{fontSize:'11px',color:past?'var(--text-mute)':pc}},r.date&&validDateStr(r.date)?(past?weeksBetween(r.date,td0)+' wks ago':daysTo(r.date)+'d'):'--'));
+      rgt.appendChild(div({style:{fontSize:'8px',letterSpacing:'0.1em',color:'var(--text-mute)',marginTop:'2px'}},isOpen?'CLOSE':'EDIT'));
+      row.appendChild(rgt);
+      racesContainer.appendChild(row);
+      if(!isOpen) return;
+      const raceCard=div({style:{padding:'10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'7px',marginBottom:'8px'}});
+      // Name
+      const nameI=inp({class:'inp',type:'text',value:r.name,placeholder:'Race name'});
+      nameI.addEventListener('input',()=>{cfgForm.races[i].name=nameI.value; saveRaces();});
+      const nameWrap=div({style:{marginBottom:'8px'}});
+      nameWrap.appendChild(lbl('Race name')); nameWrap.appendChild(nameI);
+      raceCard.appendChild(nameWrap);
+      // Priority A / B / C
+      const prioRow=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'8px'}});
+      prioRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',marginRight:'4px'}},'PRIORITY'));
+      ['A','B','C'].forEach(pv=>{
+        const on=(r.prio||guessPrio(r))===pv, c=prioColor(pv);
+        prioRow.appendChild(btn({style:{padding:'5px 14px',borderRadius:'6px',fontSize:'11px',fontWeight:on?'700':'400',background:on?c+'26':'var(--bg-input)',border:'1px solid '+(on?c:'var(--border)'),color:on?c:'var(--text-mute)'},
+          onclick:()=>{cfgForm.races[i].prio=pv; saveRaces(); renderRacesEditor();}},pv));
+      });
+      prioRow.appendChild(span({style:{fontSize:'8.5px',color:'var(--text-mute)',marginLeft:'4px'}},'A = goal race'));
+      raceCard.appendChild(prioRow);
+      // Date + distance (km) + delete
+      const row2=div({style:{display:'flex',gap:'8px',alignItems:'flex-end',marginBottom:'8px'}});
+      const dateWrap=div({style:{flex:'1',minWidth:0}});
+      dateWrap.appendChild(lbl('Date'));
+      const dateI=inp({class:'inp',type:'date',value:r.date});
+      dateI.addEventListener('input',()=>{cfgForm.races[i].date=dateI.value; saveRaces();});
+      dateWrap.appendChild(dateI);
+      row2.appendChild(dateWrap);
+      const distWrap=div({style:{width:'110px',flexShrink:'0'}});
+      distWrap.appendChild(lbl('Distance (km)'));
+      const distInitVal=(r.km!==undefined&&r.km!=='')?r.km:(parseFloat(r.dist)||'');
+      const distI=inp({class:'inp',type:'number',value:distInitVal,placeholder:'optional, e.g. 50'});
+      distI.style.fontSize='12px';
+      distI.addEventListener('input',()=>{
+        cfgForm.races[i].km=distI.value;
+        cfgForm.races[i].dist=distI.value?distI.value+'km':'';
+        saveRaces();
+      });
+      distWrap.appendChild(distI);
+      row2.appendChild(distWrap);
+      const delBtn=btn({style:{padding:'6px 9px',borderRadius:'5px',background:'#1a0a0a',border:'1px solid #2a1a1a',color:'#ff6b6b',fontSize:'13px',flexShrink:'0',alignSelf:'flex-end'},
+        onclick:()=>{
+          // Inline confirm -- replaces native confirm() which is blocked in some contexts
+          const existing=raceCard.querySelector('.race-del-confirm');
+          if(existing){existing.remove();return;}
+          const confirmRow=div({class:'race-del-confirm',style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'8px',padding:'8px',background:'#1a0a0a',borderRadius:'5px',border:'1px solid #2a1a1a'}});
+          confirmRow.appendChild(span({style:{fontSize:'10px',color:'#ff6b6b',flex:'1'}},'Remove '+(r.name||'this race')+'?'));
+          confirmRow.appendChild(btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',background:'#ff6b6b',border:'none',color:'#000',fontWeight:'700'},
+            onclick:()=>{openRace=null; cfgForm.races.splice(i,1); saveRaces(); renderRacesEditor();}},'Yes, remove'));
+          confirmRow.appendChild(btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
+            onclick:()=>confirmRow.remove()},'Cancel'));
+          raceCard.appendChild(confirmRow);
+        }},'\u00d7');
+      row2.appendChild(delBtn);
+      raceCard.appendChild(row2);
+      // Vert + target time -- optional fields
+      const row3=div({style:{display:'flex',gap:'8px',alignItems:'flex-end'}});
+      const vertWrap=div({style:{flex:'1',minWidth:0}});
+      vertWrap.appendChild(lbl('Vert (m)'));
+      const vertI=inp({class:'inp',type:'number',value:r.vert||'',placeholder:'optional, e.g. 2500'});
+      vertI.style.fontSize='12px';
+      vertI.addEventListener('input',()=>{cfgForm.races[i].vert=vertI.value; saveRaces();});
+      vertWrap.appendChild(vertI);
+      row3.appendChild(vertWrap);
+      const ttWrap=div({style:{flex:'1',minWidth:0}});
+      ttWrap.appendChild(lbl('Target finish (h:mm)'));
+      const ttI=inp({class:'inp',type:'text',value:r.targetTime||'',placeholder:'e.g. 26:00'});
+      ttI.style.fontSize='12px';
+      ttI.addEventListener('input',()=>{cfgForm.races[i].targetTime=ttI.value; saveRaces();});
+      ttWrap.appendChild(ttI);
+      row3.appendChild(ttWrap);
+      raceCard.appendChild(row3);
+      raceCard.appendChild(div({style:{fontSize:'8px',color:'#444',marginTop:'5px',lineHeight:'1.5'}},'Distance and Vert are both optional -- fill in both to show this race\'s vert ratio on the Trends page. Target time is used for the fuel race plan.'));
+      racesContainer.appendChild(raceCard);
+    });
+    // Add race button
+    racesContainer.appendChild(btn({style:{padding:'8px 12px',borderRadius:'5px',fontSize:'10px',background:'var(--bg-input)',border:'1px dashed var(--border-btn)',color:'var(--text-mute)',width:'100%'},
+      onclick:()=>{
+        if(!cfgForm.races) cfgForm.races=[];
+        if(openRace!==null&&isBlankRace(cfgForm.races[openRace])) cfgForm.races.splice(openRace,1);
+        cfgForm.races.push({name:'',date:'',dist:'',km:'',vert:'',targetTime:'',prio:(getRaces().some(x=>x.date>=today()&&x.prio==='A')?'B':'A')});
+        openRace=cfgForm.races.length-1;
+        saveRaces();
+        renderRacesEditor();
+      }},'+ Add race'));
+  }
+  renderRacesEditor();
+  racesCard.appendChild(racesContainer);
+  racesCard.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',lineHeight:'1.6'}},'Changes save as you type. Tap a race to edit it. A races drive the countdown and taper; B races only get a race week.'));
+  const savRaceBtn=btn({class:'btn',onclick:()=>{
+    if(openRace!==null&&isBlankRace(cfgForm.races[openRace])) cfgForm.races.splice(openRace,1);
+    openRace=null; saveRaces(); renderRacesEditor();
+    savRaceBtn.textContent='SAVED'; savRaceBtn.style.color='#00ff87'; savRaceBtn.style.borderColor='#00ff87';
+    setTimeout(()=>render(),500);
+  }},'Save races');
+  racesCard.appendChild(savRaceBtn);
+  return racesCard;
+}
+
 function renderSeason(){
   const wrap=div({});
   const nextA=getNextARace(), lastA=getLastARace();
@@ -3872,36 +4018,8 @@ function renderSeason(){
   const cw=curWeek()-1;
   wrap.appendChild(buildBlockProgress());
 
-  // races
-  const rc=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'12px',padding:'14px',marginBottom:'12px'}});
-  rc.appendChild(div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)',marginBottom:'6px'}},'RACES'));
-  const races=getRaces().slice().sort((a,b)=>(a.date>=td?0:1)-(b.date>=td?0:1)||a.date.localeCompare(b.date));
-  if(!races.length) rc.appendChild(div({style:{fontSize:'11px',color:'var(--text-dim)',padding:'6px 0'}},'No races yet.'));
-  races.forEach((r,i)=>{
-    const past=r.date<td;
-    const row=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:i<races.length-1?'1px solid var(--border)':'none',opacity:past?'0.65':'1'}});
-    const l=div({style:{display:'flex',alignItems:'center',gap:'8px',minWidth:0}});
-    const c=prioColor(r.prio);
-    l.appendChild(btn({style:{fontSize:'9px',letterSpacing:'0.06em',padding:'4px 8px',borderRadius:'6px',border:'1px solid '+c,color:c,background:c+'14',flexShrink:'0'},
-      onclick:()=>{
-        const idx=(CFG.races||[]).findIndex(x=>x.name===r.name&&x.date===r.date);
-        if(idx<0) return;
-        CFG.races[idx].prio=({A:'B',B:'C',C:'A'})[r.prio]||'A';
-        S.set(SK.cfg,CFG); applyRaceWeekDefaults(); render();
-      }},r.prio));
-    const info=div({style:{minWidth:0}});
-    info.appendChild(div({style:{fontSize:'12px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},r.name));
-    const rule=r.prio==='A'?'taper wk before \u00b7 race wk':r.prio==='B'?'race week only':'no taper';
-    info.appendChild(div({style:{fontSize:'9.5px',color:'var(--text-mute)',marginTop:'2px'}},fmtDate(new Date(r.date+'T12:00:00'))+(past?' \u00b7 finished':' \u00b7 '+rule)));
-    l.appendChild(info);
-    row.appendChild(l);
-    row.appendChild(span({style:{fontSize:'11px',color:past?'var(--text-mute)':c,flexShrink:'0',marginLeft:'8px'}},past?weeksBetween(r.date,td)+' wks ago':daysTo(r.date)+'d'));
-    rc.appendChild(row);
-  });
-  rc.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',margin:'8px 0 8px'}},'Tap A / B / C to change priority. A races drive the countdown and taper.'));
-  rc.appendChild(btn({style:{width:'100%',padding:'9px',borderRadius:'8px',background:'transparent',border:'1px dashed var(--border-btn)',color:'var(--text-dim)',fontSize:'10px',letterSpacing:'0.06em'},
-    onclick:()=>{ACTIVE_TAB='settings';render();}},'+ ADD RACE'));
-  wrap.appendChild(rc);
+  // races (editable here)
+  wrap.appendChild(buildRacesCard());
 
   // totals to race
   if(nextA){
@@ -4281,6 +4399,91 @@ function computeATLCTL(days){
 // ============================================================
 // TREND TAB
 // ============================================================
+
+// ============================================================
+// PAST READINGS (backfill HRV / RHR)
+// ============================================================
+function prParseDate(txt){
+  txt=String(txt||'').trim();
+  let m=txt.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return {ds:m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2),len:m[0].length};
+  const MO=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  m=txt.match(/^(\d{1,2})[\s\-\/]+([A-Za-z]{3})[a-z]*\.?(?:[\s\-\/,]+(\d{4}))?/);
+  let d,mo,y;
+  if(m){ d=+m[1]; mo=MO.indexOf(m[2].toLowerCase()); y=m[3]?+m[3]:null; if(mo<0) return null; }
+  else { m=txt.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/); if(!m) return null; d=+m[1]; mo=+m[2]-1; y=m[3]?(+m[3]<100?2000+(+m[3]):+m[3]):null; }
+  if(!(d>=1&&d<=31&&mo>=0&&mo<=11)) return null;
+  const now=new Date();
+  if(!y){ y=now.getFullYear(); const t=new Date(y,mo,d,12); if(t>now) y--; }
+  return {ds:y+'-'+('0'+(mo+1)).slice(-2)+'-'+('0'+d).slice(-2),len:m[0].length};
+}
+function prParseLines(txt){
+  const out=[], bad=[];
+  String(txt||'').split(/\r?\n/).forEach(line=>{
+    line=line.trim(); if(!line) return;
+    const pd=prParseDate(line);
+    if(!pd){ bad.push(line); return; }
+    const nums=(line.slice(pd.len).match(/-?\d+(?:\.\d+)?/g)||[]).map(Number);
+    if(!nums.length){ bad.push(line); return; }
+    out.push({ds:pd.ds,hrv:nums[0],rhr:nums.length>1?nums[1]:null});
+  });
+  return {rows:out,bad:bad};
+}
+function showPastReadings(onDone){
+  coachSheet('Past readings',(sheet,close)=>{
+    sheet.appendChild(div({style:{fontSize:'11px',color:'var(--text-dim)',lineHeight:'1.6',marginBottom:'10px'}},'Type HRV and resting HR for any past day, or paste a list below. Blank boxes are left alone.'));
+    const vals={}; const days=[];
+    const add=(ds)=>{ if(days.indexOf(ds)<0) days.push(ds); if(!vals[ds]){ const e=LOG[ds]||{}; vals[ds]={hrv:e.hrv==null?'':String(e.hrv),rhr:e.rhr==null?'':String(e.rhr),dirty:false}; } };
+    const now=new Date();
+    for(let k=0;k<60;k++){ const d=new Date(now); d.setDate(now.getDate()-k); add(localDateStr(d)); }
+    const list=div({style:{maxHeight:'38vh',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',marginBottom:'10px'}});
+    const mk=(ds,k)=>{ const i=el('input',{type:'text',inputmode:'numeric',placeholder:'-'}); i.value=vals[ds][k];
+      i.style.cssText='width:56px;text-align:center;font-size:13px;padding:5px 2px;border-radius:6px;border:1px solid var(--border);background:var(--bg-input);color:var(--text);';
+      i.addEventListener('input',()=>{ vals[ds][k]=i.value; vals[ds].dirty=true; }); return i; };
+    function draw(){
+      list.innerHTML='';
+      const hd=div({style:{display:'flex',alignItems:'center',gap:'8px',padding:'6px 10px',position:'sticky',top:'0',background:'var(--bg-card)',borderBottom:'1px solid var(--border)',fontSize:'9px',letterSpacing:'0.1em',color:'var(--text-mute)'}});
+      hd.appendChild(span({style:{flex:'1'}},'DAY')); hd.appendChild(span({style:{width:'56px',textAlign:'center'}},'HRV')); hd.appendChild(span({style:{width:'56px',textAlign:'center'}},'RHR'));
+      list.appendChild(hd);
+      days.slice().sort().reverse().forEach(ds=>{
+        const row=div({style:{display:'flex',alignItems:'center',gap:'8px',padding:'5px 10px',borderBottom:'1px solid var(--border-subtle)'}});
+        const dd=new Date(ds+'T12:00:00');
+        row.appendChild(span({style:{flex:'1',fontSize:'11px',color:ds===today()?'var(--text)':'var(--text-dim)'}},['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dd.getDay()]+' '+fmtDate(dd)));
+        row.appendChild(mk(ds,'hrv')); row.appendChild(mk(ds,'rhr'));
+        list.appendChild(row);
+      });
+    }
+    draw(); sheet.appendChild(list);
+    sheet.appendChild(lbl('Or paste a list (one day per line: date, HRV, RHR)'));
+    const ta=el('textarea',{class:'inp',rows:'4',placeholder:'2026-10-05 54 47\n6 Oct 50 49\n7/10 46 52'}); sheet.appendChild(ta);
+    const msg=div({style:{fontSize:'10px',color:'var(--text-dim)',margin:'6px 0',minHeight:'14px'}});
+    sheet.appendChild(btn({class:'btn',style:{marginTop:'6px'},onclick:()=>{
+      const r=prParseLines(ta.value);
+      r.rows.forEach(x=>{ add(x.ds); vals[x.ds].hrv=String(x.hrv); if(x.rhr!=null) vals[x.ds].rhr=String(x.rhr); vals[x.ds].dirty=true; });
+      draw(); ta.value='';
+      msg.style.color=r.bad.length?'#ff9f43':'#00c875';
+      msg.textContent='Filled '+r.rows.length+' day'+(r.rows.length===1?'':'s')+(r.bad.length?'; could not read '+r.bad.length+' line'+(r.bad.length===1?'':'s')+' ('+r.bad[0].slice(0,30)+')':'')+'. Check the list, then Save.';
+    }},'Fill list from paste'));
+    sheet.appendChild(msg);
+    const saveB=btn({class:'btn',style:{marginTop:'6px',width:'100%'},onclick:()=>{
+      let n=0;
+      Object.keys(vals).forEach(ds=>{
+        const v=vals[ds]; if(!v.dirty) return;
+        const h=String(v.hrv).replace(/[^0-9.]/g,''), r=String(v.rhr).replace(/[^0-9.]/g,'');
+        if(h===''&&r==='') return;
+        const e=LOG[ds]||{sleep:'',legs:'',mood:'',rpe:'',note:''};
+        if(h!=='') e.hrv=h; if(r!=='') e.rhr=r;
+        if(!e.ts) e.ts=Date.now(); e.backfilled=e.backfilled||!LOG[ds];
+        LOG[ds]=e; n++;
+      });
+      S.set(SK.log,LOG);
+      close(); if(onDone) onDone(n);
+    }},'Save readings');
+    sheet.appendChild(saveB);
+    sheet.appendChild(btn({class:'btn-ghost',style:{marginTop:'6px',width:'100%'},onclick:close},'Cancel'));
+  });
+}
+
 function renderTrend(){
   const wrap=div({});
   const DC={'GO HARD':'#00ff87','AS PLANNED':'#b8ff4f','MODIFY':'#ffd166','BACK OFF':'#ff6b6b'};
@@ -5357,6 +5560,7 @@ function renderTrend(){
   wrap.appendChild(fuelAvgCard);
 
   wrap.appendChild(div({class:'section-title'},'Recent Readings'));
+  wrap.appendChild(btn({class:'btn-ghost',style:{width:'100%',marginBottom:'10px',border:'1px dashed var(--border-btn)',fontSize:'11px'},onclick:()=>showPastReadings(()=>render())},'+ Add or edit past HRV / RHR'));
   const entries=Object.entries(LOG).sort((a,b)=>a[0].localeCompare(b[0])).slice(-28);
   const getPts=key=>entries.filter(([d,e])=>e[key]!==undefined&&e[key]!==''&&!isNaN(parseFloat(e[key]))).map(([d,e])=>({d,t:new Date(d+'T12:00:00').getTime(),v:parseFloat(e[key])}));
   const HC='#2f86e6', RC='#e8750a';
@@ -5531,149 +5735,6 @@ function renderSettings(){
 
   cards.cfg=cfgCard;
 
-  // -- Section 2: Races (auto-save on change, confirm on delete) -
-  const racesCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
-  racesCard.appendChild(div({class:'section-title'},'Races'));
-
-  if(!cfgForm.races){
-    cfgForm.races=validDateStr(cfgForm.raceDateStr)?[{name:cfgForm.raceName||'Race',date:cfgForm.raceDateStr,dist:''}]:[];
-  }
-
-  function saveRaces(){
-    const validRaces=(cfgForm.races||[]).filter(r=>r.name&&validDateStr(r.date));
-    if(validRaces.length){
-      const lastRace=validRaces[validRaces.length-1];
-      CFG.raceDateStr=lastRace.date; CFG.raceName=lastRace.name;
-    }
-    CFG.races=cfgForm.races; S.set(SK.cfg,CFG);
-    syncTargets();
-    applyRaceWeekDefaults();
-    updateWeeksPreview();
-  }
-
-  const racesContainer=div({});
-  let openRace=null;
-  const isBlankRace=r=>!!r&&!r.name&&!r.date;
-  function renderRacesEditor(){
-    racesContainer.innerHTML='';
-    if(!cfgForm.races) cfgForm.races=[];
-    const td0=today();
-    const order=cfgForm.races.map((r,i)=>({r,i})).sort((a,b)=>((a.r.date||'9999')>=td0?0:1)-((b.r.date||'9999')>=td0?0:1)||(a.r.date||'9999').localeCompare(b.r.date||'9999'));
-    if(!order.length) racesContainer.appendChild(div({style:{fontSize:'11px',color:'var(--text-dim)',padding:'6px 0'}},'No races yet.'));
-    order.forEach(({r,i})=>{
-      const past=!!r.date&&r.date<td0; const pc=prioColor(r.prio||guessPrio(r)); const isOpen=openRace===i;
-      const toggle=()=>{
-        let target=isOpen?null:i;
-        if(openRace!==null&&isBlankRace(cfgForm.races[openRace])){ cfgForm.races.splice(openRace,1); if(target!==null&&target>openRace) target--; saveRaces(); }
-        openRace=target; renderRacesEditor();
-      };
-      const row=div({style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--border)',opacity:past?'0.65':'1',cursor:'pointer'},onclick:toggle});
-      const lft=div({style:{display:'flex',alignItems:'center',gap:'8px',minWidth:0}});
-      lft.appendChild(span({style:{fontSize:'9px',letterSpacing:'0.06em',padding:'4px 8px',borderRadius:'6px',border:'1px solid '+pc,color:pc,background:pc+'14',flexShrink:'0'}},r.prio||guessPrio(r)));
-      const inf=div({style:{minWidth:0}});
-      inf.appendChild(div({style:{fontSize:'12px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},r.name||'New race'));
-      inf.appendChild(div({style:{fontSize:'9.5px',color:'var(--text-mute)',marginTop:'2px'}},r.date&&validDateStr(r.date)?fmtDate(new Date(r.date+'T12:00:00'))+(past?' \u00b7 finished':''):'No date yet'));
-      lft.appendChild(inf); row.appendChild(lft);
-      const rgt=div({style:{textAlign:'right',flexShrink:'0',marginLeft:'8px'}});
-      rgt.appendChild(div({style:{fontSize:'11px',color:past?'var(--text-mute)':pc}},r.date&&validDateStr(r.date)?(past?weeksBetween(r.date,td0)+' wks ago':daysTo(r.date)+'d'):'--'));
-      rgt.appendChild(div({style:{fontSize:'8px',letterSpacing:'0.1em',color:'var(--text-mute)',marginTop:'2px'}},isOpen?'CLOSE':'EDIT'));
-      row.appendChild(rgt);
-      racesContainer.appendChild(row);
-      if(!isOpen) return;
-      const raceCard=div({style:{padding:'10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'7px',marginBottom:'8px'}});
-      // Name
-      const nameI=inp({class:'inp',type:'text',value:r.name,placeholder:'Race name'});
-      nameI.addEventListener('input',()=>{cfgForm.races[i].name=nameI.value; saveRaces();});
-      const nameWrap=div({style:{marginBottom:'8px'}});
-      nameWrap.appendChild(lbl('Race name')); nameWrap.appendChild(nameI);
-      raceCard.appendChild(nameWrap);
-      // Priority A / B / C
-      const prioRow=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'8px'}});
-      prioRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',marginRight:'4px'}},'PRIORITY'));
-      ['A','B','C'].forEach(pv=>{
-        const on=(r.prio||guessPrio(r))===pv, c=prioColor(pv);
-        prioRow.appendChild(btn({style:{padding:'5px 14px',borderRadius:'6px',fontSize:'11px',fontWeight:on?'700':'400',background:on?c+'26':'var(--bg-input)',border:'1px solid '+(on?c:'var(--border)'),color:on?c:'var(--text-mute)'},
-          onclick:()=>{cfgForm.races[i].prio=pv; saveRaces(); renderRacesEditor();}},pv));
-      });
-      prioRow.appendChild(span({style:{fontSize:'8.5px',color:'var(--text-mute)',marginLeft:'4px'}},'A = goal race'));
-      raceCard.appendChild(prioRow);
-      // Date + distance (km) + delete
-      const row2=div({style:{display:'flex',gap:'8px',alignItems:'flex-end',marginBottom:'8px'}});
-      const dateWrap=div({style:{flex:'1',minWidth:0}});
-      dateWrap.appendChild(lbl('Date'));
-      const dateI=inp({class:'inp',type:'date',value:r.date});
-      dateI.addEventListener('input',()=>{cfgForm.races[i].date=dateI.value; saveRaces();});
-      dateWrap.appendChild(dateI);
-      row2.appendChild(dateWrap);
-      const distWrap=div({style:{width:'110px',flexShrink:'0'}});
-      distWrap.appendChild(lbl('Distance (km)'));
-      const distInitVal=(r.km!==undefined&&r.km!=='')?r.km:(parseFloat(r.dist)||'');
-      const distI=inp({class:'inp',type:'number',value:distInitVal,placeholder:'optional, e.g. 50'});
-      distI.style.fontSize='12px';
-      distI.addEventListener('input',()=>{
-        cfgForm.races[i].km=distI.value;
-        cfgForm.races[i].dist=distI.value?distI.value+'km':'';
-        saveRaces();
-      });
-      distWrap.appendChild(distI);
-      row2.appendChild(distWrap);
-      const delBtn=btn({style:{padding:'6px 9px',borderRadius:'5px',background:'#1a0a0a',border:'1px solid #2a1a1a',color:'#ff6b6b',fontSize:'13px',flexShrink:'0',alignSelf:'flex-end'},
-        onclick:()=>{
-          // Inline confirm -- replaces native confirm() which is blocked in some contexts
-          const existing=raceCard.querySelector('.race-del-confirm');
-          if(existing){existing.remove();return;}
-          const confirmRow=div({class:'race-del-confirm',style:{display:'flex',alignItems:'center',gap:'8px',marginTop:'8px',padding:'8px',background:'#1a0a0a',borderRadius:'5px',border:'1px solid #2a1a1a'}});
-          confirmRow.appendChild(span({style:{fontSize:'10px',color:'#ff6b6b',flex:'1'}},'Remove '+(r.name||'this race')+'?'));
-          confirmRow.appendChild(btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',background:'#ff6b6b',border:'none',color:'#000',fontWeight:'700'},
-            onclick:()=>{openRace=null; cfgForm.races.splice(i,1); saveRaces(); renderRacesEditor();}},'Yes, remove'));
-          confirmRow.appendChild(btn({style:{padding:'4px 10px',borderRadius:'4px',fontSize:'10px',background:'var(--bg-btn)',border:'1px solid var(--border)',color:'var(--text-mute)'},
-            onclick:()=>confirmRow.remove()},'Cancel'));
-          raceCard.appendChild(confirmRow);
-        }},'\u00d7');
-      row2.appendChild(delBtn);
-      raceCard.appendChild(row2);
-      // Vert + target time -- optional fields
-      const row3=div({style:{display:'flex',gap:'8px',alignItems:'flex-end'}});
-      const vertWrap=div({style:{flex:'1',minWidth:0}});
-      vertWrap.appendChild(lbl('Vert (m)'));
-      const vertI=inp({class:'inp',type:'number',value:r.vert||'',placeholder:'optional, e.g. 2500'});
-      vertI.style.fontSize='12px';
-      vertI.addEventListener('input',()=>{cfgForm.races[i].vert=vertI.value; saveRaces();});
-      vertWrap.appendChild(vertI);
-      row3.appendChild(vertWrap);
-      const ttWrap=div({style:{flex:'1',minWidth:0}});
-      ttWrap.appendChild(lbl('Target finish (h:mm)'));
-      const ttI=inp({class:'inp',type:'text',value:r.targetTime||'',placeholder:'e.g. 26:00'});
-      ttI.style.fontSize='12px';
-      ttI.addEventListener('input',()=>{cfgForm.races[i].targetTime=ttI.value; saveRaces();});
-      ttWrap.appendChild(ttI);
-      row3.appendChild(ttWrap);
-      raceCard.appendChild(row3);
-      raceCard.appendChild(div({style:{fontSize:'8px',color:'#444',marginTop:'5px',lineHeight:'1.5'}},'Distance and Vert are both optional -- fill in both to show this race\'s vert ratio on the Trends page. Target time is used for the fuel race plan.'));
-      racesContainer.appendChild(raceCard);
-    });
-    // Add race button
-    racesContainer.appendChild(btn({style:{padding:'8px 12px',borderRadius:'5px',fontSize:'10px',background:'var(--bg-input)',border:'1px dashed var(--border-btn)',color:'var(--text-mute)',width:'100%'},
-      onclick:()=>{
-        if(!cfgForm.races) cfgForm.races=[];
-        if(openRace!==null&&isBlankRace(cfgForm.races[openRace])) cfgForm.races.splice(openRace,1);
-        cfgForm.races.push({name:'',date:'',dist:'',km:'',vert:'',targetTime:'',prio:(getRaces().some(x=>x.date>=today()&&x.prio==='A')?'B':'A')});
-        openRace=cfgForm.races.length-1;
-        saveRaces();
-        renderRacesEditor();
-      }},'+ Add race'));
-  }
-  renderRacesEditor();
-  racesCard.appendChild(racesContainer);
-  racesCard.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',lineHeight:'1.6'}},'Changes save as you type. Save races tidies up and closes the editor.'));
-  const savRaceBtn=btn({class:'btn',onclick:()=>{
-    if(openRace!==null&&isBlankRace(cfgForm.races[openRace])) cfgForm.races.splice(openRace,1);
-    openRace=null; saveRaces(); renderRacesEditor();
-    savRaceBtn.textContent='SAVED'; savRaceBtn.style.color='#00ff87'; savRaceBtn.style.borderColor='#00ff87';
-    setTimeout(()=>{ savRaceBtn.textContent='Save races'; savRaceBtn.style.color=''; savRaceBtn.style.borderColor=''; },900);
-  }},'Save races');
-  racesCard.appendChild(savRaceBtn);
-  cards.races=racesCard;
 
   // Backup card
   const bkCard=card([],{marginBottom:'16px',display:'flex',flexDirection:'column',gap:'10px'});
@@ -5781,7 +5842,7 @@ function renderSettings(){
   cards.clear=clearPlanBtn;
 
   // Most used first; vitals, year baseline and backup sit at the bottom
-  ['ap','races','cl','totals','cfg','yb','bk','clear'].forEach(k=>{ if(cards[k]) wrap.appendChild(cards[k]); });
+  ['ap','cl','totals','cfg','yb','bk','clear'].forEach(k=>{ if(cards[k]) wrap.appendChild(cards[k]); });
 
   wrap.appendChild(div({style:{marginTop:'20px',fontSize:'9px',color:'#333',lineHeight:'1.8'}},'All data in browser storage. Export regularly to avoid loss on browser clear.\nSafari: Share > Add to Home Screen for full-screen app.'));
 
