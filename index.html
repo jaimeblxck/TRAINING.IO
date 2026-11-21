@@ -1390,16 +1390,9 @@ function renderToday(){
 
     const sessCard=div({style:{padding:'12px 14px',marginBottom:'16px',background:'var(--bg-card)',border:'1px solid '+primaryTc+'40',borderRadius:'8px'}});
 
-    // Header: type badges + day label + done count
+    // Header: title + done count
     const hdrRow=div({style:{display:'flex',alignItems:'center',gap:'6px',marginBottom:'8px'}});
-    const badgeTypes=hasActs
-      ?[...new Set(allTodayActs.map(a=>a.type||todaySess?.type||'easy'))]
-      :[];
-    const bwrap=div({style:{display:'flex',gap:'2px'}});
-    badgeTypes.forEach(t=>bwrap.appendChild(span({style:{fontSize:'9px',background:TC[t]||'#555',color:'#000',padding:'2px 5px',borderRadius:'3px',fontWeight:'700'}},TL[t]||'--')));
-    hdrRow.appendChild(bwrap);
-    hdrRow.appendChild(span({style:{fontSize:'9px',color:'var(--text-mute)',letterSpacing:'0.1em',flex:'1'}},'TODAY \u00b7 '+fmtDate(weekDates(wIdx).mon)+' - '+fmtDate(weekDates(wIdx).sun)));
-    hdrRow.appendChild(span({style:{fontSize:'8px',color:'#000',background:'#b8d400',padding:'2px 6px',borderRadius:'3px',fontWeight:'700',letterSpacing:'0.06em'}},'CURRENT'));
+    hdrRow.appendChild(span({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'15px',letterSpacing:'0.06em',flex:'1'}},"Today's Training"));
     const doneCount=allTodayActs.filter(a=>a.completed).length;
     if(doneCount>0){
       hdrRow.appendChild(span({style:{fontSize:'9px',color:'#00ff87',fontWeight:'700',background:'#00ff8720',padding:'2px 6px',borderRadius:'4px',border:'1px solid #00ff8740'}},doneCount+'/'+allTodayActs.length+' done'));
@@ -2881,7 +2874,7 @@ function debriefLines(){
   return {lines:L,json:js};
 }
 
-const APP_BUILD='22 Nov r44';
+const APP_BUILD='22 Nov r48';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
@@ -3828,8 +3821,8 @@ function buildWeekCard(){
   const head=div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'10px'}});
   head.appendChild(div({style:{fontFamily:"'Bebas Neue',cursive",fontSize:'15px',letterSpacing:'0.06em'}},'This Week'));
   const wt=(TARGETS[wIdx]||{}).type||'';
-  const wd=weekDates(wIdx);
-  head.appendChild(span({style:{fontSize:'9px',letterSpacing:'0.1em',color:wt==='RACE'?'#fd79a8':'var(--text-mute)'}},(wt?wt+' WEEK  \u00b7  ':'')+fmtDate(wd.mon)+' - '+fmtDate(wd.sun)));
+  const nS=days.reduce((n,x)=>n+x.acts.length,0), nD=days.reduce((n,x)=>n+x.acts.filter(a=>a.completed).length,0);
+  head.appendChild(span({style:{fontSize:'9px',letterSpacing:'0.1em',color:wt==='RACE'?'#fd79a8':'var(--text-mute)'}},(wt?wt+'  \u00b7  ':'')+nD+'/'+nS+' SESSIONS'));
   card.appendChild(head);
   const L=['M','T','W','T','F','S','S'];
   const g=div({style:{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'4px',marginBottom:'12px'}});
@@ -4966,11 +4959,12 @@ function renderTrend(){
       // Precompute race vert ratios once -- used for both the on-chart benchmark line(s)
       // and the legend readout below
       const raceRatios=[];
-      (CFG.races||[]).forEach(race=>{
+      (CFG.races||[]).filter(r=>r.date&&r.date>=today()).forEach(race=>{
         const rk=parseFloat(race.km)||parseFloat(race.dist), rv=parseFloat(race.vert);
         if(rk>0&&rv>0){
           const rawName=(race.name||'Race').trim();
-          const label=rawName.length>10?'race':rawName;
+          const w1=rawName.split(' ')[0];
+          const label=w1.length>8?w1.slice(0,7)+'\u2026':w1;
           raceRatios.push({name:label,ratio:Math.round(rv/rk)});
         }
       });
@@ -4992,11 +4986,29 @@ function renderTrend(){
         chart.appendChild(avgLine);
       }
 
-      // Race benchmark line(s) -- same treatment as the average line, in race-pink, dashed to distinguish
-      raceRatios.forEach(r=>{
-        const racePct=Math.min(1,r.ratio/maxRatio);
-        const raceLine=div({style:{position:'absolute',left:'0',right:'0',bottom:(16+racePct*BAR_H)+'px',height:'0',borderTop:'1px dashed #fd79a8',opacity:'0.7',zIndex:'2',pointerEvents:'none'}});
-        chart.appendChild(raceLine);
+      // Race benchmark lines: each its own colour/dash, with the race name inline on the line,
+      // anchored at the latest Monday column (usually a strength or rest day, so little clash).
+      const RACE_COLS=['#fd79a8','#b8ff4f','#ffffff','#ff5252','#55efc4'];
+      const chartW=(vertBody.clientWidth>100?vertBody.clientWidth:330), nD=days.length, colW=chartW/nD;
+      const monIdxs=[]; for(let k=nD-1;k>=0;k--){ if(days[k].isWeekStart) monIdxs.push(k); }
+      if(!monIdxs.length) monIdxs.push(0);
+      const placed=[];
+      raceRatios.forEach((r,ri)=>{
+        const racePct=Math.min(1,r.ratio/maxRatio), yb=16+racePct*BAR_H, rc=RACE_COLS[ri%RACE_COLS.length];
+        chart.appendChild(div({style:{position:'absolute',left:'0',right:'0',bottom:yb+'px',height:'0',borderTop:(ri%2?'2px dotted ':'1px dashed ')+rc,opacity:'0.9',zIndex:'2',pointerEvents:'none'}}));
+        const txt=r.name+' '+r.ratio, wpx=txt.length*5+6;
+        const clash=(x)=>placed.some(p=>x<p.x1&&x+wpx>p.x0&&Math.abs(yb-p.y)<10);
+        let x0=null;
+        for(let mi=0;mi<monIdxs.length&&x0===null;mi++){
+          for(let sh=0;sh<nD;sh++){
+            const x=monIdxs[mi]*colW+sh*colW;
+            if(x+wpx>chartW) break;
+            if(!clash(x)){ x0=x; break; }
+          }
+        }
+        if(x0===null) x0=Math.max(0,chartW-wpx);
+        placed.push({x0:x0,x1:x0+wpx,y:yb});
+        chart.appendChild(span({style:{position:'absolute',left:x0+'px',bottom:(yb+1)+'px',fontSize:'8px',lineHeight:'9px',padding:'0 2px',color:rc,background:'var(--bg-card)',borderRadius:'2px',zIndex:'3',pointerEvents:'none',whiteSpace:'nowrap'}},txt));
       });
 
       days.forEach(day=>{
@@ -5044,12 +5056,6 @@ function renderTrend(){
         legRight.appendChild(avgEl);
       } else {
         legRight.appendChild(span({style:{fontSize:'9px',color:'#333'}},'Log runs with vert to see ratio'));
-      }
-      // Race readouts -- reuse the raceRatios computed earlier for the chart lines
-      const raceEntries=raceRatios.map(r=>r.name+': '+r.ratio+'m/km');
-      if(raceEntries.length){
-        legRight.appendChild(span({style:{fontSize:'9px',color:'#555'}},'\u00b7'));
-        legRight.appendChild(span({style:{fontSize:'9px',color:'#fd79a8'}},raceEntries.join(', ')));
       }
       leg.appendChild(legRight);
 
@@ -5718,14 +5724,6 @@ function renderSettings(){
   rg.appendChild(div({},[lbl('RHR high (bpm)'),rhI]));
   cfgCard.appendChild(rg);
 
-  // Plan timeline: rolling -- no block dates to maintain
-  const weeksInfo=div({style:{padding:'8px 10px',background:'var(--bg-input)',border:'1px solid var(--border)',borderRadius:'6px',fontSize:'10px',color:'#555'}},'');
-  function updateWeeksPreview(){
-    weeksInfo.textContent='Plan runs from '+fmtDate(getBlockMonday())+' \u00b7 '+totalWeeks()+' weeks shown, rolling forward 12+ weeks ahead';
-    weeksInfo.style.color='#888';
-  }
-  updateWeeksPreview();
-  cfgCard.appendChild(weeksInfo);
 
   const savCfgBtn=btn({class:'btn',onclick:()=>{
     CFG.hrvLow=cfgForm.hrvLow; CFG.hrvHigh=cfgForm.hrvHigh;
