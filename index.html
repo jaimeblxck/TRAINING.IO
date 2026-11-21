@@ -2874,7 +2874,7 @@ function debriefLines(){
   return {lines:L,json:js};
 }
 
-const APP_BUILD='22 Nov r48';
+const APP_BUILD='22 Nov r49';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
@@ -4990,25 +4990,20 @@ function renderTrend(){
       // anchored at the latest Monday column (usually a strength or rest day, so little clash).
       const RACE_COLS=['#fd79a8','#b8ff4f','#ffffff','#ff5252','#55efc4'];
       const chartW=(vertBody.clientWidth>100?vertBody.clientWidth:330), nD=days.length, colW=chartW/nD;
-      const monIdxs=[]; for(let k=nD-1;k>=0;k--){ if(days[k].isWeekStart) monIdxs.push(k); }
-      if(!monIdxs.length) monIdxs.push(0);
-      const placed=[];
-      raceRatios.forEach((r,ri)=>{
-        const racePct=Math.min(1,r.ratio/maxRatio), yb=16+racePct*BAR_H, rc=RACE_COLS[ri%RACE_COLS.length];
-        chart.appendChild(div({style:{position:'absolute',left:'0',right:'0',bottom:yb+'px',height:'0',borderTop:(ri%2?'2px dotted ':'1px dashed ')+rc,opacity:'0.9',zIndex:'2',pointerEvents:'none'}}));
-        const txt=r.name+' '+r.ratio, wpx=txt.length*5+6;
-        const clash=(x)=>placed.some(p=>x<p.x1&&x+wpx>p.x0&&Math.abs(yb-p.y)<10);
-        let x0=null;
-        for(let mi=0;mi<monIdxs.length&&x0===null;mi++){
-          for(let sh=0;sh<nD;sh++){
-            const x=monIdxs[mi]*colW+sh*colW;
-            if(x+wpx>chartW) break;
-            if(!clash(x)){ x0=x; break; }
-          }
-        }
-        if(x0===null) x0=Math.max(0,chartW-wpx);
-        placed.push({x0:x0,x1:x0+wpx,y:yb});
-        chart.appendChild(span({style:{position:'absolute',left:x0+'px',bottom:(yb+1)+'px',fontSize:'8px',lineHeight:'9px',padding:'0 2px',color:rc,background:'var(--bg-card)',borderRadius:'2px',zIndex:'3',pointerEvents:'none',whiteSpace:'nowrap'}},txt));
+      // one line per distinct ratio; races sharing a ratio share the line, names joined with " / "
+      const grp=[];
+      raceRatios.forEach(r=>{ let g=grp.find(x=>x.ratio===r.ratio); if(!g){ g={ratio:r.ratio,names:[]}; grp.push(g); } g.names.push(r.name); });
+      grp.forEach((g,gi)=>{ g.col=RACE_COLS[gi%RACE_COLS.length]; g.dash=(gi%2?'2px dotted ':'1px dashed '); g.txt=g.names.join(' / ')+' '+g.ratio; g.yb=16+Math.min(1,g.ratio/maxRatio)*BAR_H; });
+      // all labels stacked in one column: the latest Monday where the widest label still fits
+      const maxW=Math.max(0,...grp.map(g=>g.txt.length*5+10));
+      let anchor=0;
+      for(let k=nD-1;k>=0;k--){ if(days[k].isWeekStart&&k*colW+maxW<=chartW){ anchor=k*colW; break; } }
+      // label positions: centred on the line, nudged up only if two labels would touch
+      const lab=grp.slice().sort((a,b)=>a.yb-b.yb); let prev=-99;
+      lab.forEach(g=>{ g.ly=Math.max(g.yb,prev+9); prev=g.ly; });
+      grp.forEach(g=>{
+        chart.appendChild(div({style:{position:'absolute',left:'0',right:'0',bottom:g.yb+'px',height:'0',borderTop:g.dash+g.col,opacity:'0.9',zIndex:'2',pointerEvents:'none'}}));
+        chart.appendChild(span({style:{position:'absolute',left:anchor+'px',bottom:(g.ly-4.5)+'px',fontSize:'8px',lineHeight:'9px',height:'9px',padding:'0 4px',color:g.col,background:'var(--bg-card)',zIndex:'3',pointerEvents:'none',whiteSpace:'nowrap'}},g.txt));
       });
 
       days.forEach(day=>{
