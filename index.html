@@ -1246,12 +1246,14 @@ function renderHeader(){
     span({style:{fontSize:'28px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.04em',lineHeight:'1',display:'block'}},'TRAINING OS'),
     span({style:{fontSize:'28px',fontFamily:"'Bebas Neue',cursive",color:daysColor,lineHeight:'1',display:'block'}},daysNum!==null?daysNum+'':'--'),
   ]));
-  h.appendChild(div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginTop:'5px'}},[
-    span({style:{fontSize:'10px',color:'#555',lineHeight:'1.3'}},fmtToday()),
-    span({style:{fontSize:'10px',color:'#4a4a6a',letterSpacing:'0.1em',lineHeight:'1.3'}},'DAYS TO RACE'),
-  ]));
-  if(nextRace) h.appendChild(div({style:{textAlign:'right',marginTop:'2px'}},[
-    span({style:{fontSize:'10px',color:'#555'}},nextRace.date+((nextRace.km||nextRace.dist)?' \u00b7 '+(nextRace.km?nextRace.km+'km':nextRace.dist):'')),
+  const rShort=nextRace?(function(w){return w.length>8?w.slice(0,7)+'\u2026':w;})(nextRace.name.toUpperCase().split(' ')[0]):'RACE';
+  const rInfo=nextRace?fmtDate(new Date(nextRace.date+'T12:00:00'))+((nextRace.km||nextRace.dist)?' \u00b7 '+(nextRace.km?nextRace.km+'km':nextRace.dist):''):'';
+  h.appendChild(div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginTop:'5px',gap:'8px'}},[
+    span({style:{fontSize:'10px',color:'#555',lineHeight:'1.3',whiteSpace:'nowrap'}},fmtToday()),
+    span({style:{fontSize:'10px',color:'#4a4a6a',letterSpacing:'0.06em',lineHeight:'1.3',whiteSpace:'nowrap',textAlign:'right'}},[
+      'DAYS TO '+rShort,
+      rInfo?span({style:{color:'#555'}},' \u00b7 '+rInfo.toUpperCase()):null,
+    ]),
   ]));
 
   const {mon:wMon,sun:wSun}=weekDates(cw-1);
@@ -1260,8 +1262,8 @@ function renderHeader(){
   const mkPill=(txt,st)=>span({style:Object.assign({},pillBase,st)},txt);
   let toRace='THIS WEEK';
   if(nextRace){
-    const nw=weeksToRace(nextRace), rn=nextRace.name.toUpperCase().split(' ')[0];
-    toRace=nw===0?'RACE WEEK':nw+(nw===1?' WK':' WKS')+' TO '+rn;
+    const nw=weeksToRace(nextRace);
+    toRace=nw===0?'RACE WEEK':nw+(nw===1?' WK':' WKS')+' TO RACE';
   } else if(lastA){
     const nw=weeksBetween(lastA.date,td);
     toRace=nw+(nw===1?' WK':' WKS')+' SINCE '+lastA.name.toUpperCase().split(' ')[0];
@@ -2880,7 +2882,7 @@ function debriefLines(){
   return {lines:L,json:js};
 }
 
-const APP_BUILD='22 Nov r40';
+const APP_BUILD='22 Nov r42';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
