@@ -36,24 +36,23 @@ body{
   font-size:13px; line-height:1.4;
   -webkit-font-smoothing:antialiased;
   padding-top:env(safe-area-inset-top);
-  padding-bottom:env(safe-area-inset-bottom);
 }
 #app{min-height:100vh;}
 .tab-bar{
-  display:flex; gap:2px; padding:0 16px 8px;
-  border-bottom:1px solid var(--border); overflow-x:auto;
-  -webkit-overflow-scrolling:touch; scrollbar-width:none;
+  position:fixed; left:0; right:0; bottom:0; z-index:100;
+  display:flex; gap:2px; padding:6px 12px calc(6px + env(safe-area-inset-bottom));
+  background:var(--bg); border-top:1px solid var(--border);
 }
 .tab-bar::-webkit-scrollbar{display:none;}
 .tab{
-  flex:1; padding:8px 4px; border:none; border-radius:4px;
+  flex:1; padding:11px 4px; border:none; border-radius:6px;
   background:transparent; color:var(--tab-text);
   font-family:'JetBrains Mono',monospace; font-size:10px;
   letter-spacing:0.08em; cursor:pointer; min-width:40px;
   transition:background 0.1s, color 0.1s;
 }
 .tab.active{background:var(--bg-tab-active); color:var(--tab-active);}
-.pad{padding:16px 16px 80px;}
+.pad{padding:16px 16px calc(84px + env(safe-area-inset-bottom));}
 .section-title{font-family:'Bebas Neue',cursive;font-size:15px;letter-spacing:0.06em;color:var(--text);margin-bottom:8px;display:block;}
 .lbl{font-size:9px;color:var(--text-mute);letter-spacing:0.14em;text-transform:uppercase;display:block;margin-bottom:4px;}
 .inp{
@@ -119,8 +118,8 @@ body{
 <body>
 <div id="app">
   <div id="header" style="padding:20px 20px 0;margin-bottom:16px;"></div>
-  <div class="tab-bar" id="tabs"></div>
   <div class="pad" id="content"></div>
+  <div class="tab-bar" id="tabs"></div>
 </div>
 <script>
 
@@ -1235,7 +1234,6 @@ function renderHeader(){
   const nextRace=getNextARace();
   const allRaces=getRaces();
   const td=today();
-  const upcomingRaces=allRaces.filter(r=>r.date>=td&&(!nextRace||r.name!==nextRace.name||r.date!==nextRace.date)).slice(0,1);
   const lastA=getLastARace();
   const days=nextRace?daysTo(nextRace.date):null;
   const daysNum=typeof days==='number'?days:null;
@@ -1244,30 +1242,33 @@ function renderHeader(){
   const phase=typeKnown(TARGETS[cw-1],cw-1)?TARGETS[cw-1].type:'--';
   const phColor=WTC[phase]||'#888';
 
-  h.appendChild(div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},[
-    div({},[
-      span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.2em',textTransform:'uppercase',display:'block',marginBottom:'2px'}},nextRace?nextRace.name:(CFG.raceName||'')),
-      span({style:{fontSize:'28px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.04em',lineHeight:'1',display:'block'}},'TRAINING OS'),
-      span({style:{fontSize:'10px',color:'#555',display:'block',marginTop:'3px'}},fmtToday()),
-    ]),
-    div({style:{textAlign:'right'}},[
-      span({style:{fontSize:'26px',fontFamily:"'Bebas Neue',cursive",color:daysColor,lineHeight:'1',display:'block'}},daysNum!==null?daysNum+'':'--'),
-      span({style:{fontSize:'9px',color:'#4a4a6a',letterSpacing:'0.1em',display:'block'}},nextRace?'DAYS TO '+nextRace.name.toUpperCase().split(' ')[0]:'DAYS TO RACE'),
-      nextRace?span({style:{fontSize:'9px',color:'#333',display:'block',marginTop:'1px'}},nextRace.date+((nextRace.km||nextRace.dist)?' \u00b7 '+(nextRace.km?nextRace.km+'km':nextRace.dist):'')):null,
-    ]),
+  h.appendChild(div({style:{display:'flex',justifyContent:'space-between',alignItems:'flex-end'}},[
+    span({style:{fontSize:'28px',fontFamily:"'Bebas Neue',cursive",letterSpacing:'0.04em',lineHeight:'1',display:'block'}},'TRAINING OS'),
+    span({style:{fontSize:'28px',fontFamily:"'Bebas Neue',cursive",color:daysColor,lineHeight:'1',display:'block'}},daysNum!==null?daysNum+'':'--'),
+  ]));
+  h.appendChild(div({style:{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginTop:'5px'}},[
+    span({style:{fontSize:'10px',color:'#555',lineHeight:'1.3'}},fmtToday()),
+    span({style:{fontSize:'10px',color:'#4a4a6a',letterSpacing:'0.1em',lineHeight:'1.3'}},'DAYS TO RACE'),
+  ]));
+  if(nextRace) h.appendChild(div({style:{textAlign:'right',marginTop:'2px'}},[
+    span({style:{fontSize:'10px',color:'#555'}},nextRace.date+((nextRace.km||nextRace.dist)?' \u00b7 '+(nextRace.km?nextRace.km+'km':nextRace.dist):'')),
   ]));
 
   const {mon:wMon,sun:wSun}=weekDates(cw-1);
-  const pillRow=div({style:{display:'flex',gap:'6px',marginTop:'10px',flexWrap:'wrap'}});
-  pillRow.appendChild(span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#888',padding:'3px 8px',borderRadius:'4px'}},nextRace?weeksToRace(nextRace)+' WKS TO '+nextRace.name.toUpperCase().split(' ')[0]:(lastA?weeksBetween(lastA.date,td)+' WKS SINCE '+lastA.name.toUpperCase().split(' ')[0]:'THIS WEEK')));
-  pillRow.appendChild(span({style:{fontSize:'9px',background:phColor+'18',border:'1px solid '+phColor+'35',color:phColor,padding:'3px 8px',borderRadius:'4px'}},phase));
-  pillRow.appendChild(span({style:{fontSize:'9px',background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#555',padding:'3px 8px',borderRadius:'4px'}},fmtDate(wMon)+' - '+fmtDate(wSun)));
-  // Show second upcoming race if exists
-  if(upcomingRaces.length>0){
-    const r2=upcomingRaces[0];
-    const d2=daysTo(r2.date);
-    pillRow.appendChild(span({style:{fontSize:'9px',background:'#fd79a820',border:'1px solid #fd79a840',color:'#fd79a8',padding:'3px 8px',borderRadius:'4px'}},r2.name.split(' ')[0]+' '+fmtDate(new Date(r2.date+'T12:00:00'))+' \u00b7 '+d2+'d'));
+  const pillRow=div({style:{display:'flex',gap:'6px',marginTop:'12px',flexWrap:'nowrap'}});
+  const pillBase={flex:'1 1 auto',textAlign:'center',whiteSpace:'nowrap',fontSize:'9px',padding:'4px 6px',borderRadius:'4px'};
+  const mkPill=(txt,st)=>span({style:Object.assign({},pillBase,st)},txt);
+  let toRace='THIS WEEK';
+  if(nextRace){
+    const nw=weeksToRace(nextRace), rn=nextRace.name.toUpperCase().split(' ')[0];
+    toRace=nw===0?'RACE WEEK':nw+(nw===1?' WK':' WKS')+' TO '+rn;
+  } else if(lastA){
+    const nw=weeksBetween(lastA.date,td);
+    toRace=nw+(nw===1?' WK':' WKS')+' SINCE '+lastA.name.toUpperCase().split(' ')[0];
   }
+  pillRow.appendChild(mkPill(phase,{background:phColor+'18',border:'1px solid '+phColor+'35',color:phColor}));
+  pillRow.appendChild(mkPill(fmtDate(wMon)+' - '+fmtDate(wSun),{background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#888'}));
+  pillRow.appendChild(mkPill(toRace,{background:'#1a1a2e',border:'1px solid #2a2a4a',color:'#888'}));
   h.appendChild(pillRow);
 }
 
@@ -2879,7 +2880,7 @@ function debriefLines(){
   return {lines:L,json:js};
 }
 
-const APP_BUILD='19 Nov r38';
+const APP_BUILD='22 Nov r40';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
