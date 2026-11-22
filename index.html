@@ -2874,7 +2874,7 @@ function debriefLines(){
   return {lines:L,json:js};
 }
 
-const APP_BUILD='22 Nov r51';
+const APP_BUILD='22 Nov r52';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
@@ -4021,15 +4021,27 @@ function renderSeason(){
   // totals to race
   if(nextA){
     const rw=weekIdxOfDate(nextA.date);
+    // Still to run before race day: planned, not-yet-done sessions from today up to the day before the race
     let pk=0,pv=0,ph=0;
-    for(let w=cw;w<=Math.min(rw,getPlan().length-1);w++){ const p=weekPlanned(w); if(p){pk+=p.km;pv+=p.vert;ph+=p.hrs;} }
+    const cntT=CFG.countTypes||DEFAULT_COUNT_TYPES;
+    for(let w=Math.max(0,cw);w<=Math.min(rw,getPlan().length-1);w++){
+      const mon=weekDates(w).mon;
+      for(let d=0;d<7;d++){
+        const dd=new Date(mon); dd.setDate(mon.getDate()+d); const ds=localDateStr(dd);
+        if(ds<td||ds>=nextA.date) continue;
+        getDayActivities(w,d).forEach(a=>{
+          if(a.completed||a.type==='rest'||cntT.indexOf(a.type||'easy')<0) return;
+          const e=actEffective(a); pk+=e.km||0; pv+=e.vert||0; ph+=e.hrs||0;
+        });
+      }
+    }
     let lk=0; for(let w=Math.max(0,cw-3);w<=cw;w++) lk+=weekLoggedKm(w);
     const tc=div({style:{background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:'12px',padding:'14px',marginBottom:'12px'}});
     tc.appendChild(div({style:{fontSize:'9px',letterSpacing:'0.14em',color:'var(--text-mute)',marginBottom:'8px'}},'TOTALS'));
     const line=(a,b)=>div({style:{display:'flex',justifyContent:'space-between',fontSize:'11px',padding:'4px 0'}},[span({style:{color:'var(--text-dim)'}},a),span({},b)]);
     tc.appendChild(line('Logged, last 4 weeks',Math.round(lk)+'km'));
-    tc.appendChild(line('Planned so far to '+nextA.name.split(' ')[0],Math.round(pk)+'km \u00b7 '+calN(pv)+'m \u00b7 '+calHm(ph)));
-    tc.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'4px'}},'Weeks not yet planned are not included.'));
+    tc.appendChild(line('Still to run before '+nextA.name.split(' ')[0],Math.round(pk)+'km \u00b7 '+calN(pv)+'m \u00b7 '+calHm(ph)));
+    tc.appendChild(div({style:{fontSize:'8.5px',color:'var(--text-mute)',marginTop:'4px'}},'Planned sessions not yet done, from today to the day before the race. The race itself is not counted.'));
     wrap.appendChild(tc);
   }
   wrap.appendChild(buildCoachCard());
