@@ -2874,7 +2874,7 @@ function debriefLines(){
   return {lines:L,json:js};
 }
 
-const APP_BUILD='22 Nov r49';
+const APP_BUILD='22 Nov r51';
 function revDismissed(){ try{ return JSON.parse(lsGet('utmb_revdismiss_v1')||'[]'); }catch(e){ return []; } }
 function dismissReview(i){ const d=revDismissed(); if(d.indexOf(i)<0) d.push(i); lsSet('utmb_revdismiss_v1',JSON.stringify(d)); }
 function reviewDoneWeeks(){
@@ -4965,11 +4965,13 @@ function renderTrend(){
           const rawName=(race.name||'Race').trim();
           const w1=rawName.split(' ')[0];
           const label=w1.length>8?w1.slice(0,7)+'\u2026':w1;
-          raceRatios.push({name:label,ratio:Math.round(rv/rk)});
+          raceRatios.push({name:label,ratio:Math.round(rv/rk),date:race.date});
         }
       });
-      // Scale must accommodate race lines too, so a steep race benchmark isn't clipped off-chart
-      const maxRatio=Math.max(maxRatio0,...raceRatios.map(r=>r.ratio),1);
+      raceRatios.sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:0));
+      const nextRR=raceRatios[0]||null, laterRR=raceRatios.slice(1);
+      // Scale must accommodate the next-race line so it isn't clipped off-chart
+      const maxRatio=Math.max(maxRatio0,nextRR?nextRR.ratio:0,1);
       const BAR_H=60;
       const TOP_PAD=22; // headroom above the tallest bar so its value label doesn't clip
       const compact=vertRange>=20;
@@ -4988,23 +4990,16 @@ function renderTrend(){
 
       // Race benchmark lines: each its own colour/dash, with the race name inline on the line,
       // anchored at the latest Monday column (usually a strength or rest day, so little clash).
-      const RACE_COLS=['#fd79a8','#b8ff4f','#ffffff','#ff5252','#55efc4'];
-      const chartW=(vertBody.clientWidth>100?vertBody.clientWidth:330), nD=days.length, colW=chartW/nD;
-      // one line per distinct ratio; races sharing a ratio share the line, names joined with " / "
-      const grp=[];
-      raceRatios.forEach(r=>{ let g=grp.find(x=>x.ratio===r.ratio); if(!g){ g={ratio:r.ratio,names:[]}; grp.push(g); } g.names.push(r.name); });
-      grp.forEach((g,gi)=>{ g.col=RACE_COLS[gi%RACE_COLS.length]; g.dash=(gi%2?'2px dotted ':'1px dashed '); g.txt=g.names.join(' / ')+' '+g.ratio; g.yb=16+Math.min(1,g.ratio/maxRatio)*BAR_H; });
-      // all labels stacked in one column: the latest Monday where the widest label still fits
-      const maxW=Math.max(0,...grp.map(g=>g.txt.length*5+10));
-      let anchor=0;
-      for(let k=nD-1;k>=0;k--){ if(days[k].isWeekStart&&k*colW+maxW<=chartW){ anchor=k*colW; break; } }
-      // label positions: centred on the line, nudged up only if two labels would touch
-      const lab=grp.slice().sort((a,b)=>a.yb-b.yb); let prev=-99;
-      lab.forEach(g=>{ g.ly=Math.max(g.yb,prev+9); prev=g.ly; });
-      grp.forEach(g=>{
-        chart.appendChild(div({style:{position:'absolute',left:'0',right:'0',bottom:g.yb+'px',height:'0',borderTop:g.dash+g.col,opacity:'0.9',zIndex:'2',pointerEvents:'none'}}));
-        chart.appendChild(span({style:{position:'absolute',left:anchor+'px',bottom:(g.ly-4.5)+'px',fontSize:'8px',lineHeight:'9px',height:'9px',padding:'0 4px',color:g.col,background:'var(--bg-card)',zIndex:'3',pointerEvents:'none',whiteSpace:'nowrap'}},g.txt));
-      });
+      // Chart shows only the next race (line + name centred on it, at the latest Monday that fits).
+      // The remaining races are listed under the chart.
+      if(nextRR){
+        const chartW=(vertBody.clientWidth>100?vertBody.clientWidth:330), nD=days.length, colW=chartW/nD;
+        const yb=16+Math.min(1,nextRR.ratio/maxRatio)*BAR_H, txt=nextRR.name+' '+nextRR.ratio, rc='#fd79a8';
+        chart.appendChild(div({style:{position:'absolute',left:'0',right:'0',bottom:yb+'px',height:'0',borderTop:'1px dashed '+rc,opacity:'0.9',zIndex:'2',pointerEvents:'none'}}));
+        const wpx=txt.length*5+10; let anchor=0;
+        for(let k=nD-1;k>=0;k--){ if(days[k].isWeekStart&&k*colW+wpx<=chartW){ anchor=k*colW; break; } }
+        chart.appendChild(span({style:{position:'absolute',left:anchor+'px',bottom:(yb-4.5)+'px',fontSize:'8px',lineHeight:'9px',height:'9px',padding:'0 4px',color:rc,background:'var(--bg-card)',zIndex:'3',pointerEvents:'none',whiteSpace:'nowrap'}},txt));
+      }
 
       days.forEach(day=>{
         const col=div({style:{flex:'1',display:'flex',flexDirection:'column',justifyContent:'flex-end',height:chartH+'px',position:'relative',zIndex:'1'}});
@@ -5055,6 +5050,10 @@ function renderTrend(){
       leg.appendChild(legRight);
 
       vertBody.appendChild(leg);
+      if(laterRR.length){
+        const gl=[]; laterRR.forEach(r=>{ let g=gl.find(x=>x.ratio===r.ratio); if(!g){ g={ratio:r.ratio,names:[]}; gl.push(g); } g.names.push(r.name); });
+        vertBody.appendChild(div({style:{fontSize:'9px',color:'var(--text-mute)',marginTop:'6px',lineHeight:'1.5'}},'Later races: '+gl.map(g=>g.names.join(' / ')+' '+g.ratio).join(' \u00b7 ')+' m/km'));
+      }
       if(days.some(d=>d.isRace)){
         vertBody.appendChild(div({style:{fontSize:'8px',color:'#444',marginTop:'3px'}},'*From race config, not yet logged -- excluded from average.'));
       }
@@ -5693,6 +5692,19 @@ function renderSettings(){
     themeRow.appendChild(b);
   });
   apCard.appendChild(themeRow);
+  const updRow=div({style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px'}});
+  const updMsg=span({style:{fontSize:'10px',color:'var(--text-dim)'}},UPD.newer?('Build '+UPD.newer+' available'):'');
+  const updBtn=btn({class:'btn-ghost',style:{padding:'8px 12px',fontSize:'11px'}},UPD.newer?'Update now':'Check for update');
+  updBtn.onclick=async function(){
+    if(UPD.newer){ applyUpdateNow(); return; }
+    updMsg.textContent='Checking...';
+    const r=await checkForUpdate(true);
+    if(r.state==='new'){ updMsg.textContent='Build '+r.build+' available'; updBtn.textContent='Update now'; }
+    else if(r.state==='current'){ updMsg.textContent='You are on the latest build'; }
+    else { updMsg.textContent="Couldn't check. Are you online?"; }
+  };
+  updRow.appendChild(updMsg); updRow.appendChild(updBtn);
+  apCard.appendChild(updRow);
   cards.ap=apCard;
 
   // Config card
@@ -6304,11 +6316,51 @@ if(typeof MutationObserver!=='undefined'){
 }
 
 // ============================================================
+// UPDATE CHECK: the Home Screen app can keep serving a cached copy after a new
+// version is published. On launch / return to foreground we fetch our own page
+// uncached, compare the build label, and offer a one-tap update.
+// ============================================================
+let UPD={last:0,newer:null,dismissed:null,busy:false};
+function buildNum(b){ const m=/r(\d+)\s*$/.exec(String(b||'').trim()); return m?parseInt(m[1],10):null; }
+function applyUpdateNow(){ try{ location.replace(location.pathname+'?u='+Date.now()); }catch(e){ location.reload(); } }
+function showUpdateBanner(){
+  const old=document.getElementById('updbar'); if(old) old.remove();
+  if(!UPD.newer||UPD.dismissed===UPD.newer) return;
+  const bar=div({style:{position:'fixed',left:'12px',right:'12px',bottom:'calc(62px + env(safe-area-inset-bottom))',zIndex:'150',display:'flex',alignItems:'center',gap:'10px',padding:'10px 12px',borderRadius:'10px',background:'var(--bg-card)',border:'1px solid var(--border-btn)',boxShadow:'0 4px 18px rgba(0,0,0,0.45)'}});
+  bar.id='updbar';
+  bar.appendChild(div({style:{flex:'1',minWidth:'0'}},[
+    div({style:{fontSize:'12px',fontWeight:'700'}},'New version available'),
+    div({style:{fontSize:'9px',color:'var(--text-mute)',marginTop:'2px'}},'build '+UPD.newer+' \u00b7 your data is kept')
+  ]));
+  bar.appendChild(btn({class:'btn',style:{padding:'8px 14px',fontSize:'11px',width:'auto',flex:'none'},onclick:applyUpdateNow},'Update'));
+  bar.appendChild(btn({class:'btn-ghost',style:{padding:'8px 10px',fontSize:'13px',width:'auto',flex:'none'},onclick:()=>{ UPD.dismissed=UPD.newer; bar.remove(); }},'\u00d7'));
+  document.body.appendChild(bar);
+}
+async function checkForUpdate(manual){
+  if(UPD.busy) return {state:'busy'};
+  UPD.busy=true;
+  try{
+    const r=await fetch(location.pathname+'?chk='+Date.now(),{cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const t=await r.text(), m=/const APP_BUILD='([^']+)'/.exec(t);
+    if(!m) throw new Error('no build label');
+    const rb=m[1], a=buildNum(rb), b=buildNum(APP_BUILD);
+    const newer=(a!==null&&b!==null)?a>b:rb!==APP_BUILD;
+    UPD.last=Date.now(); UPD.newer=newer?rb:null; UPD.busy=false;
+    showUpdateBanner();
+    return {state:newer?'new':'current',build:rb};
+  }catch(e){ UPD.busy=false; return {state:'error',msg:String((e&&e.message)||e)}; }
+}
+
+// ============================================================
 // BOOT
 // ============================================================
 applyRaceWeekDefaults();
 render();
 if(isFirstRun()) showOnboarding();
+if(/[?&]u=/.test(location.search)&&window.history&&history.replaceState){ try{ history.replaceState(null,'',location.pathname); }catch(e){} }
+setTimeout(function(){ checkForUpdate(false); },1500);
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible'&&Date.now()-UPD.last>300000) checkForUpdate(false); });
 
 </script>
 </body>
